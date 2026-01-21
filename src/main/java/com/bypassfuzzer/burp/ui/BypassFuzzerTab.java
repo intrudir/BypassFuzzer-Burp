@@ -54,24 +54,37 @@ public class BypassFuzzerTab extends JPanel {
         JTextArea instructions = new JTextArea();
         instructions.setText(
             "Getting Started:\n\n" +
-            "1. Right-click any HTTP request in Burp (Proxy, Repeater, etc.)\n" +
+            "1. Right-click any HTTP request in Burp (Proxy, Repeater, Target, etc.)\n" +
             "2. Select \"Send to BypassFuzzer\"\n" +
             "3. A new tab will open for that request\n" +
-            "4. Select which attack types to run\n" +
-            "5. Click \"Start Fuzzing\"\n\n" +
-            "Attack Types:\n" +
-            "• Header - 282+ bypass headers (X-Forwarded-For, X-Original-URL, etc.)\n" +
+            "4. Select which attack types to run (or use Check All)\n" +
+            "5. Click \"Start Fuzzing\"\n" +
+            "6. Review results in real-time with dynamic filtering\n\n" +
+            "8 Attack Types Available:\n" +
+            "• Header - 283+ bypass headers (X-Forwarded-For, X-Original-URL, etc.)\n" +
             "• Path - 367+ URL/path manipulations (../, .;/, %2e, etc.)\n" +
-            "• Verb - HTTP methods + method override techniques\n" +
+            "• Verb - 11 HTTP methods + method override techniques\n" +
+            "• Debug Params - 31+ debug parameters with case variations\n" +
             "• Trailing Dot - Absolute domain bypass (example.com.)\n" +
-            "• Protocol - HTTP/1.0 and HTTP/0.9 downgrades\n\n" +
-            "Each request gets its own tab so you can fuzz multiple targets simultaneously."
+            "• Trailing Slash - Tests with/without trailing slash\n" +
+            "• Protocol - HTTP/1.0 and HTTP/0.9 downgrades\n" +
+            "• Case Variation - Random capitalizations with smart limits\n\n" +
+            "Features:\n" +
+            "• Smart filtering to reduce noise and highlight interesting responses\n" +
+            "• Color-code results for easy identification\n" +
+            "• Send findings directly to Repeater or Intruder\n" +
+            "• Multiple concurrent fuzzing sessions (each in its own tab)\n" +
+            "• Optional Burp Collaborator payloads (Pro only)\n\n" +
+            "Tips:\n" +
+            "• Path and Trailing Slash attacks are automatically skipped on root paths (/)\n" +
+            "• Use filters to show only specific status codes or content types\n" +
+            "• Right-click results to colorize interesting findings"
         );
         instructions.setEditable(false);
         instructions.setBackground(panel.getBackground());
-        instructions.setFont(new Font("Arial", Font.PLAIN, 14));
+        instructions.setFont(new Font("Arial", Font.PLAIN, 13));
         instructions.setAlignmentX(Component.CENTER_ALIGNMENT);
-        instructions.setMaximumSize(new Dimension(600, 400));
+        instructions.setMaximumSize(new Dimension(700, 500));
 
         centerPanel.add(titleLabel);
         centerPanel.add(Box.createVerticalStrut(10));

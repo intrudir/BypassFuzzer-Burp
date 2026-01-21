@@ -34,17 +34,20 @@ public class ParamAttack implements AttackStrategy {
 
         List<String> paramPayloads = buildParamPayloads();
 
+        // Extract just the path+query from the full URL
+        String basePath = extractPathAndQuery(targetUrl);
+
         for (String param : paramPayloads) {
             if (!isRunning.getAsBoolean()) {
                 break;
             }
 
             try {
-                // Build modified URL with parameter
-                String modifiedUrl = appendParameter(targetUrl, param);
+                // Build modified path with parameter
+                String modifiedPath = appendParameter(basePath, param);
 
-                // Create new request with modified URL
-                HttpRequest modifiedRequest = originalRequest.withPath(modifiedUrl);
+                // Create new request with modified path
+                HttpRequest modifiedRequest = originalRequest.withPath(modifiedPath);
 
                 // Send request
                 HttpResponse response = api.http().sendRequest(modifiedRequest).response();
@@ -132,6 +135,26 @@ public class ParamAttack implements AttackStrategy {
         }
 
         return result.toString();
+    }
+
+    /**
+     * Extract path and query from a full URL.
+     * Converts "https://example.com/path?query" to "/path?query"
+     */
+    private String extractPathAndQuery(String url) {
+        try {
+            int schemeEnd = url.indexOf("://");
+            if (schemeEnd != -1) {
+                int pathStart = url.indexOf('/', schemeEnd + 3);
+                if (pathStart != -1) {
+                    return url.substring(pathStart);
+                }
+            }
+            // If no path found, return root
+            return "/";
+        } catch (Exception e) {
+            return "/";
+        }
     }
 
     /**

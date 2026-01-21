@@ -28,6 +28,22 @@ public class PathAttack implements AttackStrategy {
 
     @Override
     public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue) {
+        // Check if original request is just root path
+        String originalPath = extractPath(targetUrl);
+        try {
+            api.logging().logToOutput("Path Attack: Checking path from URL '" + targetUrl + "' -> extracted path: '" + originalPath + "'");
+        } catch (Exception e) {
+            // Ignore
+        }
+        if ("/".equals(originalPath)) {
+            try {
+                api.logging().logToOutput("Path Attack: Skipped - original path is root '/' (path manipulation attacks are less effective on root paths - consider testing a deeper endpoint)");
+            } catch (Exception e) {
+                // Ignore
+            }
+            return;
+        }
+
         try {
             api.logging().logToOutput("Starting Path Attack: " + pathPayloads.size() + " payloads");
         } catch (Exception e) {
@@ -47,6 +63,15 @@ public class PathAttack implements AttackStrategy {
             }
 
             try {
+                // Log progress every 50 requests to avoid spam
+                if (count % 50 == 0 && pathPayloads.size() > 50) {
+                    try {
+                        api.logging().logToOutput("Path Attack progress: " + count + " of " + pathPayloads.size() + " requests sent");
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                }
+
                 HttpRequest modifiedRequest = baseRequest.withPath(extractPath(modifiedUrl));
                 HttpResponse response = api.http().sendRequest(modifiedRequest).response();
                 resultCallback.accept(new AttackResult(getAttackType(), modifiedUrl, modifiedRequest, response));

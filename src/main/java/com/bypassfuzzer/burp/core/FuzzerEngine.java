@@ -102,6 +102,32 @@ public class FuzzerEngine {
 
     private void executeFuzzing(HttpRequest request, Consumer<AttackResult> resultCallback) {
         String targetUrl = request.url();
+
+        // Handle case where url() might return null or just a path
+        if (targetUrl == null || targetUrl.isEmpty()) {
+            safeLog("Error: Unable to determine target URL from request");
+            running = false;
+            return;
+        }
+
+        // If targetUrl is just a path (e.g., "/"), reconstruct full URL from Host header
+        if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+            String host = request.headerValue("Host");
+            if (host != null && !host.isEmpty()) {
+                // Determine protocol - assume HTTPS if port 443, otherwise HTTP
+                String protocol = "http";
+                if (host.contains(":443") || request.isInScope()) {
+                    protocol = "https";
+                }
+                targetUrl = protocol + "://" + host + targetUrl;
+                safeLog("Reconstructed full URL from Host header: " + targetUrl);
+            } else {
+                safeLog("Error: No Host header found and URL is not absolute");
+                running = false;
+                return;
+            }
+        }
+
         safeLog("=== BypassFuzzer Started ===");
         safeLog("Target: " + targetUrl);
         safeLog("Attack types enabled: " + String.join(", ", config.getAttackTypes()));

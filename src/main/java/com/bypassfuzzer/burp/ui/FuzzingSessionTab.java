@@ -78,6 +78,7 @@ public class FuzzingSessionTab extends JPanel {
     private JComboBox<String> highlightColorFilter;
     private JButton applyFilterButton;
     private JLabel filterStatusLabel;
+    private JLabel warningLabel;
 
     public FuzzingSessionTab(MontoyaApi api, HttpRequest request) {
         this.api = api;
@@ -211,6 +212,11 @@ public class FuzzingSessionTab extends JPanel {
         // Status label
         statusLabel = new JLabel("Ready. Target: " + request.method() + " " + request.url());
 
+        // Warning label for skipped attacks (initially hidden)
+        warningLabel = new JLabel("");
+        warningLabel.setForeground(new Color(204, 102, 0)); // Orange color
+        warningLabel.setVisible(false);
+
         // Combine top panels using BoxLayout for better wrapping
         JPanel topContent = new JPanel();
         topContent.setLayout(new BoxLayout(topContent, BoxLayout.Y_AXIS));
@@ -220,6 +226,11 @@ public class FuzzingSessionTab extends JPanel {
         topRow.add(controlPanel, BorderLayout.WEST);
         topRow.add(statusLabel, BorderLayout.CENTER);
         topContent.add(topRow);
+
+        // Warning row (initially hidden)
+        JPanel warningRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        warningRow.add(warningLabel);
+        topContent.add(warningRow);
 
         // Row 2: Attack selection and options
         JPanel middleRow = new JPanel(new BorderLayout());
@@ -649,8 +660,53 @@ public class FuzzingSessionTab extends JPanel {
         // Disable checkboxes during fuzzing
         setAttackCheckboxesEnabled(false);
 
+        // Check if we're fuzzing root path and show warning
+        String targetPath = extractPath(request.url());
+        if ("/".equals(targetPath)) {
+            List<String> skippedAttacks = new ArrayList<>();
+            if (config.getAttackTypes().contains("path")) {
+                skippedAttacks.add("Path");
+            }
+            if (config.getAttackTypes().contains("trailingslash")) {
+                skippedAttacks.add("Trailing Slash");
+            }
+
+            if (!skippedAttacks.isEmpty()) {
+                String warning = "⚠ Note: " + String.join(", ", skippedAttacks) +
+                    " attack" + (skippedAttacks.size() > 1 ? "s" : "") +
+                    " will be skipped (root path '/' detected - consider testing a deeper endpoint)";
+                warningLabel.setText(warning);
+                warningLabel.setVisible(true);
+            }
+        } else {
+            warningLabel.setVisible(false);
+        }
+
         // Start fuzzing in background
         engine.startFuzzing(request, this::addResult);
+
+        // Start a thread to monitor completion
+        new Thread(() -> {
+            try {
+                // Poll every 500ms to check if fuzzing is complete
+                while (engine.isRunning()) {
+                    Thread.sleep(500);
+                }
+                // Fuzzing completed, update UI on Swing thread
+                SwingUtilities.invokeLater(() -> {
+                    if (!engine.isRunning()) {
+                        int totalSent = allResults.size();
+                        int showing = results.size();
+                        statusLabel.setText("Completed: " + totalSent + " requests sent, showing " + showing);
+                        startButton.setEnabled(true);
+                        stopButton.setEnabled(false);
+                        setAttackCheckboxesEnabled(true);
+                    }
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }).start();
     }
 
     public void stopFuzzing() {

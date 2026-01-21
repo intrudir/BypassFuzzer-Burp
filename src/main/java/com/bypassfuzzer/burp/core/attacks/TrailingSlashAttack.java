@@ -27,6 +27,22 @@ public class TrailingSlashAttack implements AttackStrategy {
     public void execute(MontoyaApi api, HttpRequest originalRequest, String targetUrl,
                        Consumer<AttackResult> resultCallback, BooleanSupplier isRunning) {
 
+        // Check if original request is just root path
+        String originalPath = extractPath(targetUrl);
+        try {
+            api.logging().logToOutput("Trailing Slash Attack: Checking path from URL '" + targetUrl + "' -> extracted path: '" + originalPath + "'");
+        } catch (Exception e) {
+            // Ignore
+        }
+        if ("/".equals(originalPath)) {
+            try {
+                api.logging().logToOutput("Trailing Slash Attack: Skipped - original path is already root '/' (no variations possible)");
+            } catch (Exception e) {
+                // Ignore
+            }
+            return;
+        }
+
         List<String> urlVariations = buildUrlVariations(targetUrl);
 
         try {
@@ -47,6 +63,15 @@ public class TrailingSlashAttack implements AttackStrategy {
             }
 
             try {
+                // Log progress every request (since there's only 1 variation typically)
+                if (urlVariations.size() > 0) {
+                    try {
+                        api.logging().logToOutput("Trailing Slash Attack: Testing variation " + (count + 1) + " of " + urlVariations.size());
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                }
+
                 // Create new request with modified URL
                 HttpRequest modifiedRequest = originalRequest.withPath(urlVariation);
 
@@ -133,5 +158,29 @@ public class TrailingSlashAttack implements AttackStrategy {
         }
 
         return variations;
+    }
+
+    /**
+     * Extract path from full URL.
+     */
+    private String extractPath(String url) {
+        try {
+            int schemeEnd = url.indexOf("://");
+            if (schemeEnd != -1) {
+                int pathStart = url.indexOf('/', schemeEnd + 3);
+                if (pathStart != -1) {
+                    String path = url.substring(pathStart);
+                    // Return just the path without query
+                    int queryStart = path.indexOf('?');
+                    if (queryStart != -1) {
+                        return path.substring(0, queryStart);
+                    }
+                    return path;
+                }
+            }
+            return "/";
+        } catch (Exception e) {
+            return "/";
+        }
     }
 }

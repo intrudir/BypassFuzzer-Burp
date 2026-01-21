@@ -1,0 +1,22 @@
+# Gradle
+.gradle/
+build/
+out/
+bin/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+
+# macOS
+.DS_Store
+
+# Build outputs
+*.jar
+!gradle/wrapper/gradle-wrapper.jar

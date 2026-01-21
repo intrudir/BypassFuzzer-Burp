@@ -1,0 +1,955 @@
+package com.bypassfuzzer.burp.ui;
+
+import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.ui.editor.HttpRequestEditor;
+import burp.api.montoya.ui.editor.HttpResponseEditor;
+import com.bypassfuzzer.burp.config.FuzzerConfig;
+import com.bypassfuzzer.burp.core.FuzzerEngine;
+import com.bypassfuzzer.burp.core.attacks.AttackResult;
+import com.bypassfuzzer.burp.core.filter.*;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Individual fuzzing session tab.
+ * Each request sent to BypassFuzzer gets its own tab.
+ */
+public class FuzzingSessionTab extends JPanel {
+
+    private final MontoyaApi api;
+    private final FuzzerConfig config;
+    private final FuzzerEngine engine;
+    private final HttpRequest request;
+    private final String tabTitle;
+
+    private JButton startButton;
+    private JButton stopButton;
+    private JButton clearButton;
+    private JLabel statusLabel;
+    private JTable resultsTable;
+    private DefaultTableModel tableModel;
+
+    // Attack type checkboxes
+    private JCheckBox headerAttackCheckbox;
+    private JCheckBox pathAttackCheckbox;
+    private JCheckBox verbAttackCheckbox;
+    private JCheckBox paramAttackCheckbox;
+    private JCheckBox trailingDotAttackCheckbox;
+    private JCheckBox trailingSlashAttackCheckbox;
+    private JCheckBox protocolAttackCheckbox;
+    private JCheckBox caseAttackCheckbox;
+    private JCheckBox collaboratorCheckbox;
+
+    // Request/Response viewers
+    private HttpRequestEditor requestViewer;
+    private HttpResponseEditor responseViewer;
+
+    // Store results for lookup
+    private List<AttackResult> results;
+    private List<AttackResult> allResults; // Unfiltered results
+
+    // Row coloring - map result object to color
+    private Map<AttackResult, Color> resultColors = new HashMap<>();
+    private JPopupMenu tablePopupMenu;
+
+    // Filtering
+    private FilterConfig filterConfig;
+    private SmartFilter smartFilter;
+    private ManualFilter manualFilter;
+    private JCheckBox smartFilterCheckbox;
+    private JCheckBox manualFilterCheckbox;
+    private JTextField hideStatusCodesField;
+    private JTextField showOnlyStatusCodesField;
+    private JTextField minLengthField;
+    private JTextField maxLengthField;
+    private JTextField contentTypeField;
+    private JComboBox<String> highlightColorFilter;
+    private JButton applyFilterButton;
+    private JLabel filterStatusLabel;
+
+    public FuzzingSessionTab(MontoyaApi api, HttpRequest request) {
+        this.api = api;
+        this.request = request;
+        this.config = new FuzzerConfig();
+        this.engine = new FuzzerEngine(api, config);
+        this.results = new ArrayList<>();
+        this.allResults = new ArrayList<>();
+
+        // Initialize filters
+        this.filterConfig = new FilterConfig();
+        this.smartFilter = new SmartFilter(filterConfig);
+        this.manualFilter = new ManualFilter(filterConfig);
+
+        // Create tab title from request
+        String method = request.method();
+        String path = extractPath(request.url());
+        this.tabTitle = method + " " + truncate(path, 30);
+
+        initializeUI();
+    }
+
+    private void initializeUI() {
+        setLayout(new BorderLayout());
+
+        // Top panel - Controls and Attack Selection
+        JPanel topPanel = new JPanel(new BorderLayout());
+
+        // Control buttons
+        JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        startButton = new JButton("Start Fuzzing");
+        startButton.addActionListener(e -> startFuzzing());
+
+        stopButton = new JButton("Stop");
+        stopButton.setEnabled(false);
+        stopButton.addActionListener(e -> stopFuzzing());
+
+        clearButton = new JButton("Clear Results");
+        clearButton.addActionListener(e -> clearResults());
+
+        controlPanel.add(startButton);
+        controlPanel.add(stopButton);
+        controlPanel.add(clearButton);
+
+        // Attack type selection panel
+        JPanel attackPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        attackPanel.setBorder(BorderFactory.createTitledBorder("Attack Types"));
+
+        headerAttackCheckbox = new JCheckBox("Header", config.isEnableHeaderAttack());
+        pathAttackCheckbox = new JCheckBox("Path", config.isEnablePathAttack());
+        verbAttackCheckbox = new JCheckBox("Verb", config.isEnableVerbAttack());
+        paramAttackCheckbox = new JCheckBox("Debug Params", config.isEnableParamAttack());
+        trailingDotAttackCheckbox = new JCheckBox("Trailing Dot", config.isEnableTrailingDotAttack());
+        trailingSlashAttackCheckbox = new JCheckBox("Trailing Slash", config.isEnableTrailingSlashAttack());
+        protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
+        caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
+
+        attackPanel.add(headerAttackCheckbox);
+        attackPanel.add(pathAttackCheckbox);
+        attackPanel.add(verbAttackCheckbox);
+        attackPanel.add(paramAttackCheckbox);
+        attackPanel.add(trailingDotAttackCheckbox);
+        attackPanel.add(trailingSlashAttackCheckbox);
+        attackPanel.add(protocolAttackCheckbox);
+        attackPanel.add(caseAttackCheckbox);
+
+        // Add Check All / Uncheck All buttons
+        JButton checkAllButton = new JButton("Check All");
+        checkAllButton.addActionListener(e -> {
+            headerAttackCheckbox.setSelected(true);
+            pathAttackCheckbox.setSelected(true);
+            verbAttackCheckbox.setSelected(true);
+            paramAttackCheckbox.setSelected(true);
+            trailingDotAttackCheckbox.setSelected(true);
+            trailingSlashAttackCheckbox.setSelected(true);
+            protocolAttackCheckbox.setSelected(true);
+            caseAttackCheckbox.setSelected(true);
+        });
+
+        JButton uncheckAllButton = new JButton("Uncheck All");
+        uncheckAllButton.addActionListener(e -> {
+            headerAttackCheckbox.setSelected(false);
+            pathAttackCheckbox.setSelected(false);
+            verbAttackCheckbox.setSelected(false);
+            paramAttackCheckbox.setSelected(false);
+            trailingDotAttackCheckbox.setSelected(false);
+            trailingSlashAttackCheckbox.setSelected(false);
+            protocolAttackCheckbox.setSelected(false);
+            caseAttackCheckbox.setSelected(false);
+        });
+
+        attackPanel.add(checkAllButton);
+        attackPanel.add(uncheckAllButton);
+
+        // Options panel
+        JPanel optionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        optionsPanel.setBorder(BorderFactory.createTitledBorder("Options"));
+
+        collaboratorCheckbox = new JCheckBox("Include Collaborator payloads in headers?", config.isEnableCollaboratorPayloads());
+
+        // Check if Collaborator is available
+        boolean collaboratorAvailable = isCollaboratorAvailable();
+        JLabel collabInfoIcon = null;
+        if (!collaboratorAvailable) {
+            collaboratorCheckbox.setEnabled(false);
+            collaboratorCheckbox.setSelected(false);
+            collaboratorCheckbox.setToolTipText("Burp Collaborator is not available. Requires Burp Suite Professional with Collaborator configured.");
+
+            // Add info icon to indicate disabled state with tooltip
+            collabInfoIcon = new JLabel("ⓘ");
+            collabInfoIcon.setForeground(new java.awt.Color(100, 100, 100));
+            collabInfoIcon.setToolTipText("Burp Collaborator is not available. Requires Burp Suite Professional with Collaborator configured.");
+            collabInfoIcon.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        }
+
+        optionsPanel.add(collaboratorCheckbox);
+        if (collabInfoIcon != null) {
+            optionsPanel.add(collabInfoIcon);
+        }
+
+        // Status label
+        statusLabel = new JLabel("Ready. Target: " + request.method() + " " + request.url());
+
+        // Combine top panels
+        JPanel topLeft = new JPanel(new BorderLayout());
+        topLeft.add(controlPanel, BorderLayout.NORTH);
+        topLeft.add(statusLabel, BorderLayout.CENTER);
+
+        topPanel.add(topLeft, BorderLayout.WEST);
+        topPanel.add(attackPanel, BorderLayout.CENTER);
+        topPanel.add(optionsPanel, BorderLayout.EAST);
+
+        // Add filter panel to top
+        JPanel filterPanel = createFilterPanel();
+
+        JPanel combinedTopPanel = new JPanel(new BorderLayout());
+        combinedTopPanel.add(topPanel, BorderLayout.NORTH);
+        combinedTopPanel.add(filterPanel, BorderLayout.CENTER);
+
+        add(combinedTopPanel, BorderLayout.NORTH);
+
+        // Center panel - Split pane with table on top and request/response on bottom
+        JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        mainSplitPane.setResizeWeight(0.4); // 40% for table, 60% for viewers
+
+        // Top of split - Results table
+        String[] columnNames = {"#", "Attack Type", "Payload", "Status", "Length", "Content-Type"};
+        tableModel = new DefaultTableModel(columnNames, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 0) return Integer.class; // # column
+                return String.class;
+            }
+        };
+
+        resultsTable = new JTable(tableModel);
+        resultsTable.setAutoCreateRowSorter(true);
+        resultsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Add selection listener to show request/response
+        resultsTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int selectedRow = resultsTable.getSelectedRow();
+                if (selectedRow >= 0) {
+                    // Convert view row to model row (in case table is sorted)
+                    int modelRow = resultsTable.convertRowIndexToModel(selectedRow);
+                    showResultDetails(modelRow);
+                }
+            }
+        });
+
+        // Add custom cell renderer for row coloring and alignment
+        resultsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                    boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+                // Left-align # and Attack Type columns
+                if (column == 0 || column == 1) {
+                    setHorizontalAlignment(SwingConstants.LEFT);
+                } else {
+                    setHorizontalAlignment(SwingConstants.LEFT);
+                }
+
+                if (!isSelected) {
+                    // Convert view row to model row, then get the result object
+                    int modelRow = table.convertRowIndexToModel(row);
+                    if (modelRow >= 0 && modelRow < results.size()) {
+                        AttackResult result = results.get(modelRow);
+                        Color rowColor = resultColors.get(result);
+                        if (rowColor != null) {
+                            c.setBackground(rowColor);
+                            c.setForeground(Color.BLACK); // Ensure text is black for readability
+                        } else {
+                            c.setBackground(table.getBackground());
+                            c.setForeground(table.getForeground());
+                        }
+                    } else {
+                        c.setBackground(table.getBackground());
+                        c.setForeground(table.getForeground());
+                    }
+                }
+
+                return c;
+            }
+        });
+
+        // Create popup menu for coloring
+        createTablePopupMenu();
+
+        // Add right-click listener
+        resultsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showPopup(e);
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showPopup(e);
+                }
+            }
+
+            private void showPopup(MouseEvent e) {
+                int row = resultsTable.rowAtPoint(e.getPoint());
+                if (row >= 0) {
+                    resultsTable.setRowSelectionInterval(row, row);
+                    tablePopupMenu.show(e.getComponent(), e.getX(), e.getY());
+                }
+            }
+        });
+
+        // Set column widths - smaller for # and Attack Type
+        resultsTable.getColumnModel().getColumn(0).setPreferredWidth(30);  // #
+        resultsTable.getColumnModel().getColumn(0).setMaxWidth(50);         // # max width
+        resultsTable.getColumnModel().getColumn(1).setPreferredWidth(60);  // Attack Type
+        resultsTable.getColumnModel().getColumn(1).setMaxWidth(80);         // Attack Type max width
+        resultsTable.getColumnModel().getColumn(2).setPreferredWidth(300); // Payload
+        resultsTable.getColumnModel().getColumn(3).setPreferredWidth(60);  // Status
+        resultsTable.getColumnModel().getColumn(4).setPreferredWidth(80);  // Length
+        resultsTable.getColumnModel().getColumn(5).setPreferredWidth(150); // Content-Type
+
+        JScrollPane tableScrollPane = new JScrollPane(resultsTable);
+        mainSplitPane.setTopComponent(tableScrollPane);
+
+        // Bottom of split - Request/Response viewers
+        requestViewer = api.userInterface().createHttpRequestEditor();
+        responseViewer = api.userInterface().createHttpResponseEditor();
+
+        JTabbedPane viewerTabs = new JTabbedPane();
+        viewerTabs.addTab("Request", requestViewer.uiComponent());
+        viewerTabs.addTab("Response", responseViewer.uiComponent());
+
+        mainSplitPane.setBottomComponent(viewerTabs);
+
+        add(mainSplitPane, BorderLayout.CENTER);
+
+        // Bottom panel - Request info
+        JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JLabel infoLabel = new JLabel(String.format("Target: %s %s", request.method(), request.url()));
+        infoPanel.add(infoLabel);
+        add(infoPanel, BorderLayout.SOUTH);
+    }
+
+    private JPanel createFilterPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Filters"));
+
+        // Left side - Smart Filter
+        JPanel leftPanel = new JPanel();
+        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
+        leftPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 10));
+
+        smartFilterCheckbox = new JCheckBox("Smart Filter (auto-detect patterns)");
+        smartFilterCheckbox.addActionListener(e -> {
+            filterConfig.setSmartFilterEnabled(smartFilterCheckbox.isSelected());
+            applyFilters();
+        });
+        leftPanel.add(smartFilterCheckbox);
+
+        leftPanel.add(Box.createVerticalStrut(10));
+        filterStatusLabel = new JLabel("No filters active");
+        filterStatusLabel.setFont(filterStatusLabel.getFont().deriveFont(11f));
+        leftPanel.add(filterStatusLabel);
+
+        panel.add(leftPanel, BorderLayout.WEST);
+
+        // Right side - Manual Filter
+        JPanel rightPanel = new JPanel();
+        rightPanel.setLayout(new BoxLayout(rightPanel, BoxLayout.Y_AXIS));
+        rightPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createTitledBorder("Manual Filter"),
+            BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        ));
+
+        // Manual filter checkbox
+        manualFilterCheckbox = new JCheckBox("Enable Manual Filter");
+        manualFilterCheckbox.addActionListener(e -> {
+            boolean enabled = manualFilterCheckbox.isSelected();
+            hideStatusCodesField.setEnabled(enabled);
+            showOnlyStatusCodesField.setEnabled(enabled);
+            minLengthField.setEnabled(enabled);
+            maxLengthField.setEnabled(enabled);
+            contentTypeField.setEnabled(enabled);
+            highlightColorFilter.setEnabled(enabled);
+            applyFilterButton.setEnabled(enabled);
+
+            // Toggle the filter config
+            filterConfig.setManualFilterEnabled(enabled);
+
+            // If disabling, also apply filters to update display
+            if (!enabled) {
+                applyFilters();
+            }
+        });
+        rightPanel.add(manualFilterCheckbox);
+        rightPanel.add(Box.createVerticalStrut(10));
+
+        // Status Code Filters
+        JPanel statusCodePanel = new JPanel();
+        statusCodePanel.setLayout(new BoxLayout(statusCodePanel, BoxLayout.Y_AXIS));
+        statusCodePanel.setBorder(BorderFactory.createTitledBorder("Status Code"));
+
+        JPanel hideStatusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        hideStatusRow.add(new JLabel("Hide codes:"));
+        hideStatusCodesField = new JTextField(15);
+        hideStatusCodesField.setToolTipText("Comma-separated, e.g., 404,403,500");
+        hideStatusCodesField.setEnabled(false);
+        hideStatusRow.add(hideStatusCodesField);
+        hideStatusRow.add(new JLabel("(e.g. 404,403,500)"));
+        hideStatusRow.add(Box.createHorizontalStrut(5));
+        statusCodePanel.add(hideStatusRow);
+
+        JPanel showStatusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        showStatusRow.add(new JLabel("Show only:"));
+        showOnlyStatusCodesField = new JTextField(15);
+        showOnlyStatusCodesField.setToolTipText("Comma-separated, e.g., 200,302");
+        showOnlyStatusCodesField.setEnabled(false);
+        showStatusRow.add(showOnlyStatusCodesField);
+        showStatusRow.add(new JLabel("(e.g. 200,302)"));
+        showStatusRow.add(Box.createHorizontalStrut(5));
+        statusCodePanel.add(showStatusRow);
+
+        rightPanel.add(statusCodePanel);
+        rightPanel.add(Box.createVerticalStrut(5));
+
+        // Length Filter
+        JPanel lengthPanel = new JPanel();
+        lengthPanel.setLayout(new BoxLayout(lengthPanel, BoxLayout.Y_AXIS));
+        lengthPanel.setBorder(BorderFactory.createTitledBorder("Content Length (bytes)"));
+
+        JPanel lengthRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        lengthRow.add(new JLabel("Min:"));
+        minLengthField = new JTextField(8);
+        minLengthField.setToolTipText("Minimum bytes");
+        minLengthField.setEnabled(false);
+        lengthRow.add(minLengthField);
+        lengthRow.add(new JLabel("Max:"));
+        maxLengthField = new JTextField(8);
+        maxLengthField.setToolTipText("Maximum bytes");
+        maxLengthField.setEnabled(false);
+        lengthRow.add(maxLengthField);
+        lengthRow.add(new JLabel("(e.g. 1000 or 5000)"));
+        lengthRow.add(Box.createHorizontalStrut(5));
+        lengthPanel.add(lengthRow);
+
+        rightPanel.add(lengthPanel);
+        rightPanel.add(Box.createVerticalStrut(5));
+
+        // Content-Type Filter
+        JPanel contentTypePanel = new JPanel();
+        contentTypePanel.setLayout(new BoxLayout(contentTypePanel, BoxLayout.Y_AXIS));
+        contentTypePanel.setBorder(BorderFactory.createTitledBorder("Content-Type"));
+
+        JPanel contentTypeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        contentTypeRow.add(new JLabel("Contains:"));
+        contentTypeField = new JTextField(20);
+        contentTypeField.setToolTipText("Filter by content-type (e.g., 'json', 'html')");
+        contentTypeField.setEnabled(false);
+        contentTypeRow.add(contentTypeField);
+        contentTypeRow.add(new JLabel("(e.g. html, json)"));
+        contentTypeRow.add(Box.createHorizontalStrut(5));
+        contentTypePanel.add(contentTypeRow);
+
+        rightPanel.add(contentTypePanel);
+        rightPanel.add(Box.createVerticalStrut(5));
+
+        // Highlight Color Filter
+        JPanel highlightPanel = new JPanel();
+        highlightPanel.setLayout(new BoxLayout(highlightPanel, BoxLayout.Y_AXIS));
+        highlightPanel.setBorder(BorderFactory.createTitledBorder("Highlight Color"));
+
+        JPanel highlightRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        highlightRow.add(new JLabel("Show only:"));
+        highlightColorFilter = new JComboBox<>(new String[]{
+            "All",
+            "Red",
+            "Orange",
+            "Yellow",
+            "Green",
+            "Blue",
+            "Cyan",
+            "Magenta",
+            "Gray"
+        });
+        highlightColorFilter.setEnabled(false);
+        highlightRow.add(highlightColorFilter);
+        highlightPanel.add(highlightRow);
+
+        rightPanel.add(highlightPanel);
+        rightPanel.add(Box.createVerticalStrut(10));
+
+        // Apply button
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        applyFilterButton = new JButton("Apply Manual Filters");
+        applyFilterButton.setEnabled(false);
+        applyFilterButton.addActionListener(e -> applyManualFilters());
+        buttonPanel.add(applyFilterButton);
+        rightPanel.add(buttonPanel);
+
+        panel.add(rightPanel, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private void createTablePopupMenu() {
+        tablePopupMenu = new JPopupMenu();
+
+        // Color options with better contrast (darker backgrounds for readability)
+        JMenuItem redItem = new JMenuItem("Highlight Red");
+        redItem.addActionListener(e -> colorSelectedRow(new Color(255, 150, 150)));
+        tablePopupMenu.add(redItem);
+
+        JMenuItem orangeItem = new JMenuItem("Highlight Orange");
+        orangeItem.addActionListener(e -> colorSelectedRow(new Color(255, 180, 120)));
+        tablePopupMenu.add(orangeItem);
+
+        JMenuItem yellowItem = new JMenuItem("Highlight Yellow");
+        yellowItem.addActionListener(e -> colorSelectedRow(new Color(255, 255, 150)));
+        tablePopupMenu.add(yellowItem);
+
+        JMenuItem greenItem = new JMenuItem("Highlight Green");
+        greenItem.addActionListener(e -> colorSelectedRow(new Color(150, 255, 150)));
+        tablePopupMenu.add(greenItem);
+
+        JMenuItem blueItem = new JMenuItem("Highlight Blue");
+        blueItem.addActionListener(e -> colorSelectedRow(new Color(150, 200, 255)));
+        tablePopupMenu.add(blueItem);
+
+        JMenuItem cyanItem = new JMenuItem("Highlight Cyan");
+        cyanItem.addActionListener(e -> colorSelectedRow(new Color(150, 255, 255)));
+        tablePopupMenu.add(cyanItem);
+
+        JMenuItem magentaItem = new JMenuItem("Highlight Magenta");
+        magentaItem.addActionListener(e -> colorSelectedRow(new Color(255, 150, 255)));
+        tablePopupMenu.add(magentaItem);
+
+        JMenuItem grayItem = new JMenuItem("Highlight Gray");
+        grayItem.addActionListener(e -> colorSelectedRow(new Color(200, 200, 200)));
+        tablePopupMenu.add(grayItem);
+
+        tablePopupMenu.addSeparator();
+
+        JMenuItem clearItem = new JMenuItem("Clear Highlight");
+        clearItem.addActionListener(e -> clearSelectedRowColor());
+        tablePopupMenu.add(clearItem);
+    }
+
+    private void colorSelectedRow(Color color) {
+        int selectedRow = resultsTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            int modelRow = resultsTable.convertRowIndexToModel(selectedRow);
+            if (modelRow >= 0 && modelRow < results.size()) {
+                AttackResult result = results.get(modelRow);
+                resultColors.put(result, color);
+                resultsTable.repaint();
+            }
+        }
+    }
+
+    private void clearSelectedRowColor() {
+        int selectedRow = resultsTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            int modelRow = resultsTable.convertRowIndexToModel(selectedRow);
+            if (modelRow >= 0 && modelRow < results.size()) {
+                AttackResult result = results.get(modelRow);
+                resultColors.remove(result);
+                resultsTable.repaint();
+            }
+        }
+    }
+
+    public String getTabTitle() {
+        return tabTitle;
+    }
+
+    private void startFuzzing() {
+        // Update config from checkboxes
+        config.setEnableHeaderAttack(headerAttackCheckbox.isSelected());
+        config.setEnablePathAttack(pathAttackCheckbox.isSelected());
+        config.setEnableVerbAttack(verbAttackCheckbox.isSelected());
+        config.setEnableParamAttack(paramAttackCheckbox.isSelected());
+        config.setEnableTrailingDotAttack(trailingDotAttackCheckbox.isSelected());
+        config.setEnableTrailingSlashAttack(trailingSlashAttackCheckbox.isSelected());
+        config.setEnableProtocolAttack(protocolAttackCheckbox.isSelected());
+        config.setEnableCaseAttack(caseAttackCheckbox.isSelected());
+        config.setEnableCollaboratorPayloads(collaboratorCheckbox.isSelected());
+
+        // Check if at least one attack is selected
+        if (config.getAttackTypes().isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "Please select at least one attack type!",
+                "No Attacks Selected",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // Warn if Collaborator is enabled but not available
+        if (collaboratorCheckbox.isSelected() && !isCollaboratorAvailable()) {
+            int choice = JOptionPane.showConfirmDialog(this,
+                "Burp Collaborator is not available.\n" +
+                "Collaborator requires Burp Suite Professional with Collaborator configured.\n\n" +
+                "Continue fuzzing without Collaborator payloads?",
+                "Collaborator Not Available",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+
+            if (choice != JOptionPane.YES_OPTION) {
+                return;
+            }
+
+            // Disable collaborator in config since it's not available
+            config.setEnableCollaboratorPayloads(false);
+            collaboratorCheckbox.setSelected(false);
+        }
+
+        startButton.setEnabled(false);
+        stopButton.setEnabled(true);
+        statusLabel.setText("Fuzzing in progress...");
+
+        // Disable checkboxes during fuzzing
+        setAttackCheckboxesEnabled(false);
+
+        // Start fuzzing in background
+        engine.startFuzzing(request, this::addResult);
+    }
+
+    public void stopFuzzing() {
+        engine.stopFuzzing();
+        startButton.setEnabled(true);
+        stopButton.setEnabled(false);
+        statusLabel.setText("Stopped");
+        setAttackCheckboxesEnabled(true);
+    }
+
+    /**
+     * Cleanup when tab is closed or extension is unloaded.
+     */
+    public void cleanup() {
+        engine.cleanup();
+    }
+
+    private void clearResults() {
+        tableModel.setRowCount(0);
+        results.clear();
+        allResults.clear();
+        resultColors.clear();
+        smartFilter.reset();
+        requestViewer.setRequest(null);
+        responseViewer.setResponse(null);
+        statusLabel.setText("Results cleared");
+        updateFilterStatus();
+    }
+
+    private void applyManualFilters() {
+        // Parse hide status codes
+        Set<Integer> hideStatusCodes = new HashSet<>();
+        String hideText = hideStatusCodesField.getText().trim();
+        if (!hideText.isEmpty()) {
+            for (String code : hideText.split(",")) {
+                try {
+                    hideStatusCodes.add(Integer.parseInt(code.trim()));
+                } catch (NumberFormatException e) {
+                    api.logging().logToError("Invalid status code: " + code);
+                }
+            }
+        }
+        filterConfig.setHiddenStatusCodes(hideStatusCodes);
+
+        // Parse show only status codes
+        Set<Integer> showStatusCodes = new HashSet<>();
+        String showText = showOnlyStatusCodesField.getText().trim();
+        if (!showText.isEmpty()) {
+            for (String code : showText.split(",")) {
+                try {
+                    showStatusCodes.add(Integer.parseInt(code.trim()));
+                } catch (NumberFormatException e) {
+                    api.logging().logToError("Invalid status code: " + code);
+                }
+            }
+        }
+        filterConfig.setShownStatusCodes(showStatusCodes);
+
+        // Parse length range
+        try {
+            String minText = minLengthField.getText().trim();
+            if (!minText.isEmpty()) {
+                filterConfig.setMinContentLength(Integer.parseInt(minText));
+            } else {
+                filterConfig.setMinContentLength(null);
+            }
+        } catch (NumberFormatException e) {
+            api.logging().logToError("Invalid min length: " + minLengthField.getText());
+            filterConfig.setMinContentLength(null);
+        }
+
+        try {
+            String maxText = maxLengthField.getText().trim();
+            if (!maxText.isEmpty()) {
+                filterConfig.setMaxContentLength(Integer.parseInt(maxText));
+            } else {
+                filterConfig.setMaxContentLength(null);
+            }
+        } catch (NumberFormatException e) {
+            api.logging().logToError("Invalid max length: " + maxLengthField.getText());
+            filterConfig.setMaxContentLength(null);
+        }
+
+        // Parse content-type filter
+        String contentTypeText = contentTypeField.getText().trim();
+        if (!contentTypeText.isEmpty()) {
+            filterConfig.setContentTypeFilter(contentTypeText);
+        } else {
+            filterConfig.setContentTypeFilter(null);
+        }
+
+        applyFilters();
+    }
+
+    private void applyFilters() {
+        // Clear table
+        tableModel.setRowCount(0);
+        results.clear();
+        // Don't clear resultColors - we want to preserve them when filters change
+
+        int hiddenCount = 0;
+        int requestNum = 1;
+
+        // Re-add filtered results
+        for (AttackResult result : allResults) {
+            if (shouldShowResult(result)) {
+                results.add(result);
+
+                Object[] row = {
+                    requestNum++,
+                    result.getAttackType(),
+                    truncatePayload(result.getPayload(), 100),
+                    result.getStatusCode(),
+                    result.getContentLength(),
+                    truncatePayload(result.getContentType(), 50)
+                };
+                tableModel.addRow(row);
+            } else {
+                hiddenCount++;
+            }
+        }
+
+        updateFilterStatus();
+        resultsTable.repaint(); // Repaint to show any preserved colors
+        api.logging().logToOutput("Filters applied: showing " + results.size() + " of " + allResults.size() + " results");
+    }
+
+    private boolean shouldShowResult(AttackResult result) {
+        // Check smart filter first
+        if (!smartFilter.shouldShow(result)) {
+            return false;
+        }
+
+        // Check manual filter
+        if (filterConfig.isManualFilterEnabled() && !manualFilter.shouldShow(result)) {
+            return false;
+        }
+
+        // Check highlight color filter
+        if (filterConfig.isManualFilterEnabled() && highlightColorFilter.getSelectedIndex() > 0) {
+            Color filterColor = getColorFromName((String) highlightColorFilter.getSelectedItem());
+            Color resultColor = resultColors.get(result);
+
+            // Only show if result has the selected highlight color
+            if (!colorMatches(resultColor, filterColor)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private Color getColorFromName(String colorName) {
+        switch (colorName) {
+            case "Red": return new Color(255, 150, 150);
+            case "Orange": return new Color(255, 180, 120);
+            case "Yellow": return new Color(255, 255, 150);
+            case "Green": return new Color(150, 255, 150);
+            case "Blue": return new Color(150, 200, 255);
+            case "Cyan": return new Color(150, 255, 255);
+            case "Magenta": return new Color(255, 150, 255);
+            case "Gray": return new Color(200, 200, 200);
+            default: return null;
+        }
+    }
+
+    private boolean colorMatches(Color c1, Color c2) {
+        if (c1 == null || c2 == null) {
+            return false;
+        }
+        return c1.getRed() == c2.getRed() &&
+               c1.getGreen() == c2.getGreen() &&
+               c1.getBlue() == c2.getBlue();
+    }
+
+    private void updateFilterStatus() {
+        boolean anyFilterActive = filterConfig.isSmartFilterEnabled() || filterConfig.isManualFilterEnabled();
+
+        if (!anyFilterActive) {
+            filterStatusLabel.setText("No filters active");
+        } else {
+            StringBuilder status = new StringBuilder();
+            if (filterConfig.isSmartFilterEnabled()) {
+                status.append("Smart: ").append(smartFilter.getStatistics());
+            }
+            if (filterConfig.isManualFilterEnabled()) {
+                if (status.length() > 0) {
+                    status.append(" | ");
+                }
+                status.append("Manual: Active");
+            }
+            status.append(" | Showing ").append(results.size()).append(" of ").append(allResults.size());
+            filterStatusLabel.setText(status.toString());
+        }
+    }
+
+    private void setAttackCheckboxesEnabled(boolean enabled) {
+        headerAttackCheckbox.setEnabled(enabled);
+        pathAttackCheckbox.setEnabled(enabled);
+        verbAttackCheckbox.setEnabled(enabled);
+        paramAttackCheckbox.setEnabled(enabled);
+        trailingDotAttackCheckbox.setEnabled(enabled);
+        trailingSlashAttackCheckbox.setEnabled(enabled);
+        protocolAttackCheckbox.setEnabled(enabled);
+        caseAttackCheckbox.setEnabled(enabled);
+
+        // Only enable collaborator checkbox if Collaborator is available
+        if (enabled && isCollaboratorAvailable()) {
+            collaboratorCheckbox.setEnabled(true);
+        } else if (!enabled) {
+            collaboratorCheckbox.setEnabled(false);
+        }
+        // If enabled=true but Collaborator not available, keep it disabled
+    }
+
+    private boolean isCollaboratorAvailable() {
+        try {
+            return api.collaborator() != null && api.collaborator().defaultPayloadGenerator() != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void addResult(AttackResult result) {
+        api.logging().logToOutput("FuzzingSessionTab.addResult() called with: " + result.getAttackType() + " - " + truncatePayload(result.getPayload(), 50));
+
+        // Update UI on Swing thread
+        SwingUtilities.invokeLater(() -> {
+            try {
+                api.logging().logToOutput("SwingUtilities.invokeLater executing for result...");
+
+                // Store in allResults (unfiltered)
+                allResults.add(result);
+
+                // Track pattern in smart filter (always, regardless of filter state)
+                smartFilter.track(result);
+
+                // Check if result should be shown based on filters
+                if (shouldShowResult(result)) {
+                    results.add(result);
+                    api.logging().logToOutput("Result passes filters, total filtered results: " + results.size());
+
+                    // Add to table with request number
+                    Object[] row = {
+                        results.size(), // Request number
+                        result.getAttackType(),
+                        truncatePayload(result.getPayload(), 100),
+                        result.getStatusCode(),
+                        result.getContentLength(),
+                        truncatePayload(result.getContentType(), 50)
+                    };
+                    tableModel.addRow(row);
+                    api.logging().logToOutput("Row added to table, total rows: " + tableModel.getRowCount());
+                } else {
+                    api.logging().logToOutput("Result filtered out");
+                }
+
+                // Update status
+                int totalSent = allResults.size();
+                int showing = tableModel.getRowCount();
+                if (engine.isRunning()) {
+                    statusLabel.setText("Fuzzing... (" + totalSent + " requests sent, showing " + showing + ")");
+                } else {
+                    statusLabel.setText("Completed: " + totalSent + " requests sent, showing " + showing);
+                    startButton.setEnabled(true);
+                    stopButton.setEnabled(false);
+                    setAttackCheckboxesEnabled(true);
+                }
+
+                // Update filter status
+                updateFilterStatus();
+            } catch (Exception e) {
+                api.logging().logToError("Error in addResult Swing thread: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private void showResultDetails(int modelRow) {
+        // modelRow is the index in the filtered results list
+        if (modelRow >= 0 && modelRow < results.size()) {
+            AttackResult result = results.get(modelRow);
+
+            // Display request and response in Burp's native editors
+            if (result.getRequest() != null) {
+                requestViewer.setRequest(result.getRequest());
+            }
+
+            if (result.getResponse() != null) {
+                responseViewer.setResponse(result.getResponse());
+            }
+        }
+    }
+
+    private String truncatePayload(String payload, int maxLength) {
+        if (payload == null) return "";
+        if (payload.length() <= maxLength) return payload;
+        return payload.substring(0, maxLength - 3) + "...";
+    }
+
+    private String extractPath(String url) {
+        try {
+            int schemeEnd = url.indexOf("://");
+            if (schemeEnd != -1) {
+                int pathStart = url.indexOf('/', schemeEnd + 3);
+                if (pathStart != -1) {
+                    return url.substring(pathStart);
+                }
+            }
+            return "/";
+        } catch (Exception e) {
+            return "/";
+        }
+    }
+
+    private String truncate(String str, int maxLength) {
+        if (str == null) return "";
+        if (str.length() <= maxLength) return str;
+        return str.substring(0, maxLength - 3) + "...";
+    }
+}

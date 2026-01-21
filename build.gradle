@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '9.0.0-beta4'
+}
+
+group = 'com.bypassfuzzer'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Burp Montoya API (provided by Burp at runtime)
+    compileOnly 'net.portswigger.burp.extensions:montoya-api:2023.12.1'
+
+    // SQLite JDBC driver (bundled in JAR)
+    implementation 'org.xerial:sqlite-jdbc:3.44.1.0'
+
+    // JSON processing
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
+    testImplementation 'org.mockito:mockito-core:5.8.0'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+// Create fat JAR with dependencies
+shadowJar {
+    archiveClassifier.set('')
+    archiveBaseName.set('bypassfuzzer-burp')
+    minimize {
+        // Don't minimize SQLite driver (needs native libraries)
+        exclude(dependency('org.xerial:sqlite-jdbc:.*'))
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Make shadowJar the default build artifact
+build.dependsOn shadowJar

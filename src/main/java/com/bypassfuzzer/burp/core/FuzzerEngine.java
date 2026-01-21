@@ -201,6 +201,11 @@ public class FuzzerEngine {
         List<AttackStrategy> strategies = new ArrayList<>();
 
         // Order matches Python implementation
+        try {
+            api.logging().logToOutput("FuzzerEngine: Building HeaderAttack with Collaborator = " + config.isEnableCollaboratorPayloads());
+        } catch (Exception e) {
+            // Ignore
+        }
         strategies.add(new HeaderAttack(targetUrl, config.getOobPayload(), config.isEnableCollaboratorPayloads()));
         strategies.add(new PathAttack(targetUrl));
         strategies.add(new VerbAttack());

@@ -31,12 +31,24 @@ public class HeaderAttack implements AttackStrategy {
         // Combine regular payloads with collaborator payloads if enabled
         List<String> allPayloads = new ArrayList<>(headerPayloads);
 
+        try {
+            api.logging().logToOutput("Header Attack: Collaborator enabled = " + enableCollaborator);
+        } catch (Exception e) {
+            // Ignore
+        }
+
         if (enableCollaborator) {
-            allPayloads.addAll(generateCollaboratorPayloads(api));
+            List<String> collabPayloads = generateCollaboratorPayloads(api);
+            try {
+                api.logging().logToOutput("Header Attack: Adding " + collabPayloads.size() + " Collaborator payloads to " + headerPayloads.size() + " regular payloads");
+            } catch (Exception e) {
+                // Ignore
+            }
+            allPayloads.addAll(collabPayloads);
         }
 
         try {
-            api.logging().logToOutput("Starting Header Attack: " + allPayloads.size() + " payloads" +
+            api.logging().logToOutput("Starting Header Attack: " + allPayloads.size() + " total payloads" +
                 (enableCollaborator ? " (including Collaborator)" : ""));
         } catch (Exception e) {
             return;

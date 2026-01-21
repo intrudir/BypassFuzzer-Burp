@@ -58,8 +58,9 @@ public class BypassFuzzerTab extends JPanel {
             "2. Select \"Send to BypassFuzzer\"\n" +
             "3. A new tab will open for that request\n" +
             "4. Select which attack types to run (or use Check All)\n" +
-            "5. Click \"Start Fuzzing\"\n" +
-            "6. Review results in real-time with dynamic filtering\n\n" +
+            "5. Configure options: Collaborator payloads, rate limiting, auto-throttle\n" +
+            "6. Click \"Start Fuzzing\"\n" +
+            "7. Review results in real-time with dynamic filtering\n\n" +
             "8 Attack Types Available:\n" +
             "• Header - 283+ bypass headers (X-Forwarded-For, X-Original-URL, etc.)\n" +
             "• Path - 367+ URL/path manipulations (../, .;/, %2e, etc.)\n" +
@@ -71,12 +72,16 @@ public class BypassFuzzerTab extends JPanel {
             "• Case Variation - Random capitalizations with smart limits\n\n" +
             "Features:\n" +
             "• Smart filtering to reduce noise and highlight interesting responses\n" +
+            "• Rate limiting with configurable requests/second (default: unlimited)\n" +
+            "• Auto-throttle: automatically slows down when 429/503 detected\n" +
+            "• Dynamic Burp Collaborator payload generation (Pro only)\n" +
             "• Color-code results for easy identification\n" +
             "• Send findings directly to Repeater or Intruder\n" +
-            "• Multiple concurrent fuzzing sessions (each in its own tab)\n" +
-            "• Optional Burp Collaborator payloads (Pro only)\n\n" +
+            "• Multiple concurrent fuzzing sessions (each in its own tab)\n\n" +
             "Tips:\n" +
-            "• Path and Trailing Slash attacks are automatically skipped on root paths (/)\n" +
+            "• Set requests/second to 5-10 to avoid overwhelming targets\n" +
+            "• Auto-throttle will reduce speed if rate limiting is detected\n" +
+            "• Path and Trailing Slash attacks are skipped on root paths (/)\n" +
             "• Use filters to show only specific status codes or content types\n" +
             "• Right-click results to colorize interesting findings"
         );

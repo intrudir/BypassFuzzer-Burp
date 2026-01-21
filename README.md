@@ -32,9 +32,6 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 ## Building
 
 ```bash
-# Navigate to the extension directory
-cd burp-extension
-
 # Build the extension JAR
 ./gradlew clean shadowJar
 

@@ -3,6 +3,7 @@ package com.bypassfuzzer.burp.core.attacks;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
+import com.bypassfuzzer.burp.core.RateLimiter;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -30,7 +31,7 @@ public class ParamAttack implements AttackStrategy {
 
     @Override
     public void execute(MontoyaApi api, HttpRequest originalRequest, String targetUrl,
-                       Consumer<AttackResult> resultCallback, BooleanSupplier isRunning) {
+                       Consumer<AttackResult> resultCallback, BooleanSupplier isRunning, RateLimiter rateLimiter) {
 
         List<String> paramPayloads = buildParamPayloads();
 
@@ -47,6 +48,10 @@ public class ParamAttack implements AttackStrategy {
                 String modifiedPath = appendParameter(basePath, param);
 
                 // Create new request with modified path
+                // Apply rate limiting
+                if (rateLimiter != null) {
+                    rateLimiter.waitBeforeRequest();
+                }
                 HttpRequest modifiedRequest = originalRequest.withPath(modifiedPath);
 
                 // Send request

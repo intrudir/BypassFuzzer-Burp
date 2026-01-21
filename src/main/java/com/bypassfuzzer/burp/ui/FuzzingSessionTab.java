@@ -79,6 +79,8 @@ public class FuzzingSessionTab extends JPanel {
     private JButton applyFilterButton;
     private JLabel filterStatusLabel;
     private JLabel warningLabel;
+    private JTextField requestsPerSecondField;
+    private JTextField throttleStatusCodesField;
 
     public FuzzingSessionTab(MontoyaApi api, HttpRequest request) {
         this.api = api;
@@ -193,10 +195,13 @@ public class FuzzingSessionTab extends JPanel {
         buttonRow.add(uncheckAllButton);
         attackPanel.add(buttonRow);
 
-        // Options panel
-        JPanel optionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        // Options panel with vertical layout
+        JPanel optionsPanel = new JPanel();
+        optionsPanel.setLayout(new BoxLayout(optionsPanel, BoxLayout.Y_AXIS));
         optionsPanel.setBorder(BorderFactory.createTitledBorder("Options"));
 
+        // Collaborator row
+        JPanel collabRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         collaboratorCheckbox = new JCheckBox("Include Collaborator payloads in headers?", config.isEnableCollaboratorPayloads());
 
         // Check if Collaborator is available
@@ -214,10 +219,29 @@ public class FuzzingSessionTab extends JPanel {
             collabInfoIcon.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         }
 
-        optionsPanel.add(collaboratorCheckbox);
+        collabRow.add(collaboratorCheckbox);
         if (collabInfoIcon != null) {
-            optionsPanel.add(collabInfoIcon);
+            collabRow.add(collabInfoIcon);
         }
+        optionsPanel.add(collabRow);
+
+        // Rate limiting row
+        JPanel rateRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        rateRow.add(new JLabel("Requests/second (0 = unlimited):"));
+        requestsPerSecondField = new JTextField(String.valueOf(config.getRequestsPerSecond()), 5);
+        rateRow.add(requestsPerSecondField);
+        optionsPanel.add(rateRow);
+
+        // Auto-throttle row
+        JPanel throttleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        throttleRow.add(new JLabel("Auto-throttle for status code(s):"));
+        throttleStatusCodesField = new JTextField(formatStatusCodes(config.getThrottleStatusCodes()), 10);
+        throttleRow.add(throttleStatusCodesField);
+        JLabel throttleHelp = new JLabel("(comma-separated, e.g., 429,503)");
+        throttleHelp.setFont(throttleHelp.getFont().deriveFont(Font.ITALIC, 11f));
+        throttleHelp.setForeground(Color.GRAY);
+        throttleRow.add(throttleHelp);
+        optionsPanel.add(throttleRow);
 
         // Status label
         statusLabel = new JLabel("Ready. Target: " + request.method() + " " + request.url());
@@ -635,6 +659,18 @@ public class FuzzingSessionTab extends JPanel {
         config.setEnableCaseAttack(caseAttackCheckbox.isSelected());
         config.setEnableCollaboratorPayloads(collaboratorCheckbox.isSelected());
 
+        // Read rate limiting settings
+        try {
+            int rps = Integer.parseInt(requestsPerSecondField.getText().trim());
+            config.setRequestsPerSecond(Math.max(0, rps));
+        } catch (NumberFormatException e) {
+            config.setRequestsPerSecond(0); // Default to unlimited
+        }
+
+        // Parse throttle status codes
+        config.setThrottleStatusCodes(parseStatusCodes(throttleStatusCodesField.getText()));
+        config.setEnableAutoThrottle(!config.getThrottleStatusCodes().isEmpty());
+
         // Check if at least one attack is selected
         if (config.getAttackTypes().isEmpty()) {
             warningLabel.setText("⚠ Please select at least one attack type before starting!");
@@ -1037,5 +1073,42 @@ public class FuzzingSessionTab extends JPanel {
         if (str == null) return "";
         if (str.length() <= maxLength) return str;
         return str.substring(0, maxLength - 3) + "...";
+    }
+
+    /**
+     * Format a set of status codes as comma-separated string.
+     */
+    private String formatStatusCodes(java.util.Set<Integer> codes) {
+        if (codes == null || codes.isEmpty()) {
+            return "429,503"; // Default
+        }
+        return codes.stream()
+            .map(String::valueOf)
+            .sorted()
+            .collect(java.util.stream.Collectors.joining(","));
+    }
+
+    /**
+     * Parse comma-separated status codes into a set.
+     */
+    private java.util.Set<Integer> parseStatusCodes(String input) {
+        java.util.Set<Integer> codes = new java.util.HashSet<>();
+        if (input == null || input.trim().isEmpty()) {
+            return codes;
+        }
+
+        String[] parts = input.split(",");
+        for (String part : parts) {
+            try {
+                int code = Integer.parseInt(part.trim());
+                if (code >= 100 && code < 600) { // Valid HTTP status code range
+                    codes.add(code);
+                }
+            } catch (NumberFormatException e) {
+                // Skip invalid entries
+            }
+        }
+
+        return codes;
     }
 }

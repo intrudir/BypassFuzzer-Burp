@@ -3,6 +3,7 @@ package com.bypassfuzzer.burp.core.attacks;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
+import com.bypassfuzzer.burp.core.RateLimiter;
 import com.bypassfuzzer.burp.core.payloads.HeaderPayloadProcessor;
 import com.bypassfuzzer.burp.core.payloads.PayloadLoader;
 
@@ -26,7 +27,7 @@ public class HeaderAttack implements AttackStrategy {
     }
 
     @Override
-    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue) {
+    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue, RateLimiter rateLimiter) {
         // Process header templates with dynamic Collaborator payload generation
         List<String> headerPayloads = processor.processHeaderTemplates(headerTemplates, ipPayloads, api);
 
@@ -55,6 +56,11 @@ public class HeaderAttack implements AttackStrategy {
                 } catch (Exception e) {
                     // Ignore
                 }
+            }
+
+            // Apply rate limiting
+            if (rateLimiter != null) {
+                rateLimiter.waitBeforeRequest();
             }
 
             try {

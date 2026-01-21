@@ -3,6 +3,7 @@ package com.bypassfuzzer.burp.core.attacks;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
+import com.bypassfuzzer.burp.core.RateLimiter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -22,7 +23,7 @@ public class VerbAttack implements AttackStrategy {
     );
 
     @Override
-    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue) {
+    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue, RateLimiter rateLimiter) {
         try {
             api.logging().logToOutput("Starting Verb Attack");
         } catch (Exception e) {
@@ -40,6 +41,10 @@ public class VerbAttack implements AttackStrategy {
             }
 
             try {
+                // Apply rate limiting
+                if (rateLimiter != null) {
+                    rateLimiter.waitBeforeRequest();
+                }
                 HttpRequest modifiedRequest = baseRequest.withMethod(method);
                 HttpResponse response = api.http().sendRequest(modifiedRequest).response();
                 resultCallback.accept(new AttackResult(getAttackType(), "Method: " + method, modifiedRequest, response));
@@ -63,6 +68,10 @@ public class VerbAttack implements AttackStrategy {
                 }
 
                 try {
+                    // Apply rate limiting
+                    if (rateLimiter != null) {
+                        rateLimiter.waitBeforeRequest();
+                    }
                     HttpRequest modifiedRequest = baseRequest.withAddedHeader(header, method);
                     HttpResponse response = api.http().sendRequest(modifiedRequest).response();
                     String payload = header + ": " + method;

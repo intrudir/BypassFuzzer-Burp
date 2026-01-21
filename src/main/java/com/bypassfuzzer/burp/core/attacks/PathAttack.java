@@ -3,6 +3,7 @@ package com.bypassfuzzer.burp.core.attacks;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
+import com.bypassfuzzer.burp.core.RateLimiter;
 import com.bypassfuzzer.burp.core.payloads.PayloadLoader;
 import com.bypassfuzzer.burp.core.payloads.UrlPayloadProcessor;
 
@@ -27,7 +28,7 @@ public class PathAttack implements AttackStrategy {
     }
 
     @Override
-    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue) {
+    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue, RateLimiter rateLimiter) {
         // Check if original request is just root path
         String originalPath = extractPath(targetUrl);
         try {
@@ -70,6 +71,11 @@ public class PathAttack implements AttackStrategy {
                     } catch (Exception e) {
                         // Ignore
                     }
+                }
+
+                // Apply rate limiting
+                if (rateLimiter != null) {
+                    rateLimiter.waitBeforeRequest();
                 }
 
                 HttpRequest modifiedRequest = baseRequest.withPath(extractPath(modifiedUrl));

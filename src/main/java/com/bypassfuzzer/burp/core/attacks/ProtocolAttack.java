@@ -4,6 +4,7 @@ import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.core.ByteArray;
+import com.bypassfuzzer.burp.core.RateLimiter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -16,7 +17,7 @@ public class ProtocolAttack implements AttackStrategy {
     private static final int REQUEST_TIMEOUT_SECONDS = 5;
 
     @Override
-    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue) {
+    public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue, RateLimiter rateLimiter) {
         try {
             api.logging().logToOutput("Starting Protocol Attack");
         } catch (Exception e) {
@@ -34,7 +35,7 @@ public class ProtocolAttack implements AttackStrategy {
             try {
                 api.logging().logToOutput("Testing protocol: " + version);
                 HttpRequest modifiedRequest = buildRequestWithVersion(api, baseRequest, version);
-                HttpResponse response = sendRequestWithTimeout(api, modifiedRequest, version, shouldContinue);
+                HttpResponse response = sendRequestWithTimeout(api, modifiedRequest, version, shouldContinue, rateLimiter);
 
                 if (response != null) {
                     String payload = "Protocol: " + version;
@@ -112,7 +113,7 @@ public class ProtocolAttack implements AttackStrategy {
         return baseRequest;
     }
 
-    private HttpResponse sendRequestWithTimeout(MontoyaApi api, HttpRequest request, String version, BooleanSupplier shouldContinue) {
+    private HttpResponse sendRequestWithTimeout(MontoyaApi api, HttpRequest request, String version, BooleanSupplier shouldContinue, RateLimiter rateLimiter) {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<HttpResponse> future = null;
 

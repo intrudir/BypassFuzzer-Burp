@@ -3,6 +3,7 @@ package com.bypassfuzzer.burp.core.attacks;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
+import com.bypassfuzzer.burp.core.RateLimiter;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ public class TrailingSlashAttack implements AttackStrategy {
 
     @Override
     public void execute(MontoyaApi api, HttpRequest originalRequest, String targetUrl,
-                       Consumer<AttackResult> resultCallback, BooleanSupplier isRunning) {
+                       Consumer<AttackResult> resultCallback, BooleanSupplier isRunning, RateLimiter rateLimiter) {
 
         // Check if original request is just root path
         String originalPath = extractPath(targetUrl);
@@ -73,6 +74,10 @@ public class TrailingSlashAttack implements AttackStrategy {
                 }
 
                 // Create new request with modified URL
+                // Apply rate limiting
+                if (rateLimiter != null) {
+                    rateLimiter.waitBeforeRequest();
+                }
                 HttpRequest modifiedRequest = originalRequest.withPath(urlVariation);
 
                 // Send request

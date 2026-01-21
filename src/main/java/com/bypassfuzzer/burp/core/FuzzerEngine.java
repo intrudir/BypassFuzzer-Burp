@@ -18,6 +18,7 @@ public class FuzzerEngine {
     private final FuzzerConfig config;
     private volatile boolean running = false;
     private Thread fuzzerThread;
+    private RateLimiter rateLimiter;
 
     public FuzzerEngine(MontoyaApi api, FuzzerConfig config) {
         this.api = api;
@@ -128,9 +129,27 @@ public class FuzzerEngine {
             }
         }
 
+        // Initialize rate limiter
+        rateLimiter = new RateLimiter(
+            api,
+            config.getRequestsPerSecond(),
+            config.getThrottleStatusCodes(),
+            config.isEnableAutoThrottle()
+        );
+
         safeLog("=== BypassFuzzer Started ===");
         safeLog("Target: " + targetUrl);
         safeLog("Attack types enabled: " + String.join(", ", config.getAttackTypes()));
+
+        if (config.getRequestsPerSecond() > 0) {
+            safeLog("Rate limit: " + config.getRequestsPerSecond() + " requests/second");
+        } else {
+            safeLog("Rate limit: unlimited");
+        }
+
+        if (config.isEnableAutoThrottle() && !config.getThrottleStatusCodes().isEmpty()) {
+            safeLog("Auto-throttle enabled for status codes: " + config.getThrottleStatusCodes());
+        }
 
         List<AttackStrategy> strategies = buildAttackStrategies(targetUrl);
         safeLog("Built " + strategies.size() + " attack strategies");
@@ -157,11 +176,15 @@ public class FuzzerEngine {
                     if (running) {
                         try {
                             resultCallback.accept(result);
+                            // Report response to rate limiter for auto-throttling
+                            if (rateLimiter != null) {
+                                rateLimiter.reportResponse(result.getStatusCode());
+                            }
                         } catch (Exception callbackEx) {
                             safeLogError("Error sending result to UI callback: " + callbackEx.getMessage());
                         }
                     }
-                }, () -> running);
+                }, () -> running, rateLimiter);
 
             } catch (Exception e) {
                 safeLogError("Error in " + strategy.getAttackType() + " attack: " + e.getMessage());

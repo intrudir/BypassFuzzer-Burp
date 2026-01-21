@@ -28,8 +28,10 @@ public class FuzzerConfig {
     // Database options
     private Set<Integer> saveStatusCodes = new HashSet<>();
 
-    // Threading
-    private int threadCount = 5;
+    // Rate limiting
+    private int requestsPerSecond = 0; // 0 = unlimited (default)
+    private Set<Integer> throttleStatusCodes = new HashSet<>();
+    private boolean enableAutoThrottle = true;
 
     // Custom payloads
     private String customHeaderPayloadPath = null;
@@ -55,6 +57,10 @@ public class FuzzerConfig {
         hiddenStatusCodes.add(401);
         hiddenStatusCodes.add(403);
         hiddenStatusCodes.add(404);
+
+        // Default: auto-throttle on rate limit and service unavailable
+        throttleStatusCodes.add(429);
+        throttleStatusCodes.add(503);
     }
 
     // Getters and setters
@@ -163,12 +169,28 @@ public class FuzzerConfig {
         this.saveStatusCodes = saveStatusCodes;
     }
 
-    public int getThreadCount() {
-        return threadCount;
+    public int getRequestsPerSecond() {
+        return requestsPerSecond;
     }
 
-    public void setThreadCount(int threadCount) {
-        this.threadCount = threadCount;
+    public void setRequestsPerSecond(int requestsPerSecond) {
+        this.requestsPerSecond = requestsPerSecond;
+    }
+
+    public Set<Integer> getThrottleStatusCodes() {
+        return throttleStatusCodes;
+    }
+
+    public void setThrottleStatusCodes(Set<Integer> throttleStatusCodes) {
+        this.throttleStatusCodes = throttleStatusCodes;
+    }
+
+    public boolean isEnableAutoThrottle() {
+        return enableAutoThrottle;
+    }
+
+    public void setEnableAutoThrottle(boolean enableAutoThrottle) {
+        this.enableAutoThrottle = enableAutoThrottle;
     }
 
     public String getCustomHeaderPayloadPath() {

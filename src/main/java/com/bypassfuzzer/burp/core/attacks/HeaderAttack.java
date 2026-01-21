@@ -7,8 +7,11 @@ import com.bypassfuzzer.burp.core.payloads.HeaderPayloadProcessor;
 import com.bypassfuzzer.burp.core.payloads.PayloadLoader;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -28,41 +31,41 @@ public class HeaderAttack implements AttackStrategy {
 
     @Override
     public void execute(MontoyaApi api, HttpRequest baseRequest, String targetUrl, Consumer<AttackResult> resultCallback, BooleanSupplier shouldContinue) {
-        // Combine regular payloads with collaborator payloads if enabled
-        List<String> allPayloads = new ArrayList<>(headerPayloads);
-
         try {
             api.logging().logToOutput("Header Attack: Collaborator enabled = " + enableCollaborator);
         } catch (Exception e) {
             // Ignore
         }
 
-        if (enableCollaborator) {
-            List<String> collabPayloads = generateCollaboratorPayloads(api);
-            try {
-                api.logging().logToOutput("Header Attack: Adding " + collabPayloads.size() + " Collaborator payloads to " + headerPayloads.size() + " regular payloads");
-            } catch (Exception e) {
-                // Ignore
-            }
-            allPayloads.addAll(collabPayloads);
-        }
+        // Build interleaved payload list: group by header name, add Collaborator payload after each group
+        List<String> allPayloads = buildInterleavedPayloads(api);
 
         try {
             api.logging().logToOutput("Starting Header Attack: " + allPayloads.size() + " total payloads" +
-                (enableCollaborator ? " (including Collaborator)" : ""));
+                (enableCollaborator ? " (interleaved with Collaborator)" : ""));
         } catch (Exception e) {
             return;
         }
 
         int count = 0;
+
         for (String payload : allPayloads) {
             if (!shouldContinue.getAsBoolean()) {
                 try {
-                    api.logging().logToOutput("Header Attack stopped by user (" + count + " of " + headerPayloads.size() + " completed)");
+                    api.logging().logToOutput("Header Attack stopped by user (" + count + " of " + allPayloads.size() + " completed)");
                 } catch (Exception e) {
                     // Ignore
                 }
                 break;
+            }
+
+            // Log progress every 100 requests
+            if (count % 100 == 0 && count > 0) {
+                try {
+                    api.logging().logToOutput("Header Attack progress: " + count + " of " + allPayloads.size() + " requests sent");
+                } catch (Exception e) {
+                    // Ignore
+                }
             }
 
             try {
@@ -101,11 +104,56 @@ public class HeaderAttack implements AttackStrategy {
     }
 
     /**
-     * Generate Collaborator payloads for each unique header name.
-     * Extracts unique header names from existing payloads and creates one Collaborator payload per header.
+     * Build payload list with Collaborator payloads interleaved after each header group.
+     * Groups regular payloads by header name, then adds Collaborator payload after each group.
      */
-    private List<String> generateCollaboratorPayloads(MontoyaApi api) {
-        List<String> collaboratorPayloads = new ArrayList<>();
+    private List<String> buildInterleavedPayloads(MontoyaApi api) {
+        List<String> interleavedPayloads = new ArrayList<>();
+
+        // Group payloads by header name (preserve insertion order)
+        Map<String, List<String>> payloadsByHeader = new LinkedHashMap<>();
+        for (String payload : headerPayloads) {
+            String[] parts = payload.split(":", 2);
+            if (parts.length == 2) {
+                String headerName = parts[0].trim();
+                payloadsByHeader.computeIfAbsent(headerName, k -> new ArrayList<>()).add(payload);
+            }
+        }
+
+        // Generate Collaborator payloads if enabled
+        Map<String, String> collaboratorPayloads = new HashMap<>();
+        if (enableCollaborator) {
+            collaboratorPayloads = generateCollaboratorPayloads(api);
+            try {
+                api.logging().logToOutput("Header Attack: Generated " + collaboratorPayloads.size() + " Collaborator payloads for interleaving");
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+
+        // Interleave: add all regular payloads for a header, then add Collaborator payload for that header
+        for (Map.Entry<String, List<String>> entry : payloadsByHeader.entrySet()) {
+            String headerName = entry.getKey();
+            List<String> regularPayloads = entry.getValue();
+
+            // Add all regular payloads for this header
+            interleavedPayloads.addAll(regularPayloads);
+
+            // Add Collaborator payload for this header (if available)
+            if (enableCollaborator && collaboratorPayloads.containsKey(headerName)) {
+                interleavedPayloads.add(collaboratorPayloads.get(headerName));
+            }
+        }
+
+        return interleavedPayloads;
+    }
+
+    /**
+     * Generate Collaborator payloads for each unique header name.
+     * Returns a map of header name -> Collaborator payload.
+     */
+    private Map<String, String> generateCollaboratorPayloads(MontoyaApi api) {
+        Map<String, String> collaboratorPayloads = new HashMap<>();
 
         try {
             // Check if Collaborator is available
@@ -137,7 +185,8 @@ public class HeaderAttack implements AttackStrategy {
             for (String headerName : headerNames) {
                 try {
                     String collaboratorPayload = api.collaborator().defaultPayloadGenerator().generatePayload().toString();
-                    collaboratorPayloads.add(headerName + ": " + collaboratorPayload);
+                    // Store as "HeaderName: payload" value in the map
+                    collaboratorPayloads.put(headerName, headerName + ": " + collaboratorPayload);
                 } catch (Exception e) {
                     // Skip this header if payload generation fails
                 }

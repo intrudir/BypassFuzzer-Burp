@@ -137,6 +137,16 @@ public class FuzzingSessionTab extends JPanel {
         protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
         caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
 
+        // Add listeners to clear warning when checkboxes are changed
+        headerAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        pathAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        verbAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        paramAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        trailingDotAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        trailingSlashAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        protocolAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        caseAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+
         // Row 1: First 4 checkboxes
         JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         row1.add(headerAttackCheckbox);
@@ -627,10 +637,8 @@ public class FuzzingSessionTab extends JPanel {
 
         // Check if at least one attack is selected
         if (config.getAttackTypes().isEmpty()) {
-            JOptionPane.showMessageDialog(this,
-                "Please select at least one attack type!",
-                "No Attacks Selected",
-                JOptionPane.WARNING_MESSAGE);
+            warningLabel.setText("⚠ Please select at least one attack type before starting!");
+            warningLabel.setVisible(true);
             return;
         }
 
@@ -659,6 +667,9 @@ public class FuzzingSessionTab extends JPanel {
 
         // Disable checkboxes during fuzzing
         setAttackCheckboxesEnabled(false);
+
+        // Clear any previous warnings and check for new ones
+        warningLabel.setVisible(false);
 
         // Check if we're fuzzing root path and show warning
         String targetPath = extractPath(request.url());

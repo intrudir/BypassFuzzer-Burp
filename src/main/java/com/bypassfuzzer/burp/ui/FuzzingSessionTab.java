@@ -122,8 +122,9 @@ public class FuzzingSessionTab extends JPanel {
         controlPanel.add(stopButton);
         controlPanel.add(clearButton);
 
-        // Attack type selection panel
-        JPanel attackPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        // Attack type selection panel with wrapping layout
+        JPanel attackPanel = new JPanel();
+        attackPanel.setLayout(new BoxLayout(attackPanel, BoxLayout.Y_AXIS));
         attackPanel.setBorder(BorderFactory.createTitledBorder("Attack Types"));
 
         headerAttackCheckbox = new JCheckBox("Header", config.isEnableHeaderAttack());
@@ -135,14 +136,21 @@ public class FuzzingSessionTab extends JPanel {
         protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
         caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
 
-        attackPanel.add(headerAttackCheckbox);
-        attackPanel.add(pathAttackCheckbox);
-        attackPanel.add(verbAttackCheckbox);
-        attackPanel.add(paramAttackCheckbox);
-        attackPanel.add(trailingDotAttackCheckbox);
-        attackPanel.add(trailingSlashAttackCheckbox);
-        attackPanel.add(protocolAttackCheckbox);
-        attackPanel.add(caseAttackCheckbox);
+        // Row 1: First 4 checkboxes
+        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        row1.add(headerAttackCheckbox);
+        row1.add(pathAttackCheckbox);
+        row1.add(verbAttackCheckbox);
+        row1.add(paramAttackCheckbox);
+        attackPanel.add(row1);
+
+        // Row 2: Next 4 checkboxes
+        JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        row2.add(trailingDotAttackCheckbox);
+        row2.add(trailingSlashAttackCheckbox);
+        row2.add(protocolAttackCheckbox);
+        row2.add(caseAttackCheckbox);
+        attackPanel.add(row2);
 
         // Add Check All / Uncheck All buttons
         JButton checkAllButton = new JButton("Check All");
@@ -169,8 +177,10 @@ public class FuzzingSessionTab extends JPanel {
             caseAttackCheckbox.setSelected(false);
         });
 
-        attackPanel.add(checkAllButton);
-        attackPanel.add(uncheckAllButton);
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        buttonRow.add(checkAllButton);
+        buttonRow.add(uncheckAllButton);
+        attackPanel.add(buttonRow);
 
         // Options panel
         JPanel optionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -201,14 +211,23 @@ public class FuzzingSessionTab extends JPanel {
         // Status label
         statusLabel = new JLabel("Ready. Target: " + request.method() + " " + request.url());
 
-        // Combine top panels
-        JPanel topLeft = new JPanel(new BorderLayout());
-        topLeft.add(controlPanel, BorderLayout.NORTH);
-        topLeft.add(statusLabel, BorderLayout.CENTER);
+        // Combine top panels using BoxLayout for better wrapping
+        JPanel topContent = new JPanel();
+        topContent.setLayout(new BoxLayout(topContent, BoxLayout.Y_AXIS));
 
-        topPanel.add(topLeft, BorderLayout.WEST);
-        topPanel.add(attackPanel, BorderLayout.CENTER);
-        topPanel.add(optionsPanel, BorderLayout.EAST);
+        // Row 1: Control buttons and status
+        JPanel topRow = new JPanel(new BorderLayout());
+        topRow.add(controlPanel, BorderLayout.WEST);
+        topRow.add(statusLabel, BorderLayout.CENTER);
+        topContent.add(topRow);
+
+        // Row 2: Attack selection and options
+        JPanel middleRow = new JPanel(new BorderLayout());
+        middleRow.add(attackPanel, BorderLayout.CENTER);
+        middleRow.add(optionsPanel, BorderLayout.EAST);
+        topContent.add(middleRow);
+
+        topPanel.add(topContent, BorderLayout.CENTER);
 
         // Add filter panel to top
         JPanel filterPanel = createFilterPanel();

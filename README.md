@@ -10,7 +10,7 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
   - HTTP verb/method attacks (11 methods + overrides)
   - Debug parameter injection (31 common debug params with case variations)
   - Trailing dot attack (absolute domain notation)
-  - Trailing slash attack (tests with/without trailing slash)
+  - Trailing slash attack (tests with/without trailing slash and /. pattern)
   - HTTP protocol attacks (e.g. HTTP/1.0, HTTP/0.9)
   - Case variation attack (random capitalizations with smart limits)
 

@@ -13,7 +13,10 @@ import java.util.function.Consumer;
 
 /**
  * Trailing slash attack.
- * Tests URL with and without a trailing slash to bypass access controls.
+ * Tests URL with variations:
+ * - With trailing slash (/)
+ * - Without trailing slash
+ * - With trailing slash and dot (/.)
  */
 public class TrailingSlashAttack implements AttackStrategy {
 
@@ -111,7 +114,13 @@ public class TrailingSlashAttack implements AttackStrategy {
     }
 
     /**
-     * Build list of URL variations with/without trailing slash.
+     * Build list of URL variations with/without trailing slash and /. pattern.
+     * For a path like /admin:
+     *   - /admin/ (add slash)
+     *   - /admin/. (add slash + dot)
+     * For a path like /admin/:
+     *   - /admin (remove slash)
+     *   - /admin/. (add dot after slash)
      */
     private List<String> buildUrlVariations(String url) {
         List<String> variations = new ArrayList<>();
@@ -124,41 +133,45 @@ public class TrailingSlashAttack implements AttackStrategy {
             // Build query string part
             String queryPart = (query != null && !query.isEmpty()) ? "?" + query : "";
 
-            // If path ends with slash, also try without
-            if (path != null && path.endsWith("/")) {
-                String pathWithoutSlash = path.substring(0, path.length() - 1);
-                if (!pathWithoutSlash.isEmpty()) {
-                    variations.add(pathWithoutSlash + queryPart);
+            if (path != null && !path.isEmpty()) {
+                // If path ends with slash
+                if (path.endsWith("/")) {
+                    // Remove trailing slash
+                    String pathWithoutSlash = path.substring(0, path.length() - 1);
+                    if (!pathWithoutSlash.isEmpty()) {
+                        variations.add(pathWithoutSlash + queryPart);
+                    }
+                    // Add /. after the slash
+                    variations.add(path + "." + queryPart);
+                }
+                // If path doesn't end with slash
+                else {
+                    // Add trailing slash
+                    variations.add(path + "/" + queryPart);
+                    // Add /. after the path
+                    variations.add(path + "/." + queryPart);
                 }
             }
-            // If path doesn't end with slash, try with slash
-            else if (path != null && !path.isEmpty()) {
-                variations.add(path + "/" + queryPart);
-            }
-
-            // Always add the variation opposite to original
-            // This handles edge cases and ensures we test both
 
         } catch (Exception e) {
             // If parsing fails, try simple string manipulation
-            if (url.endsWith("/")) {
+            int queryIndex = url.indexOf('?');
+            String baseUrl = queryIndex != -1 ? url.substring(0, queryIndex) : url;
+            String queryString = queryIndex != -1 ? url.substring(queryIndex) : "";
+
+            if (baseUrl.endsWith("/")) {
                 // Remove trailing slash
-                String withoutSlash = url.substring(0, url.length() - 1);
+                String withoutSlash = baseUrl.substring(0, baseUrl.length() - 1);
                 if (!withoutSlash.isEmpty()) {
-                    variations.add(withoutSlash);
+                    variations.add(withoutSlash + queryString);
                 }
+                // Add /. after the slash
+                variations.add(baseUrl + "." + queryString);
             } else {
                 // Add trailing slash
-                // But check if there's a query string first
-                int queryIndex = url.indexOf('?');
-                if (queryIndex != -1) {
-                    // Insert slash before query string
-                    String beforeQuery = url.substring(0, queryIndex);
-                    String afterQuery = url.substring(queryIndex);
-                    variations.add(beforeQuery + "/" + afterQuery);
-                } else {
-                    variations.add(url + "/");
-                }
+                variations.add(baseUrl + "/" + queryString);
+                // Add /. after the path
+                variations.add(baseUrl + "/." + queryString);
             }
         }
 

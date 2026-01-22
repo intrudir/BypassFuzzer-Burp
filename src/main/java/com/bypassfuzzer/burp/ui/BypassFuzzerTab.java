@@ -67,7 +67,7 @@ public class BypassFuzzerTab extends JPanel {
             "• Verb - 11 HTTP methods + method override techniques\n" +
             "• Debug Params - 31+ debug parameters with case variations\n" +
             "• Trailing Dot - Absolute domain bypass (example.com.)\n" +
-            "• Trailing Slash - Tests with/without trailing slash\n" +
+            "• Trailing Slash - Tests with/without trailing slash and /. pattern\n" +
             "• Protocol - HTTP/1.0 and HTTP/0.9 downgrades\n" +
             "• Case Variation - Random capitalizations with smart limits\n\n" +
             "Features:\n" +

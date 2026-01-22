@@ -938,32 +938,46 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private void applyFilters() {
-        // Clear table
-        tableModel.setRowCount(0);
+        // Clear results list but preserve colors
         results.clear();
         // Don't clear resultColors - we want to preserve them when filters change
 
-        int hiddenCount = 0;
+        // Build all row data first to avoid firing events for each row
+        java.util.Vector<java.util.Vector<Object>> rowData = new java.util.Vector<>();
         int requestNum = 1;
 
-        // Re-add filtered results
         for (AttackResult result : allResults) {
             if (shouldShowResult(result)) {
                 results.add(result);
 
-                Object[] row = {
-                    requestNum++,
-                    result.getAttackType(),
-                    truncatePayload(result.getPayload(), 100),
-                    result.getStatusCode(),
-                    result.getContentLength(),
-                    truncatePayload(result.getContentType(), 50)
-                };
-                tableModel.addRow(row);
-            } else {
-                hiddenCount++;
+                java.util.Vector<Object> row = new java.util.Vector<>();
+                row.add(requestNum++);
+                row.add(result.getAttackType());
+                row.add(truncatePayload(result.getPayload(), 100));
+                row.add(result.getStatusCode());
+                row.add(result.getContentLength());
+                row.add(truncatePayload(result.getContentType(), 50));
+                rowData.add(row);
             }
         }
+
+        // Set all data at once - fires only ONE table event instead of N events
+        java.util.Vector<String> columnNames = new java.util.Vector<>();
+        columnNames.add("#");
+        columnNames.add("Attack Type");
+        columnNames.add("Payload");
+        columnNames.add("Status");
+        columnNames.add("Length");
+        columnNames.add("Content-Type");
+        tableModel.setDataVector(rowData, columnNames);
+
+        // Restore column widths after setDataVector resets them
+        resultsTable.getColumnModel().getColumn(0).setPreferredWidth(50);   // #
+        resultsTable.getColumnModel().getColumn(1).setPreferredWidth(120);  // Attack Type
+        resultsTable.getColumnModel().getColumn(2).setPreferredWidth(300);  // Payload
+        resultsTable.getColumnModel().getColumn(3).setPreferredWidth(60);   // Status
+        resultsTable.getColumnModel().getColumn(4).setPreferredWidth(80);   // Length
+        resultsTable.getColumnModel().getColumn(5).setPreferredWidth(150);  // Content-Type
 
         updateFilterStatus();
         resultsTable.repaint(); // Repaint to show any preserved colors

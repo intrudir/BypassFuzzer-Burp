@@ -16,6 +16,7 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -942,6 +943,12 @@ public class FuzzingSessionTab extends JPanel {
         results.clear();
         // Don't clear resultColors - we want to preserve them when filters change
 
+        // Save current sort state before rebuilding
+        List<? extends javax.swing.RowSorter.SortKey> savedSortKeys = null;
+        if (resultsTable.getRowSorter() != null) {
+            savedSortKeys = resultsTable.getRowSorter().getSortKeys();
+        }
+
         // Build all row data first to avoid firing events for each row
         java.util.Vector<java.util.Vector<Object>> rowData = new java.util.Vector<>();
         int requestNum = 1;
@@ -970,6 +977,21 @@ public class FuzzingSessionTab extends JPanel {
         columnNames.add("Length");
         columnNames.add("Content-Type");
         tableModel.setDataVector(rowData, columnNames);
+
+        // Recreate row sorter with proper numeric comparators (setDataVector resets it)
+        javax.swing.table.TableRowSorter<DefaultTableModel> sorter = new javax.swing.table.TableRowSorter<>(tableModel);
+        // Column 0: # (Integer)
+        sorter.setComparator(0, Comparator.comparingInt(o -> (Integer) o));
+        // Column 3: Status (Integer stored as Integer)
+        sorter.setComparator(3, Comparator.comparingInt(o -> (Integer) o));
+        // Column 4: Length (Integer stored as Integer)
+        sorter.setComparator(4, Comparator.comparingInt(o -> (Integer) o));
+        resultsTable.setRowSorter(sorter);
+
+        // Restore previous sort state if any
+        if (savedSortKeys != null && !savedSortKeys.isEmpty()) {
+            sorter.setSortKeys(savedSortKeys);
+        }
 
         // Restore column widths after setDataVector resets them
         resultsTable.getColumnModel().getColumn(0).setPreferredWidth(50);   // #

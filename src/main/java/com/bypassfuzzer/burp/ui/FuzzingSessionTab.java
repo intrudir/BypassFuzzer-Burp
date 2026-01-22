@@ -411,7 +411,7 @@ public class FuzzingSessionTab extends JPanel {
 
         // Set initial divider location for filters
         SwingUtilities.invokeLater(() -> {
-            horizontalSplit.setDividerLocation(450); // Width for filter panel
+            horizontalSplit.setDividerLocation(500); // Width for filter panel
         });
 
         // Request/Response viewers (full width)

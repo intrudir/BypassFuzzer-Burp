@@ -18,11 +18,12 @@ public class EncodingAttack implements AttackStrategy {
 
     // Encoding types
     private static final String[] ENCODING_TYPES = {
-        "url",           // %61 for 'a'
-        "double-url",    // %2561 for 'a'
-        "triple-url",    // %25252561 for 'a'
-        "unicode",       // %u0061 for 'a'
-        "unicode-long"   // \u0061 for 'a'
+        "url",              // %61 for 'a'
+        "double-url",       // %2561 for 'a'
+        "triple-url",       // %25252561 for 'a'
+        "unicode",          // %u0061 for 'a'
+        "unicode-long",     // \u0061 for 'a'
+        "unicode-overflow"  // %u4e61 for 'a' (0x4e61 % 256 = 0x61)
     };
 
     // Smart limits to prevent combinatorial explosion
@@ -268,6 +269,13 @@ public class EncodingAttack implements AttackStrategy {
                 return String.format("%%u%04x", (int) c);
             case "unicode-long":
                 return String.format("\\u%04x", (int) c);
+            case "unicode-overflow":
+                // Unicode overflow: generates codepoint that truncates to target char via modulus 256
+                // Formula: target_char + (0x4e * 0x100) = overflow codepoint
+                // Example: 'a' (0x61) -> 0x4e61, which overflows to 0x61 when stored as single byte
+                // Range 0x4e00-0x4eff provides good bypass potential for blocklist filters
+                int overflowCodepoint = (int) c + (0x4e * 0x100);
+                return String.format("%%u%04x", overflowCodepoint);
             default:
                 return String.valueOf(c);
         }

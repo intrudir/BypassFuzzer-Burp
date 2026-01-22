@@ -70,7 +70,7 @@ public class BypassFuzzerTab extends JPanel {
             "• Trailing Slash - Tests with/without trailing slash and /. pattern\n" +
             "• Extension - 75+ file extensions (.json, .html, .php, .bak, etc.)\n" +
             "• Content-Type - Converts between URL-encoded, JSON, XML, multipart\n" +
-            "• Encoding - URL/double-URL/triple-URL/unicode on paths & params\n" +
+            "• Encoding - URL/unicode/unicode-overflow on paths & params\n" +
             "• Protocol - HTTP/1.0 and HTTP/0.9 downgrades\n" +
             "• Case Variation - Random capitalizations with smart limits\n\n" +
             "Features:\n" +

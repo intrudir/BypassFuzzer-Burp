@@ -61,13 +61,14 @@ public class BypassFuzzerTab extends JPanel {
             "5. Configure options: Collaborator payloads, rate limiting, auto-throttle\n" +
             "6. Click \"Start Fuzzing\"\n" +
             "7. Review results in real-time with dynamic filtering\n\n" +
-            "8 Attack Types Available:\n" +
+            "9 Attack Types Available:\n" +
             "• Header - 283+ bypass headers (X-Forwarded-For, X-Original-URL, etc.)\n" +
             "• Path - 367+ URL/path manipulations (../, .;/, %2e, etc.)\n" +
             "• Verb - 11 HTTP methods + method override techniques\n" +
             "• Debug Params - 31+ debug parameters with case variations\n" +
             "• Trailing Dot - Absolute domain bypass (example.com.)\n" +
             "• Trailing Slash - Tests with/without trailing slash and /. pattern\n" +
+            "• Extension - 75+ file extensions (.json, .html, .php, .bak, etc.)\n" +
             "• Protocol - HTTP/1.0 and HTTP/0.9 downgrades\n" +
             "• Case Variation - Random capitalizations with smart limits\n\n" +
             "Features:\n" +
@@ -81,7 +82,7 @@ public class BypassFuzzerTab extends JPanel {
             "Tips:\n" +
             "• Set requests/second to 5-10 to avoid overwhelming targets\n" +
             "• Auto-throttle will reduce speed if rate limiting is detected\n" +
-            "• Path and Trailing Slash attacks are skipped on root paths (/)\n" +
+            "• Path, Trailing Slash, and Extension attacks skip root paths (/)\n" +
             "• Use filters to show only specific status codes or content types\n" +
             "• Right-click results to colorize interesting findings"
         );

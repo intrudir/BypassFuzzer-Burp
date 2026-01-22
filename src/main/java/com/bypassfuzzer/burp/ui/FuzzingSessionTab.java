@@ -48,6 +48,7 @@ public class FuzzingSessionTab extends JPanel {
     private JCheckBox paramAttackCheckbox;
     private JCheckBox trailingDotAttackCheckbox;
     private JCheckBox trailingSlashAttackCheckbox;
+    private JCheckBox extensionAttackCheckbox;
     private JCheckBox protocolAttackCheckbox;
     private JCheckBox caseAttackCheckbox;
     private JCheckBox collaboratorCheckbox;
@@ -136,6 +137,7 @@ public class FuzzingSessionTab extends JPanel {
         paramAttackCheckbox = new JCheckBox("Debug Params", config.isEnableParamAttack());
         trailingDotAttackCheckbox = new JCheckBox("Trailing Dot", config.isEnableTrailingDotAttack());
         trailingSlashAttackCheckbox = new JCheckBox("Trailing Slash", config.isEnableTrailingSlashAttack());
+        extensionAttackCheckbox = new JCheckBox("Extension", config.isEnableExtensionAttack());
         protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
         caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
 
@@ -146,6 +148,7 @@ public class FuzzingSessionTab extends JPanel {
         paramAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         trailingDotAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         trailingSlashAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        extensionAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         protocolAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         caseAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
 
@@ -157,10 +160,11 @@ public class FuzzingSessionTab extends JPanel {
         row1.add(paramAttackCheckbox);
         attackPanel.add(row1);
 
-        // Row 2: Next 4 checkboxes
+        // Row 2: Next 5 checkboxes
         JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         row2.add(trailingDotAttackCheckbox);
         row2.add(trailingSlashAttackCheckbox);
+        row2.add(extensionAttackCheckbox);
         row2.add(protocolAttackCheckbox);
         row2.add(caseAttackCheckbox);
         attackPanel.add(row2);
@@ -174,6 +178,7 @@ public class FuzzingSessionTab extends JPanel {
             paramAttackCheckbox.setSelected(true);
             trailingDotAttackCheckbox.setSelected(true);
             trailingSlashAttackCheckbox.setSelected(true);
+            extensionAttackCheckbox.setSelected(true);
             protocolAttackCheckbox.setSelected(true);
             caseAttackCheckbox.setSelected(true);
         });
@@ -186,6 +191,7 @@ public class FuzzingSessionTab extends JPanel {
             paramAttackCheckbox.setSelected(false);
             trailingDotAttackCheckbox.setSelected(false);
             trailingSlashAttackCheckbox.setSelected(false);
+            extensionAttackCheckbox.setSelected(false);
             protocolAttackCheckbox.setSelected(false);
             caseAttackCheckbox.setSelected(false);
         });
@@ -678,6 +684,7 @@ public class FuzzingSessionTab extends JPanel {
         config.setEnableParamAttack(paramAttackCheckbox.isSelected());
         config.setEnableTrailingDotAttack(trailingDotAttackCheckbox.isSelected());
         config.setEnableTrailingSlashAttack(trailingSlashAttackCheckbox.isSelected());
+        config.setEnableExtensionAttack(extensionAttackCheckbox.isSelected());
         config.setEnableProtocolAttack(protocolAttackCheckbox.isSelected());
         config.setEnableCaseAttack(caseAttackCheckbox.isSelected());
         config.setEnableCollaboratorPayloads(collaboratorCheckbox.isSelected());

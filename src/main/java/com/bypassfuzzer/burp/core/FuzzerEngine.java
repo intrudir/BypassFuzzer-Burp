@@ -224,14 +224,33 @@ public class FuzzerEngine {
         List<AttackStrategy> strategies = new ArrayList<>();
 
         // Order matches Python implementation
-        strategies.add(new HeaderAttack(targetUrl, config.getOobPayload(), config.isEnableCollaboratorPayloads()));
-        strategies.add(new PathAttack(targetUrl));
-        strategies.add(new VerbAttack());
-        strategies.add(new ParamAttack());
-        strategies.add(new TrailingDotAttack());
-        strategies.add(new TrailingSlashAttack());
-        strategies.add(new ProtocolAttack());
-        strategies.add(new CaseAttack());
+        if (config.isEnableHeaderAttack()) {
+            strategies.add(new HeaderAttack(targetUrl, config.getOobPayload(), config.isEnableCollaboratorPayloads()));
+        }
+        if (config.isEnablePathAttack()) {
+            strategies.add(new PathAttack(targetUrl));
+        }
+        if (config.isEnableVerbAttack()) {
+            strategies.add(new VerbAttack());
+        }
+        if (config.isEnableParamAttack()) {
+            strategies.add(new ParamAttack());
+        }
+        if (config.isEnableTrailingDotAttack()) {
+            strategies.add(new TrailingDotAttack());
+        }
+        if (config.isEnableTrailingSlashAttack()) {
+            strategies.add(new TrailingSlashAttack());
+        }
+        if (config.isEnableExtensionAttack()) {
+            strategies.add(new ExtensionAttack(targetUrl));
+        }
+        if (config.isEnableProtocolAttack()) {
+            strategies.add(new ProtocolAttack());
+        }
+        if (config.isEnableCaseAttack()) {
+            strategies.add(new CaseAttack());
+        }
 
         return strategies;
     }

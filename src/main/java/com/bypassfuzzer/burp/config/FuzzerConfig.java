@@ -18,6 +18,7 @@ public class FuzzerConfig {
     private boolean enableProtocolAttack = true;
     private boolean enableCaseAttack = true;
     private boolean enableTrailingSlashAttack = true;
+    private boolean enableExtensionAttack = true;
 
     // Filtering options
     private boolean enableSmartFilter = true;
@@ -127,6 +128,14 @@ public class FuzzerConfig {
 
     public void setEnableTrailingSlashAttack(boolean enableTrailingSlashAttack) {
         this.enableTrailingSlashAttack = enableTrailingSlashAttack;
+    }
+
+    public boolean isEnableExtensionAttack() {
+        return enableExtensionAttack;
+    }
+
+    public void setEnableExtensionAttack(boolean enableExtensionAttack) {
+        this.enableExtensionAttack = enableExtensionAttack;
     }
 
     public boolean isEnableSmartFilter() {
@@ -246,6 +255,7 @@ public class FuzzerConfig {
         if (enableProtocolAttack) types.add("protocol");
         if (enableCaseAttack) types.add("case");
         if (enableTrailingSlashAttack) types.add("trailingslash");
+        if (enableExtensionAttack) types.add("extension");
         return types;
     }
 }

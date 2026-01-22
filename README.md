@@ -4,13 +4,14 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 
 ## Features
 
-- **8 Attack Types:**
+- **9 Attack Types:**
   - Header-based attacks (283+ bypass headers)
   - Path manipulation (367+ URL encodings)
   - HTTP verb/method attacks (11 methods + overrides)
   - Debug parameter injection (31 common debug params with case variations)
   - Trailing dot attack (absolute domain notation)
   - Trailing slash attack (tests with/without trailing slash and /. pattern)
+  - Extension attack (75+ file extensions like .json, .html, .php)
   - HTTP protocol attacks (e.g. HTTP/1.0, HTTP/0.9)
   - Case variation attack (random capitalizations with smart limits)
 

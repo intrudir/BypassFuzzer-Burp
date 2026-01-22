@@ -1041,8 +1041,15 @@ public class FuzzingSessionTab extends JPanel {
         paramAttackCheckbox.setEnabled(enabled);
         trailingDotAttackCheckbox.setEnabled(enabled);
         trailingSlashAttackCheckbox.setEnabled(enabled);
+        extensionAttackCheckbox.setEnabled(enabled);
+        contentTypeAttackCheckbox.setEnabled(enabled);
+        encodingAttackCheckbox.setEnabled(enabled);
         protocolAttackCheckbox.setEnabled(enabled);
         caseAttackCheckbox.setEnabled(enabled);
+
+        // Disable rate limiting configuration during fuzzing
+        requestsPerSecondField.setEnabled(enabled);
+        throttleStatusCodesField.setEnabled(enabled);
 
         // Only enable collaborator checkbox if Collaborator is available
         if (enabled && isCollaboratorAvailable()) {

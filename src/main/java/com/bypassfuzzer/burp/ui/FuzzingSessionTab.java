@@ -78,6 +78,7 @@ public class FuzzingSessionTab extends JPanel {
     private JTextField minLengthField;
     private JTextField maxLengthField;
     private JTextField contentTypeField;
+    private JTextField payloadContainsField;
     private JComboBox<String> highlightColorFilter;
     private JButton applyFilterButton;
     private JLabel filterStatusLabel;
@@ -448,12 +449,14 @@ public class FuzzingSessionTab extends JPanel {
         // Top section - Smart Filter
         JPanel smartPanel = new JPanel();
         smartPanel.setLayout(new BoxLayout(smartPanel, BoxLayout.Y_AXIS));
+        smartPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         smartPanel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createTitledBorder("Smart Filter"),
             BorderFactory.createEmptyBorder(5, 5, 5, 5)
         ));
 
         smartFilterCheckbox = new JCheckBox("Enable (auto-detect patterns)");
+        smartFilterCheckbox.setAlignmentX(Component.LEFT_ALIGNMENT);
         smartFilterCheckbox.addActionListener(e -> {
             filterConfig.setSmartFilterEnabled(smartFilterCheckbox.isSelected());
             applyFilters();
@@ -462,6 +465,7 @@ public class FuzzingSessionTab extends JPanel {
 
         smartPanel.add(Box.createVerticalStrut(5));
         filterStatusLabel = new JLabel("No filters active");
+        filterStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         filterStatusLabel.setFont(filterStatusLabel.getFont().deriveFont(11f));
         smartPanel.add(filterStatusLabel);
 
@@ -471,6 +475,7 @@ public class FuzzingSessionTab extends JPanel {
         // Bottom section - Manual Filter
         JPanel manualPanel = new JPanel();
         manualPanel.setLayout(new BoxLayout(manualPanel, BoxLayout.Y_AXIS));
+        manualPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         manualPanel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createTitledBorder("Manual Filter"),
             BorderFactory.createEmptyBorder(5, 5, 5, 5)
@@ -478,6 +483,7 @@ public class FuzzingSessionTab extends JPanel {
 
         // Manual filter checkbox
         manualFilterCheckbox = new JCheckBox("Enable Manual Filter");
+        manualFilterCheckbox.setAlignmentX(Component.LEFT_ALIGNMENT);
         manualFilterCheckbox.addActionListener(e -> {
             boolean enabled = manualFilterCheckbox.isSelected();
             hideStatusCodesField.setEnabled(enabled);
@@ -485,6 +491,7 @@ public class FuzzingSessionTab extends JPanel {
             minLengthField.setEnabled(enabled);
             maxLengthField.setEnabled(enabled);
             contentTypeField.setEnabled(enabled);
+            payloadContainsField.setEnabled(enabled);
             highlightColorFilter.setEnabled(enabled);
             applyFilterButton.setEnabled(enabled);
 
@@ -501,6 +508,7 @@ public class FuzzingSessionTab extends JPanel {
 
         // Apply button at top for easy access
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        buttonPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         applyFilterButton = new JButton("Apply Manual Filters");
         applyFilterButton.setEnabled(false);
         applyFilterButton.addActionListener(e -> applyManualFilters());
@@ -511,6 +519,7 @@ public class FuzzingSessionTab extends JPanel {
         // Status Code Filters
         JPanel statusCodePanel = new JPanel();
         statusCodePanel.setLayout(new BoxLayout(statusCodePanel, BoxLayout.Y_AXIS));
+        statusCodePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         statusCodePanel.setBorder(BorderFactory.createTitledBorder("Status Code"));
 
         JPanel hideStatusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
@@ -539,6 +548,7 @@ public class FuzzingSessionTab extends JPanel {
         // Length Filter
         JPanel lengthPanel = new JPanel();
         lengthPanel.setLayout(new BoxLayout(lengthPanel, BoxLayout.Y_AXIS));
+        lengthPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         lengthPanel.setBorder(BorderFactory.createTitledBorder("Content Length (bytes)"));
 
         JPanel lengthRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
@@ -562,6 +572,7 @@ public class FuzzingSessionTab extends JPanel {
         // Content-Type Filter
         JPanel contentTypePanel = new JPanel();
         contentTypePanel.setLayout(new BoxLayout(contentTypePanel, BoxLayout.Y_AXIS));
+        contentTypePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         contentTypePanel.setBorder(BorderFactory.createTitledBorder("Content-Type"));
 
         JPanel contentTypeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
@@ -577,9 +588,27 @@ public class FuzzingSessionTab extends JPanel {
         manualPanel.add(contentTypePanel);
         manualPanel.add(Box.createVerticalStrut(5));
 
+        // Payload Contains Filter
+        JPanel payloadPanel = new JPanel();
+        payloadPanel.setLayout(new BoxLayout(payloadPanel, BoxLayout.Y_AXIS));
+        payloadPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        payloadPanel.setBorder(BorderFactory.createTitledBorder("Payload"));
+
+        JPanel payloadRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        payloadRow.add(new JLabel("Contains:"));
+        payloadContainsField = new JTextField(20);
+        payloadContainsField.setToolTipText("Filter by payload content (case-insensitive)");
+        payloadContainsField.setEnabled(false);
+        payloadRow.add(payloadContainsField);
+        payloadPanel.add(payloadRow);
+
+        manualPanel.add(payloadPanel);
+        manualPanel.add(Box.createVerticalStrut(5));
+
         // Highlight Color Filter
         JPanel highlightPanel = new JPanel();
         highlightPanel.setLayout(new BoxLayout(highlightPanel, BoxLayout.Y_AXIS));
+        highlightPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         highlightPanel.setBorder(BorderFactory.createTitledBorder("Highlight Color"));
 
         JPanel highlightRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
@@ -912,6 +941,14 @@ public class FuzzingSessionTab extends JPanel {
             filterConfig.setContentTypeFilter(contentTypeText);
         } else {
             filterConfig.setContentTypeFilter(null);
+        }
+
+        // Parse payload contains filter
+        String payloadText = payloadContainsField.getText().trim();
+        if (!payloadText.isEmpty()) {
+            filterConfig.setPayloadContainsFilter(payloadText);
+        } else {
+            filterConfig.setPayloadContainsFilter(null);
         }
 
         applyFilters();

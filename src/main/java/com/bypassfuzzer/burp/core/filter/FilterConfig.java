@@ -17,6 +17,7 @@ public class FilterConfig {
     private Integer minContentLength = null;
     private Integer maxContentLength = null;
     private String contentTypeFilter = null;
+    private String payloadContainsFilter = null;
 
     public boolean isSmartFilterEnabled() {
         return smartFilterEnabled;
@@ -72,5 +73,13 @@ public class FilterConfig {
 
     public void setContentTypeFilter(String filter) {
         this.contentTypeFilter = filter;
+    }
+
+    public String getPayloadContainsFilter() {
+        return payloadContainsFilter;
+    }
+
+    public void setPayloadContainsFilter(String filter) {
+        this.payloadContainsFilter = filter;
     }
 }

@@ -57,6 +57,19 @@ public class ManualFilter implements ResponseFilter {
             }
         }
 
+        // Check payload contains filter
+        String payloadFilter = config.getPayloadContainsFilter();
+        if (payloadFilter != null && !payloadFilter.trim().isEmpty()) {
+            String payload = result.getPayload();
+            if (payload == null) {
+                return false; // No payload = filtered out
+            }
+            // Case-insensitive contains check
+            if (!payload.toLowerCase().contains(payloadFilter.toLowerCase())) {
+                return false; // Payload doesn't contain filter text
+            }
+        }
+
         return true; // Passes all filters
     }
 

@@ -67,6 +67,9 @@ public class FuzzingSessionTab extends JPanel {
     private Map<AttackResult, Color> resultColors = new HashMap<>();
     private JPopupMenu tablePopupMenu;
 
+    // Cleanup flag to prevent API calls during shutdown
+    private volatile boolean isShuttingDown = false;
+
     // Filtering
     private FilterConfig filterConfig;
     private SmartFilter smartFilter;
@@ -728,7 +731,8 @@ public class FuzzingSessionTab extends JPanel {
 
         // Warn if Collaborator is enabled but not available
         if (collaboratorCheckbox.isSelected() && !isCollaboratorAvailable()) {
-            int choice = JOptionPane.showConfirmDialog(this,
+            int choice = JOptionPane.showConfirmDialog(
+                api.userInterface().swingUtils().suiteFrame(),
                 "Burp Collaborator is not available.\n" +
                 "Collaborator requires Burp Suite Professional with Collaborator configured.\n\n" +
                 "Continue fuzzing without Collaborator payloads?",
@@ -825,7 +829,7 @@ public class FuzzingSessionTab extends JPanel {
                 }
                 // Fuzzing completed, update UI on Swing thread
                 SwingUtilities.invokeLater(() -> {
-                    if (!engine.isRunning()) {
+                    if (!isShuttingDown && !engine.isRunning()) {
                         int totalSent = allResults.size();
                         int showing = results.size();
                         statusLabel.setText("Completed: " + totalSent + " requests sent, showing " + showing);
@@ -852,6 +856,7 @@ public class FuzzingSessionTab extends JPanel {
      * Cleanup when tab is closed or extension is unloaded.
      */
     public void cleanup() {
+        isShuttingDown = true;
         engine.cleanup();
     }
 
@@ -1035,6 +1040,11 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private void setAttackCheckboxesEnabled(boolean enabled) {
+        // Don't modify UI during shutdown
+        if (isShuttingDown) {
+            return;
+        }
+
         headerAttackCheckbox.setEnabled(enabled);
         pathAttackCheckbox.setEnabled(enabled);
         verbAttackCheckbox.setEnabled(enabled);
@@ -1061,6 +1071,9 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private boolean isCollaboratorAvailable() {
+        if (isShuttingDown) {
+            return false;
+        }
         try {
             return api.collaborator() != null && api.collaborator().defaultPayloadGenerator() != null;
         } catch (Exception e) {

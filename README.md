@@ -112,7 +112,12 @@ You can edit the payload files beforee building. UI config for this will be adde
 
    Example: `debug=true`
 
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
 ## Credits
 
 - Original Python tool: [@intrudir](https://twitter.com/intrudir)
 - Smart filter algorithm: [@defparam](https://twitter.com/defparam)
+- Unicode overflow technique: [PortSwigger Research](https://portswigger.net/research/bypassing-character-blocklists-with-unicode-overflows)

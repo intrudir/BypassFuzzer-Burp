@@ -112,6 +112,9 @@ public class BypassFuzzerTab extends JPanel {
 
     /**
      * Load a request into a new fuzzing session tab.
+     * Creates a new tab in the tabbed interface for this request.
+     *
+     * @param request The HTTP request to fuzz
      */
     public void loadRequest(HttpRequest request) {
         // Create new session tab
@@ -181,7 +184,7 @@ public class BypassFuzzerTab extends JPanel {
                 int currentIndex = tabbedPane.indexOfTabComponent(tabPanel);
                 if (currentIndex != -1) {
                     int confirm = JOptionPane.showConfirmDialog(
-                        this,
+                        api.userInterface().swingUtils().suiteFrame(),
                         "Close this fuzzing session?",
                         "Confirm Close",
                         JOptionPane.YES_NO_OPTION

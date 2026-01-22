@@ -16,6 +16,8 @@ public class FilterConfig {
     private Set<Integer> shownStatusCodes = new HashSet<>();
     private Integer minContentLength = null;
     private Integer maxContentLength = null;
+    private Set<Integer> hiddenContentLengths = new HashSet<>();
+    private Set<Integer> shownContentLengths = new HashSet<>();
     private String contentTypeFilter = null;
     private String payloadContainsFilter = null;
 
@@ -65,6 +67,22 @@ public class FilterConfig {
 
     public void setMaxContentLength(Integer max) {
         this.maxContentLength = max;
+    }
+
+    public Set<Integer> getHiddenContentLengths() {
+        return hiddenContentLengths;
+    }
+
+    public void setHiddenContentLengths(Set<Integer> lengths) {
+        this.hiddenContentLengths = lengths;
+    }
+
+    public Set<Integer> getShownContentLengths() {
+        return shownContentLengths;
+    }
+
+    public void setShownContentLengths(Set<Integer> lengths) {
+        this.shownContentLengths = lengths;
     }
 
     public String getContentTypeFilter() {

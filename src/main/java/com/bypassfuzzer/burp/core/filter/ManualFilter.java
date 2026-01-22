@@ -44,6 +44,20 @@ public class ManualFilter implements ResponseFilter {
             return false; // Above maximum
         }
 
+        // Check hidden content lengths (blacklist)
+        if (!config.getHiddenContentLengths().isEmpty()) {
+            if (config.getHiddenContentLengths().contains(result.getContentLength())) {
+                return false; // Explicitly hidden
+            }
+        }
+
+        // Check shown content lengths (whitelist - if configured, only show these)
+        if (!config.getShownContentLengths().isEmpty()) {
+            if (!config.getShownContentLengths().contains(result.getContentLength())) {
+                return false; // Not in whitelist
+            }
+        }
+
         // Check content-type filter
         String contentTypeFilter = config.getContentTypeFilter();
         if (contentTypeFilter != null && !contentTypeFilter.trim().isEmpty()) {

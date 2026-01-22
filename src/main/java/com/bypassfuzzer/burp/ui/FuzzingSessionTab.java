@@ -77,6 +77,8 @@ public class FuzzingSessionTab extends JPanel {
     private JTextField showOnlyStatusCodesField;
     private JTextField minLengthField;
     private JTextField maxLengthField;
+    private JTextField hideContentLengthsField;
+    private JTextField showOnlyContentLengthsField;
     private JTextField contentTypeField;
     private JTextField payloadContainsField;
     private JComboBox<String> highlightColorFilter;
@@ -490,6 +492,8 @@ public class FuzzingSessionTab extends JPanel {
             showOnlyStatusCodesField.setEnabled(enabled);
             minLengthField.setEnabled(enabled);
             maxLengthField.setEnabled(enabled);
+            hideContentLengthsField.setEnabled(enabled);
+            showOnlyContentLengthsField.setEnabled(enabled);
             contentTypeField.setEnabled(enabled);
             payloadContainsField.setEnabled(enabled);
             highlightColorFilter.setEnabled(enabled);
@@ -565,6 +569,22 @@ public class FuzzingSessionTab extends JPanel {
         lengthRow.add(new JLabel("(e.g. 1000 or 5000)"));
         lengthRow.add(Box.createHorizontalStrut(5));
         lengthPanel.add(lengthRow);
+
+        JPanel hideLengthRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        hideLengthRow.add(new JLabel("Hide lengths:"));
+        hideContentLengthsField = new JTextField(15);
+        hideContentLengthsField.setToolTipText("Comma-separated, e.g., 0,1234,5678");
+        hideContentLengthsField.setEnabled(false);
+        hideLengthRow.add(hideContentLengthsField);
+        lengthPanel.add(hideLengthRow);
+
+        JPanel showLengthRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        showLengthRow.add(new JLabel("Show only:"));
+        showOnlyContentLengthsField = new JTextField(15);
+        showOnlyContentLengthsField.setToolTipText("Comma-separated, e.g., 200,500");
+        showOnlyContentLengthsField.setEnabled(false);
+        showLengthRow.add(showOnlyContentLengthsField);
+        lengthPanel.add(showLengthRow);
 
         manualPanel.add(lengthPanel);
         manualPanel.add(Box.createVerticalStrut(5));
@@ -934,6 +954,34 @@ public class FuzzingSessionTab extends JPanel {
             api.logging().logToError("Invalid max length: " + maxLengthField.getText());
             filterConfig.setMaxContentLength(null);
         }
+
+        // Parse hide content lengths
+        Set<Integer> hideContentLengths = new HashSet<>();
+        String hideLengthText = hideContentLengthsField.getText().trim();
+        if (!hideLengthText.isEmpty()) {
+            for (String length : hideLengthText.split(",")) {
+                try {
+                    hideContentLengths.add(Integer.parseInt(length.trim()));
+                } catch (NumberFormatException e) {
+                    api.logging().logToError("Invalid content length: " + length);
+                }
+            }
+        }
+        filterConfig.setHiddenContentLengths(hideContentLengths);
+
+        // Parse show only content lengths
+        Set<Integer> showContentLengths = new HashSet<>();
+        String showLengthText = showOnlyContentLengthsField.getText().trim();
+        if (!showLengthText.isEmpty()) {
+            for (String length : showLengthText.split(",")) {
+                try {
+                    showContentLengths.add(Integer.parseInt(length.trim()));
+                } catch (NumberFormatException e) {
+                    api.logging().logToError("Invalid content length: " + length);
+                }
+            }
+        }
+        filterConfig.setShownContentLengths(showContentLengths);
 
         // Parse content-type filter
         String contentTypeText = contentTypeField.getText().trim();

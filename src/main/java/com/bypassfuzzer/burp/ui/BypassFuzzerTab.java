@@ -69,8 +69,8 @@ public class BypassFuzzerTab extends JPanel {
             "• Trailing Dot - Absolute domain bypass (example.com.)\n" +
             "• Trailing Slash - Tests with/without trailing slash and /. pattern\n" +
             "• Extension - 75+ file extensions (.json, .html, .php, .bak, etc.)\n" +
-            "• Content-Type - Converts between URL-encoded, JSON, XML, multipart/form-data\n" +
-            "• Encoding - URL, double-URL, triple-URL, unicode encoding on paths, param names & values (query + body)\n" +
+            "• Content-Type - Converts between URL-encoded, JSON, XML, multipart\n" +
+            "• Encoding - URL/double-URL/triple-URL/unicode on paths & params\n" +
             "• Protocol - HTTP/1.0 and HTTP/0.9 downgrades\n" +
             "• Case Variation - Random capitalizations with smart limits\n\n" +
             "Features:\n" +
@@ -90,15 +90,20 @@ public class BypassFuzzerTab extends JPanel {
         );
         instructions.setEditable(false);
         instructions.setBackground(panel.getBackground());
-        instructions.setFont(new Font("Arial", Font.PLAIN, 13));
+        instructions.setFont(new Font("Arial", Font.PLAIN, 12));
         instructions.setAlignmentX(Component.CENTER_ALIGNMENT);
-        instructions.setMaximumSize(new Dimension(700, 500));
+        instructions.setLineWrap(true);
+        instructions.setWrapStyleWord(true);
 
         centerPanel.add(titleLabel);
         centerPanel.add(Box.createVerticalStrut(10));
         centerPanel.add(subtitleLabel);
         centerPanel.add(Box.createVerticalStrut(30));
-        centerPanel.add(instructions);
+
+        JScrollPane scrollPane = new JScrollPane(instructions);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.setMaximumSize(new Dimension(800, 450));
+        centerPanel.add(scrollPane);
 
         panel.add(centerPanel, BorderLayout.CENTER);
 

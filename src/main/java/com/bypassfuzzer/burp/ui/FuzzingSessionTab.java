@@ -294,17 +294,12 @@ public class FuzzingSessionTab extends JPanel {
 
         topPanel.add(topContent, BorderLayout.CENTER);
 
-        // Add filter panel to top
+        // Filter panel (will be on left side)
         JPanel filterPanel = createFilterPanel();
-
-        // Wrap the top panel (controls + filters) separately from filter panel for split pane
-        JPanel controlsOnlyPanel = new JPanel(new BorderLayout());
-        controlsOnlyPanel.add(topPanel, BorderLayout.CENTER);
-
-        // Wrap filter panel in scroll pane to allow resizing smaller than content
         JScrollPane filterScrollPane = new JScrollPane(filterPanel);
         filterScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         filterScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        filterScrollPane.setMinimumSize(new Dimension(250, 100));
 
         // Center panel - Split pane with table on top and request/response on bottom
         JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
@@ -406,9 +401,20 @@ public class FuzzingSessionTab extends JPanel {
         resultsTable.getColumnModel().getColumn(5).setPreferredWidth(150); // Content-Type
 
         JScrollPane tableScrollPane = new JScrollPane(resultsTable);
-        mainSplitPane.setTopComponent(tableScrollPane);
 
-        // Bottom of split - Request/Response viewers
+        // Create horizontal split: filters on LEFT, table on RIGHT
+        JSplitPane horizontalSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        horizontalSplit.setLeftComponent(filterScrollPane);
+        horizontalSplit.setRightComponent(tableScrollPane);
+        horizontalSplit.setDividerSize(6);
+        horizontalSplit.setResizeWeight(0.0); // Give extra space to right (table) side
+
+        // Set initial divider location for filters
+        SwingUtilities.invokeLater(() -> {
+            horizontalSplit.setDividerLocation(450); // Width for filter panel
+        });
+
+        // Request/Response viewers (full width)
         requestViewer = api.userInterface().createHttpRequestEditor();
         responseViewer = api.userInterface().createHttpResponseEditor();
 
@@ -416,29 +422,16 @@ public class FuzzingSessionTab extends JPanel {
         viewerTabs.addTab("Request", requestViewer.uiComponent());
         viewerTabs.addTab("Response", responseViewer.uiComponent());
 
+        // Vertical split: filters+table on top, viewers on bottom (full width)
+        mainSplitPane.setTopComponent(horizontalSplit);
         mainSplitPane.setBottomComponent(viewerTabs);
 
-        // Create a vertical split pane for filters (top) and main content (bottom)
-        JSplitPane filterSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        filterSplitPane.setResizeWeight(0.0); // Give all extra space to bottom component
-        filterSplitPane.setDividerSize(8); // Make divider visible and draggable
+        // Main layout: controls on top, main split below
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.add(topPanel, BorderLayout.NORTH);
+        mainPanel.add(mainSplitPane, BorderLayout.CENTER);
 
-        // Top component: controls + filter panel (with scroll pane)
-        JPanel topWithFilters = new JPanel(new BorderLayout());
-        topWithFilters.add(controlsOnlyPanel, BorderLayout.NORTH);
-        topWithFilters.add(filterScrollPane, BorderLayout.CENTER);
-        filterSplitPane.setTopComponent(topWithFilters);
-
-        // Bottom component: main split pane with results
-        filterSplitPane.setBottomComponent(mainSplitPane);
-
-        // Set initial divider location to fit filter panel content (can be adjusted by user)
-        // Use setDividerLocation in invokeLater to ensure it's set after components are laid out
-        SwingUtilities.invokeLater(() -> {
-            filterSplitPane.setDividerLocation(500); // Enough pixels to show all filter fields
-        });
-
-        add(filterSplitPane, BorderLayout.CENTER);
+        add(mainPanel, BorderLayout.CENTER);
 
         // Bottom panel - Request info
         JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -448,32 +441,37 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private JPanel createFilterPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("Filters"));
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // Left side - Smart Filter
-        JPanel leftPanel = new JPanel();
-        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
-        leftPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 10));
+        // Top section - Smart Filter
+        JPanel smartPanel = new JPanel();
+        smartPanel.setLayout(new BoxLayout(smartPanel, BoxLayout.Y_AXIS));
+        smartPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createTitledBorder("Smart Filter"),
+            BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        ));
 
-        smartFilterCheckbox = new JCheckBox("Smart Filter (auto-detect patterns)");
+        smartFilterCheckbox = new JCheckBox("Enable (auto-detect patterns)");
         smartFilterCheckbox.addActionListener(e -> {
             filterConfig.setSmartFilterEnabled(smartFilterCheckbox.isSelected());
             applyFilters();
         });
-        leftPanel.add(smartFilterCheckbox);
+        smartPanel.add(smartFilterCheckbox);
 
-        leftPanel.add(Box.createVerticalStrut(10));
+        smartPanel.add(Box.createVerticalStrut(5));
         filterStatusLabel = new JLabel("No filters active");
         filterStatusLabel.setFont(filterStatusLabel.getFont().deriveFont(11f));
-        leftPanel.add(filterStatusLabel);
+        smartPanel.add(filterStatusLabel);
 
-        panel.add(leftPanel, BorderLayout.WEST);
+        panel.add(smartPanel);
+        panel.add(Box.createVerticalStrut(10));
 
-        // Right side - Manual Filter
-        JPanel rightPanel = new JPanel();
-        rightPanel.setLayout(new BoxLayout(rightPanel, BoxLayout.Y_AXIS));
-        rightPanel.setBorder(BorderFactory.createCompoundBorder(
+        // Bottom section - Manual Filter
+        JPanel manualPanel = new JPanel();
+        manualPanel.setLayout(new BoxLayout(manualPanel, BoxLayout.Y_AXIS));
+        manualPanel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createTitledBorder("Manual Filter"),
             BorderFactory.createEmptyBorder(5, 5, 5, 5)
         ));
@@ -498,8 +496,8 @@ public class FuzzingSessionTab extends JPanel {
                 applyFilters();
             }
         });
-        rightPanel.add(manualFilterCheckbox);
-        rightPanel.add(Box.createVerticalStrut(5));
+        manualPanel.add(manualFilterCheckbox);
+        manualPanel.add(Box.createVerticalStrut(5));
 
         // Apply button at top for easy access
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -507,8 +505,8 @@ public class FuzzingSessionTab extends JPanel {
         applyFilterButton.setEnabled(false);
         applyFilterButton.addActionListener(e -> applyManualFilters());
         buttonPanel.add(applyFilterButton);
-        rightPanel.add(buttonPanel);
-        rightPanel.add(Box.createVerticalStrut(10));
+        manualPanel.add(buttonPanel);
+        manualPanel.add(Box.createVerticalStrut(10));
 
         // Status Code Filters
         JPanel statusCodePanel = new JPanel();
@@ -535,8 +533,8 @@ public class FuzzingSessionTab extends JPanel {
         showStatusRow.add(Box.createHorizontalStrut(5));
         statusCodePanel.add(showStatusRow);
 
-        rightPanel.add(statusCodePanel);
-        rightPanel.add(Box.createVerticalStrut(5));
+        manualPanel.add(statusCodePanel);
+        manualPanel.add(Box.createVerticalStrut(5));
 
         // Length Filter
         JPanel lengthPanel = new JPanel();
@@ -558,8 +556,8 @@ public class FuzzingSessionTab extends JPanel {
         lengthRow.add(Box.createHorizontalStrut(5));
         lengthPanel.add(lengthRow);
 
-        rightPanel.add(lengthPanel);
-        rightPanel.add(Box.createVerticalStrut(5));
+        manualPanel.add(lengthPanel);
+        manualPanel.add(Box.createVerticalStrut(5));
 
         // Content-Type Filter
         JPanel contentTypePanel = new JPanel();
@@ -576,8 +574,8 @@ public class FuzzingSessionTab extends JPanel {
         contentTypeRow.add(Box.createHorizontalStrut(5));
         contentTypePanel.add(contentTypeRow);
 
-        rightPanel.add(contentTypePanel);
-        rightPanel.add(Box.createVerticalStrut(5));
+        manualPanel.add(contentTypePanel);
+        manualPanel.add(Box.createVerticalStrut(5));
 
         // Highlight Color Filter
         JPanel highlightPanel = new JPanel();
@@ -601,9 +599,9 @@ public class FuzzingSessionTab extends JPanel {
         highlightRow.add(highlightColorFilter);
         highlightPanel.add(highlightRow);
 
-        rightPanel.add(highlightPanel);
+        manualPanel.add(highlightPanel);
 
-        panel.add(rightPanel, BorderLayout.CENTER);
+        panel.add(manualPanel);
 
         return panel;
     }

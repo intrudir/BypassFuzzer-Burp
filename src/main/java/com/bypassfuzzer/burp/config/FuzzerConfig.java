@@ -28,18 +28,10 @@ public class FuzzerConfig {
     private Set<Integer> hiddenStatusCodes = new HashSet<>();
     private Set<Integer> hiddenLengths = new HashSet<>();
 
-    // Database options
-    private Set<Integer> saveStatusCodes = new HashSet<>();
-
     // Rate limiting
     private int requestsPerSecond = 0; // 0 = unlimited (default)
     private Set<Integer> throttleStatusCodes = new HashSet<>();
     private boolean enableAutoThrottle = true;
-
-    // Custom payloads
-    private String customHeaderPayloadPath = null;
-    private String customIpPayloadPath = null;
-    private String customUrlPayloadPath = null;
 
     // OOB payload
     private String oobPayload = null;
@@ -48,14 +40,6 @@ public class FuzzerConfig {
     private boolean enableCollaboratorPayloads = false;
 
     public FuzzerConfig() {
-        // Default: save 2xx and 3xx responses
-        saveStatusCodes.add(200);
-        saveStatusCodes.add(201);
-        saveStatusCodes.add(301);
-        saveStatusCodes.add(302);
-        saveStatusCodes.add(307);
-        saveStatusCodes.add(308);
-
         // Default: hide common error codes
         hiddenStatusCodes.add(401);
         hiddenStatusCodes.add(403);
@@ -188,14 +172,6 @@ public class FuzzerConfig {
         this.hiddenLengths = hiddenLengths;
     }
 
-    public Set<Integer> getSaveStatusCodes() {
-        return saveStatusCodes;
-    }
-
-    public void setSaveStatusCodes(Set<Integer> saveStatusCodes) {
-        this.saveStatusCodes = saveStatusCodes;
-    }
-
     public int getRequestsPerSecond() {
         return requestsPerSecond;
     }
@@ -218,30 +194,6 @@ public class FuzzerConfig {
 
     public void setEnableAutoThrottle(boolean enableAutoThrottle) {
         this.enableAutoThrottle = enableAutoThrottle;
-    }
-
-    public String getCustomHeaderPayloadPath() {
-        return customHeaderPayloadPath;
-    }
-
-    public void setCustomHeaderPayloadPath(String customHeaderPayloadPath) {
-        this.customHeaderPayloadPath = customHeaderPayloadPath;
-    }
-
-    public String getCustomIpPayloadPath() {
-        return customIpPayloadPath;
-    }
-
-    public void setCustomIpPayloadPath(String customIpPayloadPath) {
-        this.customIpPayloadPath = customIpPayloadPath;
-    }
-
-    public String getCustomUrlPayloadPath() {
-        return customUrlPayloadPath;
-    }
-
-    public void setCustomUrlPayloadPath(String customUrlPayloadPath) {
-        this.customUrlPayloadPath = customUrlPayloadPath;
     }
 
     public String getOobPayload() {

@@ -1062,13 +1062,9 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private void addResult(AttackResult result) {
-        // api.logging().logToOutput("FuzzingSessionTab.addResult() called with: " + result.getAttackType() + " - " + truncatePayload(result.getPayload(), 50));
-
         // Update UI on Swing thread
         SwingUtilities.invokeLater(() -> {
             try {
-                // api.logging().logToOutput("SwingUtilities.invokeLater executing for result...");
-
                 // Store in allResults (unfiltered)
                 allResults.add(result);
 
@@ -1078,7 +1074,6 @@ public class FuzzingSessionTab extends JPanel {
                 // Check if result should be shown based on filters
                 if (shouldShowResult(result)) {
                     results.add(result);
-                    // api.logging().logToOutput("Result passes filters, total filtered results: " + results.size());
 
                     // Add to table with request number
                     Object[] row = {
@@ -1090,9 +1085,6 @@ public class FuzzingSessionTab extends JPanel {
                         truncatePayload(result.getContentType(), 50)
                     };
                     tableModel.addRow(row);
-                    // api.logging().logToOutput("Row added to table, total rows: " + tableModel.getRowCount());
-                } else {
-                    // api.logging().logToOutput("Result filtered out");
                 }
 
                 // Update status

@@ -593,24 +593,7 @@ public class EncodingAttack implements AttackStrategy {
                     // XML: <param1>value1</param1>
                     String pattern = "(<" + java.util.regex.Pattern.quote(paramName) + ">)[^<]*(</" + java.util.regex.Pattern.quote(paramName) + ">)";
                     String replacement = "$1" + java.util.regex.Matcher.quoteReplacement(newValue) + "$2";
-
-                    // Debug logging
-                    try {
-                        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-                        java.util.regex.Matcher m = p.matcher(body);
-                        if (m.find()) {
-                            // Match found, do replacement
-                            newBody = body.replaceAll(pattern, replacement);
-                        } else {
-                            // No match found - log for debugging
-                            System.err.println("XML value replacement: NO MATCH for param '" + paramName + "'");
-                            System.err.println("Pattern: " + pattern);
-                            System.err.println("Body snippet: " + (body.length() > 200 ? body.substring(0, 200) : body));
-                        }
-                    } catch (Exception e) {
-                        System.err.println("XML value replacement error: " + e.getMessage());
-                        newBody = body.replaceAll(pattern, replacement);
-                    }
+                    newBody = body.replaceAll(pattern, replacement);
                 } else if (contentType.contains("multipart/form-data")) {
                     // Multipart: Content-Disposition: form-data; name="param1"\r\n\r\nvalue1
                     newBody = body.replaceAll(

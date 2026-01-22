@@ -5,7 +5,6 @@ import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import com.bypassfuzzer.burp.core.RateLimiter;
 
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -20,7 +19,7 @@ import java.util.function.Consumer;
 public class VerbAttack implements AttackStrategy {
     private static final List<String> HTTP_METHODS = Arrays.asList(
         "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
-        "PATCH", "INVENTED", "HACK"
+        "PATCH"
     );
 
     private static final List<String> OVERRIDE_HEADERS = Arrays.asList(

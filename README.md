@@ -22,7 +22,6 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
   - Configurable requests per second (default: unlimited)
   - Auto-throttle when rate limit errors detected (429, 503)
   - Automatically reduces speed by 50% when throttled
-- **Custom Payloads:** Load your own payload files if needed
 - **Collaborator Integration:** Dynamic Burp Collaborator payload generation for header attacks (Burp Professional only)
 - **Burp Integration:**
   - Right-click menu: "Send to BypassFuzzer"
@@ -43,7 +42,7 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 ./gradlew clean shadowJar
 
 # The compiled JAR will be at:
-# build/libs/bypassfuzzer-burp-1.0.0.jar
+# build/libs/bypassfuzzer-burp-1.0.1.jar
 ```
 
 ## Installation
@@ -51,7 +50,7 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 1. Open Burp Suite
 2. Go to **Extensions** → **Installed**
 3. Click **Add**
-4. Select **Extension file**: `bypassfuzzer-burp-1.0.0.jar`
+4. Select **Extension file**: `bypassfuzzer-burp-1.0.1.jar`
 5. Click **Next**
 6. The extension will load and a "BypassFuzzer" tab will appear
 
@@ -69,7 +68,6 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
    - Configure rate limiting:
      - Set requests/second (0 = unlimited, default)
      - Configure auto-throttle status codes (default: 429, 503)
-   - Optionally load custom payloads
 
 3. **Start Fuzzing:**
    - Click "Start Fuzzing"
@@ -89,7 +87,7 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 
 ## Custom Payloads
 
-You can provide your own payload files:
+You can edit the payload files beforee building. UI config for this will be added in a future release.
 
 1. **Header Templates:** One template per line, use placeholders:
    - `{IP PAYLOAD}` - Replaced with IP addresses from ip_payloads.txt
@@ -118,6 +116,3 @@ You can provide your own payload files:
 
 - Original Python tool: [@intrudir](https://twitter.com/intrudir)
 - Smart filter algorithm: [@defparam](https://twitter.com/defparam)
-
-## License
-TODO

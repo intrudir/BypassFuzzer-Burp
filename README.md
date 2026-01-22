@@ -42,7 +42,7 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 ./gradlew clean shadowJar
 
 # The compiled JAR will be at:
-# build/libs/bypassfuzzer-burp-1.0.1.jar
+# build/libs/bypassfuzzer-burp-1.0.2.jar
 ```
 
 ## Installation
@@ -50,7 +50,7 @@ A Burp Suite extension for testing authorization bypass vulnerabilities (401/403
 1. Open Burp Suite
 2. Go to **Extensions** → **Installed**
 3. Click **Add**
-4. Select **Extension file**: `bypassfuzzer-burp-1.0.1.jar`
+4. Select **Extension file**: `bypassfuzzer-burp-1.0.2.jar`
 5. Click **Next**
 6. The extension will load and a "BypassFuzzer" tab will appear
 

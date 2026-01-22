@@ -277,11 +277,14 @@ public class FuzzingSessionTab extends JPanel {
         // Add filter panel to top
         JPanel filterPanel = createFilterPanel();
 
-        JPanel combinedTopPanel = new JPanel(new BorderLayout());
-        combinedTopPanel.add(topPanel, BorderLayout.NORTH);
-        combinedTopPanel.add(filterPanel, BorderLayout.CENTER);
+        // Wrap the top panel (controls + filters) separately from filter panel for split pane
+        JPanel controlsOnlyPanel = new JPanel(new BorderLayout());
+        controlsOnlyPanel.add(topPanel, BorderLayout.CENTER);
 
-        add(combinedTopPanel, BorderLayout.NORTH);
+        // Wrap filter panel in scroll pane to allow resizing smaller than content
+        JScrollPane filterScrollPane = new JScrollPane(filterPanel);
+        filterScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        filterScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 
         // Center panel - Split pane with table on top and request/response on bottom
         JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
@@ -406,7 +409,27 @@ public class FuzzingSessionTab extends JPanel {
 
         mainSplitPane.setBottomComponent(viewerTabs);
 
-        add(mainSplitPane, BorderLayout.CENTER);
+        // Create a vertical split pane for filters (top) and main content (bottom)
+        JSplitPane filterSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        filterSplitPane.setResizeWeight(0.0); // Give all extra space to bottom component
+        filterSplitPane.setDividerSize(8); // Make divider visible and draggable
+
+        // Top component: controls + filter panel (with scroll pane)
+        JPanel topWithFilters = new JPanel(new BorderLayout());
+        topWithFilters.add(controlsOnlyPanel, BorderLayout.NORTH);
+        topWithFilters.add(filterScrollPane, BorderLayout.CENTER);
+        filterSplitPane.setTopComponent(topWithFilters);
+
+        // Bottom component: main split pane with results
+        filterSplitPane.setBottomComponent(mainSplitPane);
+
+        // Set initial divider location to fit filter panel content (can be adjusted by user)
+        // Use setDividerLocation in invokeLater to ensure it's set after components are laid out
+        SwingUtilities.invokeLater(() -> {
+            filterSplitPane.setDividerLocation(500); // Enough pixels to show all filter fields
+        });
+
+        add(filterSplitPane, BorderLayout.CENTER);
 
         // Bottom panel - Request info
         JPanel infoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));

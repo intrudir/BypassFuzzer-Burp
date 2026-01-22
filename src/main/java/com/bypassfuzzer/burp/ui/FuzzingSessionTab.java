@@ -49,6 +49,7 @@ public class FuzzingSessionTab extends JPanel {
     private JCheckBox trailingDotAttackCheckbox;
     private JCheckBox trailingSlashAttackCheckbox;
     private JCheckBox extensionAttackCheckbox;
+    private JCheckBox contentTypeAttackCheckbox;
     private JCheckBox protocolAttackCheckbox;
     private JCheckBox caseAttackCheckbox;
     private JCheckBox collaboratorCheckbox;
@@ -138,6 +139,7 @@ public class FuzzingSessionTab extends JPanel {
         trailingDotAttackCheckbox = new JCheckBox("Trailing Dot", config.isEnableTrailingDotAttack());
         trailingSlashAttackCheckbox = new JCheckBox("Trailing Slash", config.isEnableTrailingSlashAttack());
         extensionAttackCheckbox = new JCheckBox("Extension", config.isEnableExtensionAttack());
+        contentTypeAttackCheckbox = new JCheckBox("Content-Type", config.isEnableContentTypeAttack());
         protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
         caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
 
@@ -149,6 +151,7 @@ public class FuzzingSessionTab extends JPanel {
         trailingDotAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         trailingSlashAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         extensionAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        contentTypeAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         protocolAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         caseAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
 
@@ -165,9 +168,14 @@ public class FuzzingSessionTab extends JPanel {
         row2.add(trailingDotAttackCheckbox);
         row2.add(trailingSlashAttackCheckbox);
         row2.add(extensionAttackCheckbox);
+        row2.add(contentTypeAttackCheckbox);
         row2.add(protocolAttackCheckbox);
-        row2.add(caseAttackCheckbox);
         attackPanel.add(row2);
+
+        // Row 3: Last checkbox
+        JPanel row3 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        row3.add(caseAttackCheckbox);
+        attackPanel.add(row3);
 
         // Add Check All / Uncheck All buttons
         JButton checkAllButton = new JButton("Check All");
@@ -179,6 +187,7 @@ public class FuzzingSessionTab extends JPanel {
             trailingDotAttackCheckbox.setSelected(true);
             trailingSlashAttackCheckbox.setSelected(true);
             extensionAttackCheckbox.setSelected(true);
+            contentTypeAttackCheckbox.setSelected(true);
             protocolAttackCheckbox.setSelected(true);
             caseAttackCheckbox.setSelected(true);
         });
@@ -192,6 +201,7 @@ public class FuzzingSessionTab extends JPanel {
             trailingDotAttackCheckbox.setSelected(false);
             trailingSlashAttackCheckbox.setSelected(false);
             extensionAttackCheckbox.setSelected(false);
+            contentTypeAttackCheckbox.setSelected(false);
             protocolAttackCheckbox.setSelected(false);
             caseAttackCheckbox.setSelected(false);
         });
@@ -685,6 +695,7 @@ public class FuzzingSessionTab extends JPanel {
         config.setEnableTrailingDotAttack(trailingDotAttackCheckbox.isSelected());
         config.setEnableTrailingSlashAttack(trailingSlashAttackCheckbox.isSelected());
         config.setEnableExtensionAttack(extensionAttackCheckbox.isSelected());
+        config.setEnableContentTypeAttack(contentTypeAttackCheckbox.isSelected());
         config.setEnableProtocolAttack(protocolAttackCheckbox.isSelected());
         config.setEnableCaseAttack(caseAttackCheckbox.isSelected());
         config.setEnableCollaboratorPayloads(collaboratorCheckbox.isSelected());
@@ -737,6 +748,8 @@ public class FuzzingSessionTab extends JPanel {
         // Clear any previous warnings and check for new ones
         warningLabel.setVisible(false);
 
+        List<String> warnings = new ArrayList<>();
+
         // Check if we're fuzzing root path and show warning
         String targetPath = extractPath(request.url());
         if ("/".equals(targetPath)) {
@@ -747,16 +760,47 @@ public class FuzzingSessionTab extends JPanel {
             if (config.getAttackTypes().contains("trailingslash")) {
                 skippedAttacks.add("Trailing Slash");
             }
+            if (config.getAttackTypes().contains("extension")) {
+                skippedAttacks.add("Extension");
+            }
 
             if (!skippedAttacks.isEmpty()) {
-                String warning = "⚠ Note: " + String.join(", ", skippedAttacks) +
+                String warning = String.join(", ", skippedAttacks) +
                     " attack" + (skippedAttacks.size() > 1 ? "s" : "") +
-                    " will be skipped (root path '/' detected - consider testing a deeper endpoint)";
-                warningLabel.setText(warning);
-                warningLabel.setVisible(true);
+                    " will be skipped (root path '/' detected)";
+                warnings.add(warning);
             }
-        } else {
-            warningLabel.setVisible(false);
+        }
+
+        // Check if Content-Type attack will be skipped (non-body methods with no parameters)
+        if (config.getAttackTypes().contains("contenttype")) {
+            String method = request.method();
+            if (!method.equals("POST") && !method.equals("PUT") && !method.equals("PATCH")) {
+                // Check if there are any parameters (query or body)
+                boolean hasParams = false;
+
+                // Check query parameters
+                String url = request.url();
+                if (url != null && url.contains("?")) {
+                    hasParams = true;
+                }
+
+                // Check body parameters
+                if (!hasParams && request.body() != null && request.body().length() > 0) {
+                    hasParams = true;
+                }
+
+                if (!hasParams) {
+                    warnings.add("Content-Type attack will be skipped (" + method + " method with no parameters)");
+                }
+            }
+        }
+
+        // Display all warnings
+        if (!warnings.isEmpty()) {
+            String warningText = "⚠ Note: " + String.join("; ", warnings);
+            warningLabel.setText(warningText);
+            warningLabel.setVisible(true);
         }
 
         // Start fuzzing in background

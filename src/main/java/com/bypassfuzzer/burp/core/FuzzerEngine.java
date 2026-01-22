@@ -245,6 +245,9 @@ public class FuzzerEngine {
         if (config.isEnableExtensionAttack()) {
             strategies.add(new ExtensionAttack(targetUrl));
         }
+        if (config.isEnableContentTypeAttack()) {
+            strategies.add(new ContentTypeAttack());
+        }
         if (config.isEnableProtocolAttack()) {
             strategies.add(new ProtocolAttack());
         }

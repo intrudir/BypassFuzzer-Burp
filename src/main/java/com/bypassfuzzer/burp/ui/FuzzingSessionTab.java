@@ -499,6 +499,15 @@ public class FuzzingSessionTab extends JPanel {
             }
         });
         rightPanel.add(manualFilterCheckbox);
+        rightPanel.add(Box.createVerticalStrut(5));
+
+        // Apply button at top for easy access
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        applyFilterButton = new JButton("Apply Manual Filters");
+        applyFilterButton.setEnabled(false);
+        applyFilterButton.addActionListener(e -> applyManualFilters());
+        buttonPanel.add(applyFilterButton);
+        rightPanel.add(buttonPanel);
         rightPanel.add(Box.createVerticalStrut(10));
 
         // Status Code Filters
@@ -593,15 +602,6 @@ public class FuzzingSessionTab extends JPanel {
         highlightPanel.add(highlightRow);
 
         rightPanel.add(highlightPanel);
-        rightPanel.add(Box.createVerticalStrut(10));
-
-        // Apply button
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        applyFilterButton = new JButton("Apply Manual Filters");
-        applyFilterButton.setEnabled(false);
-        applyFilterButton.addActionListener(e -> applyManualFilters());
-        buttonPanel.add(applyFilterButton);
-        rightPanel.add(buttonPanel);
 
         panel.add(rightPanel, BorderLayout.CENTER);
 

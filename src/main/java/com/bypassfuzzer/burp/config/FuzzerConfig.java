@@ -20,6 +20,7 @@ public class FuzzerConfig {
     private boolean enableTrailingSlashAttack = true;
     private boolean enableExtensionAttack = true;
     private boolean enableContentTypeAttack = true;
+    private boolean enableEncodingAttack = true;
 
     // Filtering options
     private boolean enableSmartFilter = true;
@@ -147,6 +148,14 @@ public class FuzzerConfig {
         this.enableContentTypeAttack = enableContentTypeAttack;
     }
 
+    public boolean isEnableEncodingAttack() {
+        return enableEncodingAttack;
+    }
+
+    public void setEnableEncodingAttack(boolean enableEncodingAttack) {
+        this.enableEncodingAttack = enableEncodingAttack;
+    }
+
     public boolean isEnableSmartFilter() {
         return enableSmartFilter;
     }
@@ -266,6 +275,7 @@ public class FuzzerConfig {
         if (enableTrailingSlashAttack) types.add("trailingslash");
         if (enableExtensionAttack) types.add("extension");
         if (enableContentTypeAttack) types.add("contenttype");
+        if (enableEncodingAttack) types.add("encoding");
         return types;
     }
 }

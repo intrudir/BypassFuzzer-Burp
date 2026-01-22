@@ -248,6 +248,9 @@ public class FuzzerEngine {
         if (config.isEnableContentTypeAttack()) {
             strategies.add(new ContentTypeAttack());
         }
+        if (config.isEnableEncodingAttack()) {
+            strategies.add(new EncodingAttack());
+        }
         if (config.isEnableProtocolAttack()) {
             strategies.add(new ProtocolAttack());
         }

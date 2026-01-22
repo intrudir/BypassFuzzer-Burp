@@ -50,6 +50,7 @@ public class FuzzingSessionTab extends JPanel {
     private JCheckBox trailingSlashAttackCheckbox;
     private JCheckBox extensionAttackCheckbox;
     private JCheckBox contentTypeAttackCheckbox;
+    private JCheckBox encodingAttackCheckbox;
     private JCheckBox protocolAttackCheckbox;
     private JCheckBox caseAttackCheckbox;
     private JCheckBox collaboratorCheckbox;
@@ -140,6 +141,7 @@ public class FuzzingSessionTab extends JPanel {
         trailingSlashAttackCheckbox = new JCheckBox("Trailing Slash", config.isEnableTrailingSlashAttack());
         extensionAttackCheckbox = new JCheckBox("Extension", config.isEnableExtensionAttack());
         contentTypeAttackCheckbox = new JCheckBox("Content-Type", config.isEnableContentTypeAttack());
+        encodingAttackCheckbox = new JCheckBox("Encoding", config.isEnableEncodingAttack());
         protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
         caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
 
@@ -152,6 +154,7 @@ public class FuzzingSessionTab extends JPanel {
         trailingSlashAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         extensionAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         contentTypeAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        encodingAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         protocolAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         caseAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
 
@@ -172,8 +175,9 @@ public class FuzzingSessionTab extends JPanel {
         row2.add(protocolAttackCheckbox);
         attackPanel.add(row2);
 
-        // Row 3: Last checkbox
+        // Row 3: Last 2 checkboxes
         JPanel row3 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        row3.add(encodingAttackCheckbox);
         row3.add(caseAttackCheckbox);
         attackPanel.add(row3);
 
@@ -188,6 +192,7 @@ public class FuzzingSessionTab extends JPanel {
             trailingSlashAttackCheckbox.setSelected(true);
             extensionAttackCheckbox.setSelected(true);
             contentTypeAttackCheckbox.setSelected(true);
+            encodingAttackCheckbox.setSelected(true);
             protocolAttackCheckbox.setSelected(true);
             caseAttackCheckbox.setSelected(true);
         });
@@ -202,6 +207,7 @@ public class FuzzingSessionTab extends JPanel {
             trailingSlashAttackCheckbox.setSelected(false);
             extensionAttackCheckbox.setSelected(false);
             contentTypeAttackCheckbox.setSelected(false);
+            encodingAttackCheckbox.setSelected(false);
             protocolAttackCheckbox.setSelected(false);
             caseAttackCheckbox.setSelected(false);
         });
@@ -696,6 +702,7 @@ public class FuzzingSessionTab extends JPanel {
         config.setEnableTrailingSlashAttack(trailingSlashAttackCheckbox.isSelected());
         config.setEnableExtensionAttack(extensionAttackCheckbox.isSelected());
         config.setEnableContentTypeAttack(contentTypeAttackCheckbox.isSelected());
+        config.setEnableEncodingAttack(encodingAttackCheckbox.isSelected());
         config.setEnableProtocolAttack(protocolAttackCheckbox.isSelected());
         config.setEnableCaseAttack(caseAttackCheckbox.isSelected());
         config.setEnableCollaboratorPayloads(collaboratorCheckbox.isSelected());
@@ -762,6 +769,9 @@ public class FuzzingSessionTab extends JPanel {
             }
             if (config.getAttackTypes().contains("extension")) {
                 skippedAttacks.add("Extension");
+            }
+            if (config.getAttackTypes().contains("encoding")) {
+                skippedAttacks.add("Encoding");
             }
 
             if (!skippedAttacks.isEmpty()) {

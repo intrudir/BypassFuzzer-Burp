@@ -11,7 +11,7 @@ import com.bypassfuzzer.burp.core.filter.*;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -40,7 +40,7 @@ public class FuzzingSessionTab extends JPanel {
     private JButton clearButton;
     private JLabel statusLabel;
     private JTable resultsTable;
-    private DefaultTableModel tableModel;
+    private FuzzerResultsTableModel tableModel;
 
     // Attack type checkboxes
     private JCheckBox headerAttackCheckbox;
@@ -59,10 +59,6 @@ public class FuzzingSessionTab extends JPanel {
     // Request/Response viewers
     private HttpRequestEditor requestViewer;
     private HttpResponseEditor responseViewer;
-
-    // Store results for lookup
-    private List<AttackResult> results;
-    private List<AttackResult> allResults; // Unfiltered results
 
     // Row coloring - map result object to color
     private Map<AttackResult, Color> resultColors = new HashMap<>();
@@ -94,8 +90,6 @@ public class FuzzingSessionTab extends JPanel {
         this.request = request;
         this.config = new FuzzerConfig();
         this.engine = new FuzzerEngine(api, config);
-        this.results = new ArrayList<>();
-        this.allResults = new ArrayList<>();
 
         // Initialize filters
         this.filterConfig = new FilterConfig();
@@ -316,24 +310,13 @@ public class FuzzingSessionTab extends JPanel {
         JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         mainSplitPane.setResizeWeight(0.4); // 40% for table, 60% for viewers
 
-        // Top of split - Results table
-        String[] columnNames = {"#", "Attack Type", "Payload", "Status", "Length", "Content-Type"};
-        tableModel = new DefaultTableModel(columnNames, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-
-            @Override
-            public Class<?> getColumnClass(int columnIndex) {
-                if (columnIndex == 0) return Integer.class; // # column
-                return String.class;
-            }
-        };
-
+        // Top of split - Results table with thread-safe model
+        tableModel = new FuzzerResultsTableModel();
         resultsTable = new JTable(tableModel);
-        resultsTable.setAutoCreateRowSorter(true);
         resultsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Initialize row sorter with proper numeric comparators
+        initializeRowSorter();
 
         // Add selection listener to show request/response
         resultsTable.getSelectionModel().addListSelectionListener(e -> {
@@ -364,8 +347,8 @@ public class FuzzingSessionTab extends JPanel {
                 if (!isSelected) {
                     // Convert view row to model row, then get the result object
                     int modelRow = table.convertRowIndexToModel(row);
-                    if (modelRow >= 0 && modelRow < results.size()) {
-                        AttackResult result = results.get(modelRow);
+                    AttackResult result = tableModel.getResult(modelRow);
+                    if (result != null) {
                         Color rowColor = resultColors.get(result);
                         if (rowColor != null) {
                             c.setBackground(rowColor);
@@ -672,8 +655,8 @@ public class FuzzingSessionTab extends JPanel {
         int selectedRow = resultsTable.getSelectedRow();
         if (selectedRow >= 0) {
             int modelRow = resultsTable.convertRowIndexToModel(selectedRow);
-            if (modelRow >= 0 && modelRow < results.size()) {
-                AttackResult result = results.get(modelRow);
+            AttackResult result = tableModel.getResult(modelRow);
+            if (result != null) {
                 resultColors.put(result, color);
                 resultsTable.repaint();
             }
@@ -684,8 +667,8 @@ public class FuzzingSessionTab extends JPanel {
         int selectedRow = resultsTable.getSelectedRow();
         if (selectedRow >= 0) {
             int modelRow = resultsTable.convertRowIndexToModel(selectedRow);
-            if (modelRow >= 0 && modelRow < results.size()) {
-                AttackResult result = results.get(modelRow);
+            AttackResult result = tableModel.getResult(modelRow);
+            if (result != null) {
                 resultColors.remove(result);
                 resultsTable.repaint();
             }
@@ -831,8 +814,8 @@ public class FuzzingSessionTab extends JPanel {
                 // Fuzzing completed, update UI on Swing thread
                 SwingUtilities.invokeLater(() -> {
                     if (!isShuttingDown && !engine.isRunning()) {
-                        int totalSent = allResults.size();
-                        int showing = results.size();
+                        int totalSent = tableModel.getAllResultsCount();
+                        int showing = tableModel.getRowCount();
                         statusLabel.setText("Completed: " + totalSent + " requests sent, showing " + showing);
                         startButton.setEnabled(true);
                         stopButton.setEnabled(false);
@@ -862,9 +845,7 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private void clearResults() {
-        tableModel.setRowCount(0);
-        results.clear();
-        allResults.clear();
+        tableModel.clear();
         resultColors.clear();
         smartFilter.reset();
         requestViewer.setRequest(null);
@@ -939,71 +920,30 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private void applyFilters() {
-        // Clear results list but preserve colors
-        results.clear();
-        // Don't clear resultColors - we want to preserve them when filters change
-
         // Save current sort state before rebuilding
         List<? extends javax.swing.RowSorter.SortKey> savedSortKeys = null;
         if (resultsTable.getRowSorter() != null) {
-            savedSortKeys = resultsTable.getRowSorter().getSortKeys();
+            savedSortKeys = new ArrayList<>(resultsTable.getRowSorter().getSortKeys());
         }
 
-        // Build all row data first to avoid firing events for each row
-        java.util.Vector<java.util.Vector<Object>> rowData = new java.util.Vector<>();
-        int requestNum = 1;
+        // Apply filter using predicate - model handles the data internally
+        tableModel.applyFilter(this::shouldShowResult);
 
-        for (AttackResult result : allResults) {
-            if (shouldShowResult(result)) {
-                results.add(result);
+        // Restore sorter with proper numeric comparators
+        initializeRowSorter();
 
-                java.util.Vector<Object> row = new java.util.Vector<>();
-                row.add(requestNum++);
-                row.add(result.getAttackType());
-                row.add(truncatePayload(result.getPayload(), 100));
-                row.add(result.getStatusCode());
-                row.add(result.getContentLength());
-                row.add(truncatePayload(result.getContentType(), 50));
-                rowData.add(row);
+        // Restore previous sort state if any
+        if (savedSortKeys != null && !savedSortKeys.isEmpty() && resultsTable.getRowSorter() != null) {
+            try {
+                resultsTable.getRowSorter().setSortKeys(savedSortKeys);
+            } catch (Exception e) {
+                // Ignore if sort keys can't be restored
             }
         }
 
-        // Set all data at once - fires only ONE table event instead of N events
-        java.util.Vector<String> columnNames = new java.util.Vector<>();
-        columnNames.add("#");
-        columnNames.add("Attack Type");
-        columnNames.add("Payload");
-        columnNames.add("Status");
-        columnNames.add("Length");
-        columnNames.add("Content-Type");
-        tableModel.setDataVector(rowData, columnNames);
-
-        // Recreate row sorter with proper numeric comparators (setDataVector resets it)
-        javax.swing.table.TableRowSorter<DefaultTableModel> sorter = new javax.swing.table.TableRowSorter<>(tableModel);
-        // Column 0: # (Integer)
-        sorter.setComparator(0, Comparator.comparingInt(o -> (Integer) o));
-        // Column 3: Status (Integer stored as Integer)
-        sorter.setComparator(3, Comparator.comparingInt(o -> (Integer) o));
-        // Column 4: Length (Integer stored as Integer)
-        sorter.setComparator(4, Comparator.comparingInt(o -> (Integer) o));
-        resultsTable.setRowSorter(sorter);
-
-        // Restore previous sort state if any
-        if (savedSortKeys != null && !savedSortKeys.isEmpty()) {
-            sorter.setSortKeys(savedSortKeys);
-        }
-
-        // Restore column widths after setDataVector resets them
-        resultsTable.getColumnModel().getColumn(0).setPreferredWidth(50);   // #
-        resultsTable.getColumnModel().getColumn(1).setPreferredWidth(120);  // Attack Type
-        resultsTable.getColumnModel().getColumn(2).setPreferredWidth(300);  // Payload
-        resultsTable.getColumnModel().getColumn(3).setPreferredWidth(60);   // Status
-        resultsTable.getColumnModel().getColumn(4).setPreferredWidth(80);   // Length
-        resultsTable.getColumnModel().getColumn(5).setPreferredWidth(150);  // Content-Type
-
         updateFilterStatus();
         resultsTable.repaint(); // Repaint to show any preserved colors
-        api.logging().logToOutput("Filters applied: showing " + results.size() + " of " + allResults.size() + " results");
+        api.logging().logToOutput("Filters applied: showing " + tableModel.getRowCount() + " of " + tableModel.getAllResultsCount() + " results");
     }
 
     private boolean shouldShowResult(AttackResult result) {
@@ -1070,7 +1010,7 @@ public class FuzzingSessionTab extends JPanel {
                 }
                 status.append("Manual: Active");
             }
-            status.append(" | Showing ").append(results.size()).append(" of ").append(allResults.size());
+            status.append(" | Showing ").append(tableModel.getRowCount()).append(" of ").append(tableModel.getAllResultsCount());
             filterStatusLabel.setText(status.toString());
         }
     }
@@ -1106,6 +1046,20 @@ public class FuzzingSessionTab extends JPanel {
         // If enabled=true but Collaborator not available, keep it disabled
     }
 
+    /**
+     * Initialize the row sorter with proper numeric comparators.
+     */
+    private void initializeRowSorter() {
+        TableRowSorter<FuzzerResultsTableModel> sorter = new TableRowSorter<>(tableModel);
+        // Column 0: # (Integer)
+        sorter.setComparator(0, Comparator.comparingInt(o -> (Integer) o));
+        // Column 3: Status (Integer)
+        sorter.setComparator(3, Comparator.comparingInt(o -> (Integer) o));
+        // Column 4: Length (Integer)
+        sorter.setComparator(4, Comparator.comparingInt(o -> (Integer) o));
+        resultsTable.setRowSorter(sorter);
+    }
+
     private boolean isCollaboratorAvailable() {
         if (isShuttingDown) {
             return false;
@@ -1118,33 +1072,20 @@ public class FuzzingSessionTab extends JPanel {
     }
 
     private void addResult(AttackResult result) {
-        // Update UI on Swing thread
+        // All UI and filter operations must happen on EDT to avoid deadlocks
         SwingUtilities.invokeLater(() -> {
             try {
-                // Store in allResults (unfiltered)
-                allResults.add(result);
-
-                // Track pattern in smart filter (always, regardless of filter state)
+                // Track pattern in smart filter
                 smartFilter.track(result);
 
-                // Check if result should be shown based on filters
-                if (shouldShowResult(result)) {
-                    results.add(result);
+                // Check if result passes current filters (accesses Swing components)
+                boolean passesFilter = shouldShowResult(result);
 
-                    // Add to table with request number
-                    Object[] row = {
-                        results.size(), // Request number
-                        result.getAttackType(),
-                        truncatePayload(result.getPayload(), 100),
-                        result.getStatusCode(),
-                        result.getContentLength(),
-                        truncatePayload(result.getContentType(), 50)
-                    };
-                    tableModel.addRow(row);
-                }
+                // Add to model
+                tableModel.addResult(result, passesFilter);
 
                 // Update status
-                int totalSent = allResults.size();
+                int totalSent = tableModel.getAllResultsCount();
                 int showing = tableModel.getRowCount();
                 if (engine.isRunning()) {
                     statusLabel.setText("Fuzzing... (" + totalSent + " requests sent, showing " + showing + ")");
@@ -1158,17 +1099,14 @@ public class FuzzingSessionTab extends JPanel {
                 // Update filter status
                 updateFilterStatus();
             } catch (Exception e) {
-                api.logging().logToError("Error in addResult Swing thread: " + e.getMessage());
-                e.printStackTrace();
+                api.logging().logToError("Error in addResult: " + e.getMessage());
             }
         });
     }
 
     private void showResultDetails(int modelRow) {
-        // modelRow is the index in the filtered results list
-        if (modelRow >= 0 && modelRow < results.size()) {
-            AttackResult result = results.get(modelRow);
-
+        AttackResult result = tableModel.getResult(modelRow);
+        if (result != null) {
             // Display request and response in Burp's native editors
             if (result.getRequest() != null) {
                 requestViewer.setRequest(result.getRequest());
@@ -1178,12 +1116,6 @@ public class FuzzingSessionTab extends JPanel {
                 responseViewer.setResponse(result.getResponse());
             }
         }
-    }
-
-    private String truncatePayload(String payload, int maxLength) {
-        if (payload == null) return "";
-        if (payload.length() <= maxLength) return payload;
-        return payload.substring(0, maxLength - 3) + "...";
     }
 
     private String extractPath(String url) {

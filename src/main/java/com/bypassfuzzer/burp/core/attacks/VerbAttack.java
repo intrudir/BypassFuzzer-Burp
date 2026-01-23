@@ -6,8 +6,10 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import com.bypassfuzzer.burp.core.RateLimiter;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -64,7 +66,56 @@ public class VerbAttack implements AttackStrategy {
             }
         }
 
-        // Test 2: Method override headers
+        // Test 2: Case variations of the original method
+        String originalMethod = baseRequest.method();
+        List<String> caseVariations = generateMethodCaseVariations(originalMethod);
+        for (String methodVariation : caseVariations) {
+            if (!shouldContinue.getAsBoolean()) {
+                logStop(api, count);
+                return;
+            }
+
+            try {
+                if (rateLimiter != null) {
+                    rateLimiter.waitBeforeRequest();
+                }
+
+                HttpRequest modifiedRequest = baseRequest.withMethod(methodVariation);
+                HttpResponse response = api.http().sendRequest(modifiedRequest).response();
+                resultCallback.accept(new AttackResult(getAttackType(), "Method: " + methodVariation + " (case)", modifiedRequest, response));
+                count++;
+            } catch (NullPointerException e) {
+                return;
+            } catch (Exception e) {
+                logError(api, "Verb attack error with method case variation " + methodVariation + ": " + e.getMessage());
+            }
+        }
+
+        // Test 3: X-prefix and X-suffix variations of the original method (e.g., XGET, GETX)
+        List<String> xVariations = Arrays.asList("X" + originalMethod, originalMethod + "X");
+        for (String xMethod : xVariations) {
+            if (!shouldContinue.getAsBoolean()) {
+                logStop(api, count);
+                return;
+            }
+
+            try {
+                if (rateLimiter != null) {
+                    rateLimiter.waitBeforeRequest();
+                }
+
+                HttpRequest modifiedRequest = baseRequest.withMethod(xMethod);
+                HttpResponse response = api.http().sendRequest(modifiedRequest).response();
+                resultCallback.accept(new AttackResult(getAttackType(), "Method: " + xMethod, modifiedRequest, response));
+                count++;
+            } catch (NullPointerException e) {
+                return;
+            } catch (Exception e) {
+                logError(api, "Verb attack error with X-variation " + xMethod + ": " + e.getMessage());
+            }
+        }
+
+        // Test 4: Method override headers
         for (String header : OVERRIDE_HEADERS) {
             for (String method : HTTP_METHODS) {
                 if (!shouldContinue.getAsBoolean()) {
@@ -89,7 +140,7 @@ public class VerbAttack implements AttackStrategy {
             }
         }
 
-        // Test 3: Method combinations (e.g., POST with override to GET)
+        // Test 5: Method combinations (e.g., POST with override to GET)
         for (String baseMethod : Arrays.asList("POST", "PUT")) {
             for (String header : OVERRIDE_HEADERS) {
                 for (String overrideMethod : Arrays.asList("GET", "DELETE", "PATCH")) {
@@ -118,7 +169,7 @@ public class VerbAttack implements AttackStrategy {
             }
         }
 
-        // Test 4: Parameter location variations for POST/PUT/PATCH
+        // Test 6: Parameter location variations for POST/PUT/PATCH
         count += testParameterVariations(api, baseRequest, resultCallback, shouldContinue, rateLimiter);
 
         try {
@@ -341,6 +392,65 @@ public class VerbAttack implements AttackStrategy {
             // Ignore
         }
         return "/";
+    }
+
+    /**
+     * Generate case variations for an HTTP method.
+     * Includes systematic variations (lowercase, title case) and random variations.
+     * Skips the original uppercase form since it's already tested in Test 1.
+     */
+    private List<String> generateMethodCaseVariations(String method) {
+        List<String> variations = new ArrayList<>();
+
+        // Skip if method is null or empty
+        if (method == null || method.isEmpty()) {
+            return variations;
+        }
+
+        // Systematic variations (skip original uppercase, it's tested in Test 1)
+        String lowercase = method.toLowerCase();
+        String titleCase = Character.toUpperCase(method.charAt(0)) + method.substring(1).toLowerCase();
+
+        // Only add if different from original
+        if (!lowercase.equals(method)) {
+            variations.add(lowercase);  // GET -> get
+        }
+        if (!titleCase.equals(method) && !titleCase.equals(lowercase)) {
+            variations.add(titleCase);  // GET -> Get
+        }
+
+        // Generate 3 random case variations
+        for (int i = 0; i < 3; i++) {
+            String randomized = randomizeCase(method);
+            // Only add if it's different from original and systematic variations
+            if (!randomized.equals(method) && !randomized.equals(lowercase) && !randomized.equals(titleCase)) {
+                variations.add(randomized);
+            }
+        }
+
+        return variations;
+    }
+
+    /**
+     * Randomize capitalization of characters in a string.
+     */
+    private String randomizeCase(String input) {
+        Random random = new Random();
+        StringBuilder result = new StringBuilder();
+
+        for (char c : input.toCharArray()) {
+            if (Character.isLetter(c)) {
+                if (random.nextBoolean()) {
+                    result.append(Character.toUpperCase(c));
+                } else {
+                    result.append(Character.toLowerCase(c));
+                }
+            } else {
+                result.append(c);
+            }
+        }
+
+        return result.toString();
     }
 
     private void logStop(MontoyaApi api, int count) {

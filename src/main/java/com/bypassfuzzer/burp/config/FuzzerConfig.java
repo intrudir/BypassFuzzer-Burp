@@ -21,6 +21,8 @@ public class FuzzerConfig {
     private boolean enableExtensionAttack = true;
     private boolean enableContentTypeAttack = true;
     private boolean enableEncodingAttack = true;
+    private boolean enableCookieParamAttack = true; // Debug params via Cookie header
+    private boolean enableFuzzExistingCookies = true; // Fuzz existing cookies in request
 
     // Filtering options
     private boolean enableSmartFilter = true;
@@ -140,6 +142,22 @@ public class FuzzerConfig {
         this.enableEncodingAttack = enableEncodingAttack;
     }
 
+    public boolean isEnableCookieParamAttack() {
+        return enableCookieParamAttack;
+    }
+
+    public void setEnableCookieParamAttack(boolean enableCookieParamAttack) {
+        this.enableCookieParamAttack = enableCookieParamAttack;
+    }
+
+    public boolean isEnableFuzzExistingCookies() {
+        return enableFuzzExistingCookies;
+    }
+
+    public void setEnableFuzzExistingCookies(boolean enableFuzzExistingCookies) {
+        this.enableFuzzExistingCookies = enableFuzzExistingCookies;
+    }
+
     public boolean isEnableSmartFilter() {
         return enableSmartFilter;
     }
@@ -228,6 +246,7 @@ public class FuzzerConfig {
         if (enableExtensionAttack) types.add("extension");
         if (enableContentTypeAttack) types.add("contenttype");
         if (enableEncodingAttack) types.add("encoding");
+        if (enableCookieParamAttack) types.add("cookie");
         return types;
     }
 }

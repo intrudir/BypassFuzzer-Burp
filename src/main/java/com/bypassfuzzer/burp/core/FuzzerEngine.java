@@ -236,6 +236,9 @@ public class FuzzerEngine {
         if (config.isEnableParamAttack()) {
             strategies.add(new ParamAttack());
         }
+        if (config.isEnableCookieParamAttack()) {
+            strategies.add(new CookieParamAttack(config.isEnableFuzzExistingCookies()));
+        }
         if (config.isEnableTrailingDotAttack()) {
             strategies.add(new TrailingDotAttack());
         }

@@ -55,6 +55,8 @@ public class FuzzingSessionTab extends JPanel {
     private JCheckBox protocolAttackCheckbox;
     private JCheckBox caseAttackCheckbox;
     private JCheckBox collaboratorCheckbox;
+    private JCheckBox cookieParamAttackCheckbox;
+    private JCheckBox fuzzExistingCookiesCheckbox;
 
     // Request/Response viewers
     private HttpRequestEditor requestViewer;
@@ -145,6 +147,7 @@ public class FuzzingSessionTab extends JPanel {
         encodingAttackCheckbox = new JCheckBox("Encoding", config.isEnableEncodingAttack());
         protocolAttackCheckbox = new JCheckBox("Protocol", config.isEnableProtocolAttack());
         caseAttackCheckbox = new JCheckBox("Case Variation", config.isEnableCaseAttack());
+        cookieParamAttackCheckbox = new JCheckBox("Debug Cookies", config.isEnableCookieParamAttack());
 
         // Add listeners to clear warning when checkboxes are changed
         headerAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
@@ -158,16 +161,18 @@ public class FuzzingSessionTab extends JPanel {
         encodingAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         protocolAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
         caseAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
+        cookieParamAttackCheckbox.addActionListener(e -> warningLabel.setVisible(false));
 
-        // Row 1: First 4 checkboxes
+        // Row 1: Header, Path, Verb, Debug Params, Debug Cookies
         JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         row1.add(headerAttackCheckbox);
         row1.add(pathAttackCheckbox);
         row1.add(verbAttackCheckbox);
         row1.add(paramAttackCheckbox);
+        row1.add(cookieParamAttackCheckbox);
         attackPanel.add(row1);
 
-        // Row 2: Next 5 checkboxes
+        // Row 2: Trailing Dot, Trailing Slash, Extension, Content-Type, Protocol
         JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         row2.add(trailingDotAttackCheckbox);
         row2.add(trailingSlashAttackCheckbox);
@@ -176,7 +181,7 @@ public class FuzzingSessionTab extends JPanel {
         row2.add(protocolAttackCheckbox);
         attackPanel.add(row2);
 
-        // Row 3: Last 2 checkboxes
+        // Row 3: Encoding, Case Variation
         JPanel row3 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         row3.add(encodingAttackCheckbox);
         row3.add(caseAttackCheckbox);
@@ -196,6 +201,7 @@ public class FuzzingSessionTab extends JPanel {
             encodingAttackCheckbox.setSelected(true);
             protocolAttackCheckbox.setSelected(true);
             caseAttackCheckbox.setSelected(true);
+            cookieParamAttackCheckbox.setSelected(true);
         });
 
         JButton uncheckAllButton = new JButton("Uncheck All");
@@ -211,6 +217,7 @@ public class FuzzingSessionTab extends JPanel {
             encodingAttackCheckbox.setSelected(false);
             protocolAttackCheckbox.setSelected(false);
             caseAttackCheckbox.setSelected(false);
+            cookieParamAttackCheckbox.setSelected(false);
         });
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
@@ -247,6 +254,13 @@ public class FuzzingSessionTab extends JPanel {
             collabRow.add(collabInfoIcon);
         }
         optionsPanel.add(collabRow);
+
+        // Fuzz existing cookies row
+        JPanel fuzzCookiesRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        fuzzExistingCookiesCheckbox = new JCheckBox("Debug Cookies: also fuzz existing cookies in request", config.isEnableFuzzExistingCookies());
+        fuzzExistingCookiesCheckbox.setToolTipText("When enabled, tries debug values on cookies already in the request");
+        fuzzCookiesRow.add(fuzzExistingCookiesCheckbox);
+        optionsPanel.add(fuzzCookiesRow);
 
         // Rate limiting row
         JPanel rateRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
@@ -740,6 +754,8 @@ public class FuzzingSessionTab extends JPanel {
         config.setEnableProtocolAttack(protocolAttackCheckbox.isSelected());
         config.setEnableCaseAttack(caseAttackCheckbox.isSelected());
         config.setEnableCollaboratorPayloads(collaboratorCheckbox.isSelected());
+        config.setEnableCookieParamAttack(cookieParamAttackCheckbox.isSelected());
+        config.setEnableFuzzExistingCookies(fuzzExistingCookiesCheckbox.isSelected());
 
         // Read rate limiting settings
         try {
@@ -1115,6 +1131,8 @@ public class FuzzingSessionTab extends JPanel {
         encodingAttackCheckbox.setEnabled(enabled);
         protocolAttackCheckbox.setEnabled(enabled);
         caseAttackCheckbox.setEnabled(enabled);
+        cookieParamAttackCheckbox.setEnabled(enabled);
+        fuzzExistingCookiesCheckbox.setEnabled(enabled);
 
         // Disable rate limiting configuration during fuzzing
         requestsPerSecondField.setEnabled(enabled);

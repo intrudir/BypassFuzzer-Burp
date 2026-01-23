@@ -8,7 +8,6 @@ import com.bypassfuzzer.burp.core.RateLimiter;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,25 +18,27 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
- * Debug parameter injection attack.
- * Appends debug/admin query parameters to bypass access controls.
+ * Cookie-based debug parameter injection attack.
+ * Injects debug/admin parameters via the Cookie header to bypass access controls.
  *
  * Attack order:
- * 1. Fuzz existing URL params (preserve name case, try different values)
- * 2. Add new URL params (standard payloads)
+ * 1. Fuzz existing cookies (preserve name case, try different values)
+ * 2. Add new cookies (standard debug payloads)
  */
-public class ParamAttack implements AttackStrategy {
+public class CookieParamAttack implements AttackStrategy {
 
-    private static final String ATTACK_TYPE = "Param";
-    private static final String EXISTING_PARAM_TYPE = "Param (Existing)";
+    private static final String ATTACK_TYPE = "Cookie";
+    private static final String EXISTING_COOKIE_TYPE = "Cookie (Existing)";
 
-    // Values to try when fuzzing existing params
+    // Values to try when fuzzing existing cookies
     private static final String[] FUZZ_VALUES = {
         "true", "1", "yes", "on", "admin", "root", "false", "0", "no", "off"
     };
 
-    public ParamAttack() {
-        // Default constructor
+    private final boolean fuzzExistingCookies;
+
+    public CookieParamAttack(boolean fuzzExistingCookies) {
+        this.fuzzExistingCookies = fuzzExistingCookies;
     }
 
     @Override
@@ -51,70 +52,68 @@ public class ParamAttack implements AttackStrategy {
 
         List<String> paramPayloads = buildParamPayloads();
 
-        // Extract just the path+query from the full URL
-        String basePath = extractPathAndQuery(targetUrl);
+        // Phase 1: Fuzz existing cookies first (if enabled)
+        if (fuzzExistingCookies) {
+            fuzzExistingCookies(api, originalRequest, resultCallback, isRunning, rateLimiter);
+        }
 
-        // Phase 1: Fuzz existing URL query parameters first
-        fuzzExistingUrlParams(api, originalRequest, basePath, resultCallback, isRunning, rateLimiter);
-
-        // Phase 2: Add new URL query string parameters
-        executeUrlParamAttacks(api, originalRequest, basePath, paramPayloads, resultCallback, isRunning, rateLimiter);
+        // Phase 2: Add new cookies
+        executeNewCookieAttacks(api, originalRequest, paramPayloads, resultCallback, isRunning, rateLimiter);
     }
 
     /**
-     * Fuzz existing URL query parameters by trying different values while preserving param name case.
+     * Fuzz existing cookies by trying different values while preserving cookie name case.
      */
-    private void fuzzExistingUrlParams(MontoyaApi api, HttpRequest originalRequest, String basePath,
-                                       Consumer<AttackResult> resultCallback, BooleanSupplier isRunning,
-                                       RateLimiter rateLimiter) {
+    private void fuzzExistingCookies(MontoyaApi api, HttpRequest originalRequest,
+                                     Consumer<AttackResult> resultCallback, BooleanSupplier isRunning,
+                                     RateLimiter rateLimiter) {
 
-        // Parse existing query parameters
-        Map<String, String> existingParams = parseQueryParams(basePath);
-        if (existingParams.isEmpty()) {
+        String existingCookie = originalRequest.headerValue("Cookie");
+        if (existingCookie == null || existingCookie.isEmpty()) {
             return;
         }
 
-        // Get path without query string
-        String pathOnly = basePath.contains("?") ? basePath.substring(0, basePath.indexOf("?")) : basePath;
+        // Parse existing cookies
+        Map<String, String> cookies = parseCookies(existingCookie);
+        if (cookies.isEmpty()) {
+            return;
+        }
 
-        for (Map.Entry<String, String> param : existingParams.entrySet()) {
-            String paramName = param.getKey();
+        for (Map.Entry<String, String> cookie : cookies.entrySet()) {
+            String cookieName = cookie.getKey();
 
-            // Try each fuzz value for this parameter
+            // Try each fuzz value for this cookie
             for (String fuzzValue : FUZZ_VALUES) {
                 if (!isRunning.getAsBoolean()) {
                     return;
                 }
 
                 try {
-                    // Build new query string with modified value for this param
-                    StringBuilder newQuery = new StringBuilder();
-                    for (Map.Entry<String, String> p : existingParams.entrySet()) {
-                        if (newQuery.length() > 0) {
-                            newQuery.append("&");
+                    // Build new cookie string with modified value for this cookie
+                    StringBuilder newCookie = new StringBuilder();
+                    for (Map.Entry<String, String> c : cookies.entrySet()) {
+                        if (newCookie.length() > 0) {
+                            newCookie.append("; ");
                         }
-                        if (p.getKey().equals(paramName)) {
-                            // Use fuzz value for this param
-                            newQuery.append(paramName).append("=").append(fuzzValue);
+                        if (c.getKey().equals(cookieName)) {
+                            // Use fuzz value for this cookie
+                            newCookie.append(cookieName).append("=").append(fuzzValue);
                         } else {
                             // Keep original value
-                            newQuery.append(p.getKey()).append("=").append(p.getValue());
+                            newCookie.append(c.getKey()).append("=").append(c.getValue());
                         }
                     }
 
-                    String modifiedPath = pathOnly + "?" + newQuery;
-
-                    // Apply rate limiting
                     if (rateLimiter != null) {
                         rateLimiter.waitBeforeRequest();
                     }
 
-                    HttpRequest modifiedRequest = originalRequest.withPath(modifiedPath);
+                    HttpRequest modifiedRequest = originalRequest.withUpdatedHeader("Cookie", newCookie.toString());
                     HttpResponse response = api.http().sendRequest(modifiedRequest).response();
 
                     AttackResult result = new AttackResult(
-                        EXISTING_PARAM_TYPE,
-                        paramName + "=" + fuzzValue,
+                        EXISTING_COOKIE_TYPE,
+                        cookieName + "=" + fuzzValue,
                         modifiedRequest,
                         response
                     );
@@ -122,18 +121,20 @@ public class ParamAttack implements AttackStrategy {
                     resultCallback.accept(result);
 
                 } catch (Exception e) {
-                    api.logging().logToError("Error fuzzing existing param '" + paramName + "': " + e.getMessage());
+                    api.logging().logToError("Error fuzzing existing cookie '" + cookieName + "': " + e.getMessage());
                 }
             }
         }
     }
 
     /**
-     * Execute standard URL query parameter attacks (adding new params).
+     * Execute cookie-based parameter attacks (adding new cookies).
      */
-    private void executeUrlParamAttacks(MontoyaApi api, HttpRequest originalRequest, String basePath,
-                                        List<String> paramPayloads, Consumer<AttackResult> resultCallback,
-                                        BooleanSupplier isRunning, RateLimiter rateLimiter) {
+    private void executeNewCookieAttacks(MontoyaApi api, HttpRequest originalRequest,
+                                         List<String> paramPayloads, Consumer<AttackResult> resultCallback,
+                                         BooleanSupplier isRunning, RateLimiter rateLimiter) {
+
+        String existingCookie = originalRequest.headerValue("Cookie");
 
         for (String param : paramPayloads) {
             if (!isRunning.getAsBoolean()) {
@@ -141,12 +142,17 @@ public class ParamAttack implements AttackStrategy {
             }
 
             try {
-                String modifiedPath = appendParameter(basePath, param);
-
                 if (rateLimiter != null) {
                     rateLimiter.waitBeforeRequest();
                 }
-                HttpRequest modifiedRequest = originalRequest.withPath(modifiedPath);
+
+                HttpRequest modifiedRequest;
+                if (existingCookie != null && !existingCookie.isEmpty()) {
+                    modifiedRequest = originalRequest.withUpdatedHeader("Cookie", existingCookie + "; " + param);
+                } else {
+                    modifiedRequest = originalRequest.withAddedHeader("Cookie", param);
+                }
+
                 HttpResponse response = api.http().sendRequest(modifiedRequest).response();
 
                 AttackResult result = new AttackResult(
@@ -159,44 +165,35 @@ public class ParamAttack implements AttackStrategy {
                 resultCallback.accept(result);
 
             } catch (Exception e) {
-                api.logging().logToError("Error in param attack with payload '" + param + "': " + e.getMessage());
+                api.logging().logToError("Error in cookie param attack with payload '" + param + "': " + e.getMessage());
             }
         }
     }
 
     /**
-     * Parse query parameters from a URL path.
+     * Parse cookies from a Cookie header value.
      * Returns a LinkedHashMap to preserve order.
      */
-    private Map<String, String> parseQueryParams(String pathWithQuery) {
-        Map<String, String> params = new LinkedHashMap<>();
+    private Map<String, String> parseCookies(String cookieHeader) {
+        Map<String, String> cookies = new LinkedHashMap<>();
 
-        int queryStart = pathWithQuery.indexOf("?");
-        if (queryStart == -1 || queryStart == pathWithQuery.length() - 1) {
-            return params;
+        if (cookieHeader == null || cookieHeader.isEmpty()) {
+            return cookies;
         }
 
-        String queryString = pathWithQuery.substring(queryStart + 1);
-        String[] pairs = queryString.split("&");
+        String[] pairs = cookieHeader.split(";");
 
         for (String pair : pairs) {
+            pair = pair.trim();
             int eqIdx = pair.indexOf("=");
             if (eqIdx > 0) {
-                String name = pair.substring(0, eqIdx);
-                String value = eqIdx < pair.length() - 1 ? pair.substring(eqIdx + 1) : "";
-                try {
-                    // Decode URL-encoded values but preserve the name as-is
-                    params.put(name, URLDecoder.decode(value, StandardCharsets.UTF_8.name()));
-                } catch (Exception e) {
-                    params.put(name, value);
-                }
-            } else if (!pair.isEmpty()) {
-                // Param with no value
-                params.put(pair, "");
+                String name = pair.substring(0, eqIdx).trim();
+                String value = eqIdx < pair.length() - 1 ? pair.substring(eqIdx + 1).trim() : "";
+                cookies.put(name, value);
             }
         }
 
-        return params;
+        return cookies;
     }
 
     /**
@@ -284,7 +281,6 @@ public class ParamAttack implements AttackStrategy {
 
     /**
      * Randomize capitalization of characters in a string.
-     * Creates variations like: admin=true -> Admin=true, aDmin=true, etc.
      */
     private String randomizeCase(String input) {
         Random random = new Random();
@@ -292,7 +288,6 @@ public class ParamAttack implements AttackStrategy {
 
         for (char c : input.toCharArray()) {
             if (Character.isLetter(c)) {
-                // Randomly choose upper or lower case
                 if (random.nextBoolean()) {
                     result.append(Character.toUpperCase(c));
                 } else {
@@ -304,37 +299,5 @@ public class ParamAttack implements AttackStrategy {
         }
 
         return result.toString();
-    }
-
-    /**
-     * Extract path and query from a full URL.
-     * Converts "https://example.com/path?query" to "/path?query"
-     */
-    private String extractPathAndQuery(String url) {
-        try {
-            int schemeEnd = url.indexOf("://");
-            if (schemeEnd != -1) {
-                int pathStart = url.indexOf('/', schemeEnd + 3);
-                if (pathStart != -1) {
-                    return url.substring(pathStart);
-                }
-            }
-            // If no path found, return root
-            return "/";
-        } catch (Exception e) {
-            return "/";
-        }
-    }
-
-    /**
-     * Append parameter to URL, handling existing query strings.
-     */
-    private String appendParameter(String url, String param) {
-        // Check if URL already has query string
-        if (url.contains("?")) {
-            return url + "&" + param;
-        } else {
-            return url + "?" + param;
-        }
     }
 }

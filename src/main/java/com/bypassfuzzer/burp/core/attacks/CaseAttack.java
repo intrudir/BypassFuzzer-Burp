@@ -163,8 +163,9 @@ public class CaseAttack implements AttackStrategy {
     }
 
     /**
-     * Generate random case variations of a string.
-     * Creates N random capitalizations of the input.
+     * Generate case variations of a string.
+     * First adds systematic variations (more likely to hit common patterns),
+     * then random capitalizations.
      */
     private List<String> generateCaseVariations(String input, int count) {
         List<String> variations = new ArrayList<>();
@@ -172,12 +173,40 @@ public class CaseAttack implements AttackStrategy {
         // Add original
         variations.add(input);
 
+        // Add systematic variations first (more likely to hit common patterns)
+        variations.add(input.toUpperCase());           // /admin -> /ADMIN
+        variations.add(input.toLowerCase());           // /Admin -> /admin
+        variations.add(titleCase(input));              // /admin/panel -> /Admin/Panel
+
         // Generate random variations
         for (int i = 0; i < count; i++) {
             variations.add(randomizeCase(input));
         }
 
         return variations;
+    }
+
+    /**
+     * Convert string to title case (capitalize first letter of each path segment).
+     * /admin/users -> /Admin/Users
+     */
+    private String titleCase(String input) {
+        StringBuilder result = new StringBuilder();
+        boolean capitalizeNext = true;
+
+        for (char c : input.toCharArray()) {
+            if (c == '/' || c == '?' || c == '&' || c == '=') {
+                result.append(c);
+                capitalizeNext = true;
+            } else if (capitalizeNext && Character.isLetter(c)) {
+                result.append(Character.toUpperCase(c));
+                capitalizeNext = false;
+            } else {
+                result.append(Character.toLowerCase(c));
+            }
+        }
+
+        return result.toString();
     }
 
     /**

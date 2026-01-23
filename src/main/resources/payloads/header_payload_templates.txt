@@ -227,9 +227,9 @@ X-Http-Host-Override: {OOB DOMAIN PAYLOAD}
 X-Original-Remote-Addr: {IP PAYLOAD}
 X-Original-Remote-Addr: {OOB PAYLOAD}
 X-Original-URL: {IP PAYLOAD}
-X-Original-URL: {OOB PAYLOAD},
-X-Original-URL: {PATH PAYLOAD},
-X-Original-URL: {URL PAYLOAD},
+X-Original-URL: {OOB PAYLOAD}
+X-Original-URL: {PATH PAYLOAD}
+X-Original-URL: {URL PAYLOAD}
 X-Original-Url: {IP PAYLOAD}
 X-Original-Url: {OOB PAYLOAD}
 X-Original-Url: {PATH PAYLOAD}

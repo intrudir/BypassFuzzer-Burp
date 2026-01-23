@@ -57,6 +57,8 @@ public class FuzzingSessionTab extends JPanel {
     private JCheckBox collaboratorCheckbox;
     private JCheckBox cookieParamAttackCheckbox;
     private JCheckBox fuzzExistingCookiesCheckbox;
+    private JButton checkAllButton;
+    private JButton uncheckAllButton;
 
     // Request/Response viewers
     private HttpRequestEditor requestViewer;
@@ -188,7 +190,7 @@ public class FuzzingSessionTab extends JPanel {
         attackPanel.add(row3);
 
         // Add Check All / Uncheck All buttons
-        JButton checkAllButton = new JButton("Check All");
+        checkAllButton = new JButton("Check All");
         checkAllButton.addActionListener(e -> {
             headerAttackCheckbox.setSelected(true);
             pathAttackCheckbox.setSelected(true);
@@ -204,7 +206,7 @@ public class FuzzingSessionTab extends JPanel {
             cookieParamAttackCheckbox.setSelected(true);
         });
 
-        JButton uncheckAllButton = new JButton("Uncheck All");
+        uncheckAllButton = new JButton("Uncheck All");
         uncheckAllButton.addActionListener(e -> {
             headerAttackCheckbox.setSelected(false);
             pathAttackCheckbox.setSelected(false);
@@ -1133,6 +1135,8 @@ public class FuzzingSessionTab extends JPanel {
         caseAttackCheckbox.setEnabled(enabled);
         cookieParamAttackCheckbox.setEnabled(enabled);
         fuzzExistingCookiesCheckbox.setEnabled(enabled);
+        checkAllButton.setEnabled(enabled);
+        uncheckAllButton.setEnabled(enabled);
 
         // Disable rate limiting configuration during fuzzing
         requestsPerSecondField.setEnabled(enabled);

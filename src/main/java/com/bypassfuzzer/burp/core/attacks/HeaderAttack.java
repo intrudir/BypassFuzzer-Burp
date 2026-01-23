@@ -71,9 +71,22 @@ public class HeaderAttack implements AttackStrategy {
 
                 String headerName = parts[0].trim();
                 String headerValue = parts[1].trim();
-                HttpRequest modifiedRequest = baseRequest.withAddedHeader(headerName, headerValue);
+                HttpRequest modifiedRequest;
+                String displayPayload;
+
+                // Check for PATH_SWAP marker
+                if (headerValue.endsWith(" [PATH_SWAP]")) {
+                    // Remove marker, swap path to /
+                    headerValue = headerValue.replace(" [PATH_SWAP]", "");
+                    modifiedRequest = baseRequest.withPath("/").withAddedHeader(headerName, headerValue);
+                    displayPayload = headerName + ": " + headerValue + " (path→/)";
+                } else {
+                    modifiedRequest = baseRequest.withAddedHeader(headerName, headerValue);
+                    displayPayload = payload;
+                }
+
                 HttpResponse response = api.http().sendRequest(modifiedRequest).response();
-                resultCallback.accept(new AttackResult(getAttackType(), payload, modifiedRequest, response));
+                resultCallback.accept(new AttackResult(getAttackType(), displayPayload, modifiedRequest, response));
                 count++;
             } catch (NullPointerException e) {
                 break;

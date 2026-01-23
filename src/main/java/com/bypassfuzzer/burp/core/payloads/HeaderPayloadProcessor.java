@@ -14,6 +14,7 @@ import java.util.List;
  * - {IP PAYLOAD} - Replaced with IP addresses from ip_payloads.txt
  * - {URL PAYLOAD} - Replaced with full target URL
  * - {PATH PAYLOAD} - Replaced with URL path
+ * - {PATH SWAP} - Replaced with URL path + marker; signals HeaderAttack to swap request path to /
  * - {OOB PAYLOAD} - Replaced with dynamically generated Burp Collaborator payload URLs (http:// and https://)
  * - {OOB DOMAIN PAYLOAD} - Replaced with dynamically generated Burp Collaborator domain only
  * - {WHITESPACE PAYLOAD} - Replaced with whitespace character
@@ -64,6 +65,9 @@ public class HeaderPayloadProcessor {
                 processedHeaders.add(template.replace("{URL PAYLOAD}", targetUrl));
             } else if (template.contains("{PATH PAYLOAD}")) {
                 processedHeaders.add(template.replace("{PATH PAYLOAD}", targetPath));
+            } else if (template.contains("{PATH SWAP}")) {
+                // PATH SWAP: marker signals HeaderAttack to swap request path to /
+                processedHeaders.add(template.replace("{PATH SWAP}", targetPath + " [PATH_SWAP]"));
             } else if (template.contains("{OOB PAYLOAD}")) {
                 // Try to generate dynamic Collaborator payload first
                 String collaboratorPayload = generateCollaboratorPayload(api);

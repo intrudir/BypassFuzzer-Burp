@@ -92,6 +92,7 @@ Origin: {OOB PAYLOAD}
 Origin: {URL PAYLOAD}
 Path: {OOB PAYLOAD}
 Path: {PATH PAYLOAD}
+Path: {PATH SWAP}
 Path: {URL PAYLOAD}
 Php-Auth-User: admin
 Proxy-Authorization: {OOB PAYLOAD}
@@ -229,10 +230,12 @@ X-Original-Remote-Addr: {OOB PAYLOAD}
 X-Original-URL: {IP PAYLOAD}
 X-Original-URL: {OOB PAYLOAD}
 X-Original-URL: {PATH PAYLOAD}
+X-Original-URL: {PATH SWAP}
 X-Original-URL: {URL PAYLOAD}
 X-Original-Url: {IP PAYLOAD}
 X-Original-Url: {OOB PAYLOAD}
 X-Original-Url: {PATH PAYLOAD}
+X-Original-Url: {PATH SWAP}
 X-Original-Url: {URL PAYLOAD}
 X-Originally-Forwarded-For: {IP PAYLOAD}
 X-Originally-Forwarded-For: {OOB DOMAIN PAYLOAD}
@@ -268,9 +271,11 @@ X-Request-Timestamp: {URL PAYLOAD}
 X-Requested-With: XMLHttpRequest
 X-Rewrite-URL: {IP PAYLOAD}
 X-Rewrite-URL: {OOB PAYLOAD}
+X-Rewrite-URL: {PATH SWAP}
 X-Rewrite-Url: {IP PAYLOAD}
 X-Rewrite-Url: {OOB PAYLOAD}
 X-Rewrite-Url: {PATH PAYLOAD}
+X-Rewrite-Url: {PATH SWAP}
 X-True-IP: {IP PAYLOAD}
 X-True-IP: {OOB DOMAIN PAYLOAD}
 X-UIDH: 31337DEADBEEFCAFE

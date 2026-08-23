@@ -36,6 +36,7 @@ BypassFuzzer has four main testing areas:
   - Excludes images, JavaScript, CSS, and WOFF responses from authenticated-traffic discovery by default, with a checkbox to include them
   - Imports `.txt` target lists with one absolute URL per line
   - Imports OpenAPI 3 and Swagger 2 JSON/YAML specifications as method-aware sweep candidates
+  - Imports Postman Collection v2.0/v2.1 JSON, preserving methods, parameters, headers, auth, and request bodies
   - Deduplicates endpoint shapes before sending probes
   - Uses a bounded, mile-wide/inch-deep probe set with a default cap of 280 probes per endpoint
   - Adaptive per-host rate control: automatically discovers each host's rate-limit ceiling and rides just under it (no delay/rate knobs to tune), sweeping every host in parallel at its own speed
@@ -136,7 +137,7 @@ The `Sweep` tab is available as soon as the extension loads. It is intended for 
 1. Select a Sweep mode:
    - `Blocked responses` to load Proxy history by status
    - `Authenticated traffic` to load credential-bearing `2xx` Proxy history
-   - `Import targets` to load a `.txt` URL list
+   - `Import targets` to load a `.txt` URL list, OpenAPI/Swagger specification, or Postman collection
 2. In `Blocked responses`, select which Proxy history responses to load:
    - `401` and `403` are selected by default
    - `3xx` and `4xx` can be included when you intentionally want broader coverage

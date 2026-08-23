@@ -623,6 +623,30 @@ class CoverageSweepPanelTest {
     }
 
     @Test
+    void importsPostmanCollectionThroughImportMode() throws Exception {
+        Path collection = tempDir.resolve("example.postman_collection.json");
+        String source = """
+            {"info":{"schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+             "item":[{"request":{"method":"POST","url":"https://api.example.test/users"}}]}
+            """;
+        Files.writeString(collection, source);
+        CoverageSweepEngine engine = mock(CoverageSweepEngine.class);
+        CoverageSweepPreview preview = new CoverageSweepPreview(1, 1, List.of(
+            candidate("https://api.example.test/users", "/users")
+        ));
+        when(engine.collectPreviewFromPostman(eq(source), eq(""),
+            any(CoverageSweepOptions.class), eq(false))).thenReturn(preview);
+        CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
+
+        assertTrue(panel.importTargetsFromFile(collection));
+
+        assertEquals(1, field(panel, "candidateTable", JTable.class).getRowCount());
+        assertTrue(field(panel, "statusLabel", JLabel.class).getText().contains("Postman request"));
+        verify(engine).collectPreviewFromPostman(eq(source), eq(""),
+            any(CoverageSweepOptions.class), eq(false));
+    }
+
+    @Test
     void appliesBaseUrlToAlreadyImportedOpenApiDocument() throws Exception {
         Path spec = tempDir.resolve("openapi.yaml");
         String source = "openapi: 3.0.0\npaths: {}\n";

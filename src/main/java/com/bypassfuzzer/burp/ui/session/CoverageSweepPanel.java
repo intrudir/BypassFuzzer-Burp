@@ -15,6 +15,7 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepOptions;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPayloadSet;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
+import com.bypassfuzzer.burp.core.coverage.PostmanCollectionParser;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
@@ -664,8 +665,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             dialog.dispose();
             importTargetFile();
         });
-        JButton openApi = new JButton("Import OpenAPI specification");
-        openApi.setToolTipText("Choose a local OpenAPI file or provide a URL to an OpenAPI specification.");
+        JButton openApi = new JButton("Import API specification");
+        openApi.setToolTipText("Choose a local OpenAPI/Postman file or provide an OpenAPI specification URL.");
         openApi.addActionListener(e -> {
             dialog.dispose();
             openOpenApiImportDialog();
@@ -958,7 +959,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private boolean requireImportedMode() {
         if (currentMode() != CoverageSweepMode.IMPORTED_TARGETS) {
-            statusLabel.setText("Select Import targets mode before importing targets or OpenAPI specifications.");
+            statusLabel.setText("Select Import targets mode before importing targets or API specifications.");
             return false;
         }
         return true;
@@ -991,7 +992,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             JFileChooser chooser = new JFileChooser();
             chooser.setDialogTitle("Import OpenAPI Specification");
             chooser.setFileFilter(new FileNameExtensionFilter(
-                "OpenAPI specifications (*.json, *.yaml, *.yml)", "json", "yaml", "yml"));
+                "OpenAPI and Postman collections (*.json, *.yaml, *.yml)", "json", "yaml", "yml"));
             if (chooser.showOpenDialog(api.userInterface().swingUtils().suiteFrame()) == JFileChooser.APPROVE_OPTION
                 && chooser.getSelectedFile() != null) {
                 importTargetsFromFile(chooser.getSelectedFile().toPath());
@@ -1072,7 +1073,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Import Sweep Targets");
         chooser.setFileFilter(new FileNameExtensionFilter(
-            "Targets, retry JSON, and OpenAPI specs (*.txt, *.json, *.yaml, *.yml)",
+            "Targets, retry JSON, OpenAPI specs, and Postman collections (*.txt, *.json, *.yaml, *.yml)",
             "txt", "json", "yaml", "yml"));
         int result = chooser.showOpenDialog(api.userInterface().swingUtils().suiteFrame());
         if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
@@ -1110,7 +1111,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 CoverageSweepPreview preview = engine.collectPreviewFromOpenApi(
                     source, fileName, baseUrl, fetched.effectiveUrl(), options, dedupeEndpoints);
                 return new RemoteOpenApiImport(preview,
-                    new ImportedOpenApiDocument(source, fileName, fetched.effectiveUrl()));
+                    new ImportedOpenApiDocument(source, fileName, fetched.effectiveUrl(), false));
             }
 
             @Override
@@ -1165,18 +1166,23 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                     + importedPreviewCounts(preview, dedupeEndpoints));
                 return true;
             }
-            boolean openApi = isOpenApiSource(path, source);
+            boolean postman = PostmanCollectionParser.looksLikePostmanCollection(source);
+            boolean openApi = !postman && isOpenApiSource(path, source);
             String fileName = path.getFileName().toString();
-            CoverageSweepPreview preview = openApi
+            CoverageSweepPreview preview = postman
+                ? engine.collectPreviewFromPostman(source, openApiBaseUrlField.getText().trim(),
+                    currentOptions(), dedupeImportedEndpointsCheckBox.isSelected())
+                : openApi
                 ? engine.collectPreviewFromOpenApi(source, fileName,
                     openApiBaseUrlField.getText().trim(), "", currentOptions(),
                     dedupeImportedEndpointsCheckBox.isSelected())
                 : engine.collectPreviewFromUrls(Files.readAllLines(path), currentOptions(),
                     dedupeImportedEndpointsCheckBox.isSelected());
-            importedOpenApiDocument = openApi
-                ? new ImportedOpenApiDocument(source, fileName, "")
+            importedOpenApiDocument = openApi || postman
+                ? new ImportedOpenApiDocument(source, fileName, "", postman)
                 : null;
-            applyImportedPreview(preview, openApi, dedupeImportedEndpointsCheckBox.isSelected());
+            applyImportedPreview(preview, postman ? "Postman request" : openApi ? "OpenAPI operation" : "valid target URL",
+                dedupeImportedEndpointsCheckBox.isSelected());
             return true;
         } catch (Exception e) {
             handleImportFailure(e);
@@ -1192,7 +1198,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         }
         ImportedOpenApiDocument document = importedOpenApiDocument;
         if (document == null) {
-            statusLabel.setText("Import an OpenAPI specification before applying a base URL.");
+            statusLabel.setText("Import an OpenAPI or Postman document before applying a base URL.");
             return;
         }
 
@@ -1202,17 +1208,22 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             ? "Restoring server URLs declared by the imported OpenAPI specification..."
             : "Applying OpenAPI base URL " + baseUrl + "...");
         try {
-            CoverageSweepPreview preview = document.sourceUrl().isBlank()
+            CoverageSweepPreview preview = document.postman()
+                ? engine.collectPreviewFromPostman(document.source(), baseUrl, currentOptions(),
+                    dedupeImportedEndpointsCheckBox.isSelected())
+                : document.sourceUrl().isBlank()
                 ? engine.collectPreviewFromOpenApi(
                     document.source(), document.fileName(), baseUrl, "", currentOptions(),
                     dedupeImportedEndpointsCheckBox.isSelected())
                 : engine.collectPreviewFromOpenApi(
                     document.source(), document.fileName(), baseUrl, document.sourceUrl(), currentOptions(),
                     dedupeImportedEndpointsCheckBox.isSelected());
-            applyImportedPreview(preview, true, dedupeImportedEndpointsCheckBox.isSelected());
+            applyImportedPreview(preview, document.postman() ? "Postman request" : "OpenAPI operation",
+                dedupeImportedEndpointsCheckBox.isSelected());
             statusLabel.setText((baseUrl.isEmpty()
-                ? "Restored OpenAPI server URLs; "
-                : "Applied OpenAPI base URL " + baseUrl + "; ")
+                ? (document.postman() ? "Restored Postman request URLs; " : "Restored OpenAPI server URLs; ")
+                : (document.postman() ? "Applied Postman base URL " : "Applied OpenAPI base URL ")
+                    + baseUrl + "; ")
                 + importedPreviewCounts(preview, dedupeImportedEndpointsCheckBox.isSelected()));
         } catch (Exception e) {
             String message = e.getMessage() == null ? "unknown error" : e.getMessage();
@@ -1226,12 +1237,17 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private void applyImportedPreview(CoverageSweepPreview preview, boolean openApi,
                                       boolean dedupeEndpoints) {
+        applyImportedPreview(preview, openApi ? "OpenAPI operation" : "valid target URL", dedupeEndpoints);
+    }
+
+    private void applyImportedPreview(CoverageSweepPreview preview, String itemLabel,
+                                      boolean dedupeEndpoints) {
         setCandidateRows(preview.candidates());
         applyImportedMethodSelection();
         startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
         updatePreviewButton();
         statusLabel.setText("Imported " + preview.blockedHistoryCount()
-            + (openApi ? " OpenAPI operation(s); " : " valid target URL(s); ")
+            + " " + itemLabel + "(s); "
             + importedPreviewCounts(preview, dedupeEndpoints));
         updateEstimate();
     }
@@ -1398,7 +1414,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     FileNameExtensionFilter targetImportFileFilter() {
         return new FileNameExtensionFilter(
-            "Target lists and retry packages (*.txt, *.json)", "txt", "json");
+            "Target lists, retry packages, and Postman collections (*.txt, *.json)", "txt", "json");
     }
 
     private RetryPackage parseRetryPackage(String source) {
@@ -1585,7 +1601,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private record RemoteOpenApiImport(CoverageSweepPreview preview, ImportedOpenApiDocument document) {
     }
 
-    private record ImportedOpenApiDocument(String source, String fileName, String sourceUrl) {
+    private record ImportedOpenApiDocument(String source, String fileName, String sourceUrl, boolean postman) {
     }
 
     private CoverageSweepOptions currentOptions() {

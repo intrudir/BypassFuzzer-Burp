@@ -225,6 +225,26 @@ public class CoverageSweepEngine {
         return new CoverageSweepPreview(operations.size(), deduped.size(), List.copyOf(candidates));
     }
 
+    public CoverageSweepPreview collectPreviewFromPostman(String source, String baseUrlOverride,
+                                                           CoverageSweepOptions options,
+                                                           boolean dedupeEndpoints) {
+        List<OpenApiOperation> operations = new PostmanCollectionParser().parse(source, baseUrlOverride);
+        Map<String, CoverageSweepCandidate> deduped = new LinkedHashMap<>();
+        List<CoverageSweepCandidate> imported = new ArrayList<>();
+        for (OpenApiOperation operation : operations) {
+            CoverageSweepCandidate candidate = toImportedCandidate(operation);
+            if (candidate != null) {
+                deduped.putIfAbsent(candidate.dedupeKey(), candidate);
+                imported.add(candidate);
+            }
+        }
+        List<CoverageSweepCandidate> candidates = dedupeEndpoints
+            ? new ArrayList<>(deduped.values()) : imported;
+        candidates.sort(Comparator.comparing(CoverageSweepCandidate::displayUrl,
+                Comparator.nullsLast(String::compareTo)).thenComparing(CoverageSweepCandidate::method));
+        return new CoverageSweepPreview(operations.size(), deduped.size(), List.copyOf(candidates));
+    }
+
     public List<CoverageSweepProbe> buildProbes(CoverageSweepCandidate candidate, CoverageSweepOptions options) {
         if (candidate == null) {
             return List.of();

@@ -26,6 +26,7 @@ public class FilterConfig {
     private boolean signalContainsRegex = false;
     private String responseContainsFilter = null;
     private boolean responseContainsRegex = false;
+    private boolean responseMatchInverted = false;
 
     public boolean isSmartFilterEnabled() {
         return smartFilterEnabled;
@@ -153,5 +154,13 @@ public class FilterConfig {
 
     public void setResponseContainsRegex(boolean responseContainsRegex) {
         this.responseContainsRegex = responseContainsRegex;
+    }
+
+    public boolean isResponseMatchInverted() {
+        return responseMatchInverted;
+    }
+
+    public void setResponseMatchInverted(boolean responseMatchInverted) {
+        this.responseMatchInverted = responseMatchInverted;
     }
 }

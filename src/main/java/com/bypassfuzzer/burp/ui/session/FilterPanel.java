@@ -45,6 +45,7 @@ public class FilterPanel extends JPanel {
     private JCheckBox signalRegexCheckbox;
     private JTextField responseContainsField;
     private JCheckBox responseRegexCheckbox;
+    private JCheckBox responseDoesNotContainCheckbox;
     private JComboBox<String> highlightColorFilter;
     private JButton applyFilterButton;
     private JLabel filterStatusLabel;
@@ -135,6 +136,7 @@ public class FilterPanel extends JPanel {
         signalRegexCheckbox = new JCheckBox("Regex");
         responseContainsField = new JTextField(20);
         responseRegexCheckbox = new JCheckBox("Regex");
+        responseDoesNotContainCheckbox = new JCheckBox("Does not contain");
         highlightColorFilter = new JComboBox<>(new String[]{
             "All", "Red", "Orange", "Yellow", "Green", "Blue", "Cyan", "Magenta", "Gray"
         });
@@ -238,6 +240,11 @@ public class FilterPanel extends JPanel {
         responseRegexCheckbox.setToolTipText("Treat the response filter as a regular expression.");
         row.add(responseRegexCheckbox);
         responsePanel.add(row);
+        JPanel inverseRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        responseDoesNotContainCheckbox.setToolTipText(
+            "Show only responses that do not contain or match the entered value.");
+        inverseRow.add(responseDoesNotContainCheckbox);
+        responsePanel.add(inverseRow);
         return responsePanel;
     }
 
@@ -285,6 +292,7 @@ public class FilterPanel extends JPanel {
         signalRegexCheckbox.setEnabled(enabled);
         responseContainsField.setEnabled(enabled);
         responseRegexCheckbox.setEnabled(enabled);
+        responseDoesNotContainCheckbox.setEnabled(enabled);
         highlightColorFilter.setEnabled(enabled);
         applyFilterButton.setEnabled(enabled);
     }
@@ -316,6 +324,7 @@ public class FilterPanel extends JPanel {
         filterConfig.setSignalContainsRegex(signalRegexCheckbox.isSelected());
         filterConfig.setResponseContainsFilter(responseFilter);
         filterConfig.setResponseContainsRegex(responseRegexCheckbox.isSelected());
+        filterConfig.setResponseMatchInverted(responseDoesNotContainCheckbox.isSelected());
         filterChangeListener.run();
     }
 

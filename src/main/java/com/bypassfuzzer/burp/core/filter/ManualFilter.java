@@ -107,11 +107,13 @@ public class ManualFilter implements ResponseFilter {
         String responseFilter = config.getResponseContainsFilter();
         if (responseFilter != null && !responseFilter.trim().isEmpty()) {
             String responseText = responseText(result);
-            if (responseText == null || responseText.isBlank()) {
-                return false; // No response text = filtered out
+            if (responseText == null) {
+                return false; // No HTTP response cannot satisfy either response-body predicate
             }
-            if (!matchesResponseFilter(responseText, responseFilter, config.isResponseContainsRegex())) {
-                return false; // Response doesn't match filter
+            boolean matches = matchesResponseFilter(
+                responseText, responseFilter, config.isResponseContainsRegex());
+            if (config.isResponseMatchInverted() ? matches : !matches) {
+                return false;
             }
         }
 

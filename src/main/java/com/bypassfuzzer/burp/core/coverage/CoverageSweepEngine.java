@@ -579,7 +579,7 @@ public class CoverageSweepEngine {
             if (resultCallback != null) {
                 resultCallback.accept(result);
             }
-            if (isThrottleResponse(response, options)) {
+            if (isRetryableResponse(response, options)) {
                 retryQueue.add(new RetryTask(result, probe));
             }
         }
@@ -601,7 +601,7 @@ public class CoverageSweepEngine {
             if (pending.isEmpty()) {
                 return;
             }
-            safeLog("Coverage sweep deferred throttle retry pass " + attempt + ": "
+            safeLog("Coverage sweep deferred retry pass " + attempt + ": "
                 + pending.size() + " payload(s).");
             Map<RetryGroupKey, List<RetryTask>> groups = new LinkedHashMap<>();
             for (RetryTask retry : pending) {
@@ -641,9 +641,9 @@ public class CoverageSweepEngine {
                     continue;
                 }
 
-                boolean sampleStillThrottled = executeDeferredRetry(
+                boolean sampleStillRetryable = executeDeferredRetry(
                     sample, retryAttempt, options, resultCallback, retryQueue);
-                if (sampleStillThrottled) {
+                if (sampleStillRetryable) {
                     if (retries.size() > 1) {
                         retryQueue.addAll(retries.subList(1, retries.size()));
                     }
@@ -651,7 +651,7 @@ public class CoverageSweepEngine {
                     quarantinedRetryRequests.addAndGet(retries.size());
                     safeLog("Coverage sweep quarantined " + retries.size() + " " + group.family()
                         + " retry payload(s) for " + group.authority()
-                        + ": the control canary was accepted but the sampled mutation was still throttled.");
+                        + ": the control canary was accepted but the sampled mutation was still throttled or had no response.");
                     continue;
                 }
 
@@ -676,7 +676,7 @@ public class CoverageSweepEngine {
         }
         if (!retryQueue.isEmpty()) {
             safeLog("Coverage sweep deferred retry limit reached; " + retryQueue.size()
-                + " throttled payload(s) remain available for manual retry.");
+                + " throttled or no-response payload(s) remain available for manual retry.");
         }
     }
 
@@ -693,11 +693,11 @@ public class CoverageSweepEngine {
         if (resultCallback != null) {
             resultCallback.accept(retryResult);
         }
-        boolean throttled = isThrottleResponse(response, options);
-        if (throttled) {
+        boolean retryable = isRetryableResponse(response, options);
+        if (retryable) {
             retryQueue.add(new RetryTask(retryResult, probe));
         }
-        return throttled;
+        return retryable;
     }
 
     private RetryGroupKey retryGroupKey(RetryTask retry) {
@@ -711,6 +711,12 @@ public class CoverageSweepEngine {
         // Ride-hard posture: any throttle-coded response is re-queued so coverage stays complete.
         return response != null
             && options.throttleStatusCodes().contains((int) response.statusCode());
+    }
+
+    private boolean isRetryableResponse(HttpResponse response, CoverageSweepOptions options) {
+        // A null response means the payload was never observed reaching the target, just like a
+        // throttle response. Preserve it for the automatic pass and, if needed, manual retry.
+        return response == null || isThrottleResponse(response, options);
     }
 
     private record RetryTask(AttackResult result, CoverageSweepProbe probe) {

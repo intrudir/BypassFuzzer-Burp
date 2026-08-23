@@ -898,6 +898,37 @@ class CoverageSweepEngineTest {
         assertEquals(1, results.size());
         assertEquals("No response", results.get(0).getPayloadEncoding());
         assertEquals(0, results.get(0).getStatusCode());
+        assertEquals(1, engine.deferredRetryCount());
+        assertEquals("No response", engine.deferredRetrySnapshot().get(0).getSignal());
+    }
+
+    @Test
+    void automaticallyRetriesNoResponsePayloadAfterHealthyControlCanary() throws Exception {
+        CoverageSweepEngine engine = new CoverageSweepEngine(
+            api(List.of()),
+            new SequenceSender(java.util.Arrays.asList(
+                null,                                      // main mutation has no response
+                response(403, "text/plain", "blocked"),  // retry control canary is healthy
+                response(200, "text/plain", "retried")   // mutation retry succeeds
+            )),
+            new CoverageSweepProbeGenerator()
+        );
+        List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            CoverageSweepOptions.defaults().statuses(), true, 100, 1, 1, 0,
+            CoverageSweepOptions.defaults().throttleStatusCodes()
+        );
+
+        assertTrue(engine.start(List.of(candidate(request("/unstable", "", "POST", null, ""), 403)),
+            options, results::add, () -> { }));
+        for (int i = 0; i < 100 && engine.isRunning(); i++) Thread.sleep(20);
+
+        assertEquals(2, results.size());
+        assertEquals("No response", results.get(0).getSignal());
+        assertEquals(1, results.get(1).getThrottleRetryAttempt());
+        assertEquals(200, results.get(1).getStatusCode());
+        assertEquals(0, engine.deferredRetryCount());
+        assertEquals(2, engine.automaticRetryRequestCount());
     }
 
     @Test

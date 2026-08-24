@@ -31,6 +31,29 @@ import static org.mockito.Mockito.when;
 class SessionResultsWorkspaceTest {
 
     @Test
+    void noResponseResultAppearsInVisibleRetryQueueAndClearsAfterSuccess() throws Exception {
+        SequenceSender sender = new SequenceSender(response(200));
+        SessionResultsWorkspace workspace = workspace(sender);
+        HttpRequest request = request("/no-response", "", "GET", null, "");
+        AttackResult failed = new AttackResult("Coverage Sweep", "probe", "target", "Path", "No response",
+            request, null);
+
+        workspace.addResult(failed);
+        SwingUtilities.invokeAndWait(() -> { });
+
+        assertEquals(1, workspace.throttledRetryCount());
+        assertTrue(workspace.retryThrottledButton().getText().contains("(1)"));
+
+        workspace.retryThrottled(false);
+        waitForRetry(workspace);
+        SwingUtilities.invokeAndWait(() -> { });
+
+        assertEquals(1, sender.sendCount);
+        assertEquals(0, workspace.throttledRetryCount());
+        assertTrue(workspace.retryThrottledButton().getText().contains("(0)"));
+    }
+
+    @Test
     void successfulRetryLeavesAuditRowAndRemovesRequestFromQueue() throws Exception {
         SequenceSender sender = new SequenceSender(response(200));
         SessionResultsWorkspace workspace = workspace(sender);

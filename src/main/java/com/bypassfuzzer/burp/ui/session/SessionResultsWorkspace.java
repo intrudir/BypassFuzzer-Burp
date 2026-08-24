@@ -104,10 +104,10 @@ public class SessionResultsWorkspace {
         this.filterPanel = new FilterPanel(filterController.filterConfig(), errorLogger);
         this.filterPanel.setFilterChangeListener(this::applyFilters);
         this.resultsPanel = new SessionResultsPanel(api, filterController.highlighter(), this::applyFilters, viewerLayout, tableLayout);
-        this.retryThrottledButton = new JButton("Retry Throttled (0)");
+        this.retryThrottledButton = new JButton("Retry Queued (0)");
         this.retryThrottledButton.setEnabled(false);
         this.retryThrottledButton.setToolTipText(
-            "Classify Sweep throttles with control canaries, then retry transient requests serially. "
+            "Retry throttled and no-response requests, using control canaries for Sweep groups. "
                 + "Unsafe methods require confirmation.");
         this.retryThrottledButton.addActionListener(event -> retryThrottledFromButton());
         this.retryStatusLabel = new JLabel("");
@@ -148,8 +148,7 @@ public class SessionResultsWorkspace {
     public void addResult(AttackResult result) {
         filterController.track(result);
         resultsPanel.addResult(result, filterController.shouldShow(result));
-        if (result != null && result.getResponse() != null
-            && throttleStatusCodes.contains(result.getStatusCode())) {
+        if (isRetryableResult(result)) {
             trackThrottleResult(result);
         } else {
             removeThrottleRetry(result);
@@ -282,7 +281,7 @@ public class SessionResultsWorkspace {
         }
 
         retryStatusLabel.setText("Classifying and retrying " + selected.size()
-            + " throttled request(s)...");
+            + " queued request(s)...");
         updateRetryControls();
         // Manual retries are paced per host by the adaptive controller (conservative posture, one
         // request in flight). The controller learns from each new response -- it does not replay the
@@ -530,8 +529,7 @@ public class SessionResultsWorkspace {
     }
 
     private void trackThrottleResult(AttackResult result) {
-        if (result == null || result.getRequest() == null || result.getResponse() == null
-            || !throttleStatusCodes.contains(result.getStatusCode())) {
+        if (!isRetryableResult(result)) {
             return;
         }
         synchronized (throttledRetries) {
@@ -541,6 +539,11 @@ public class SessionResultsWorkspace {
                 result, existing != null && existing.patternBlocked()));
         }
         updateRetryControls();
+    }
+
+    private boolean isRetryableResult(AttackResult result) {
+        return result != null && result.getRequest() != null
+            && (result.getResponse() == null || throttleStatusCodes.contains(result.getStatusCode()));
     }
 
     private void removeThrottleRetry(AttackResult result) {
@@ -661,7 +664,7 @@ public class SessionResultsWorkspace {
     private void updateRetryControls() {
         Runnable update = () -> {
             int count = throttledRetryCount();
-            retryThrottledButton.setText("Retry Throttled (" + count + ")");
+            retryThrottledButton.setText("Retry Queued (" + count + ")");
             retryThrottledButton.setEnabled(count > 0 && !primaryRunActive && !retryRunning);
             throttleRetryQueueChangedListener.run();
         };

@@ -374,7 +374,7 @@ class CoverageSweepPanelTest {
     }
 
     @Test
-    void retryQueueAndRetryThrottledAlwaysUseTheSameVisibleQueueCount() throws Exception {
+    void retryQueueButtonsAlwaysUseTheSameVisibleQueueCount() throws Exception {
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
         SessionResultsWorkspace workspace = field(panel, "resultsWorkspace", SessionResultsWorkspace.class);
         JButton queueButton = button(panel, "retryQueueButton");
@@ -387,14 +387,14 @@ class CoverageSweepPanelTest {
         SwingUtilities.invokeAndWait(() -> { });
 
         assertEquals("Retry queue (1)", queueButton.getText());
-        assertEquals("Retry Throttled (1)", retryButton.getText());
+        assertEquals("Retry Queued (1)", retryButton.getText());
         assertEquals(1, workspace.throttledRetrySnapshot().size());
 
         workspace.clear();
         SwingUtilities.invokeAndWait(() -> { });
 
         assertEquals("Retry queue (0)", queueButton.getText());
-        assertEquals("Retry Throttled (0)", retryButton.getText());
+        assertEquals("Retry Queued (0)", retryButton.getText());
     }
 
     @Test

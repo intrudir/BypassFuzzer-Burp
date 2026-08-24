@@ -57,7 +57,7 @@ public class ExtensionAttack implements AttackStrategy {
 
                 // Build modified path with extension
                 String modifiedPath = buildPathWithExtension(targetUrl, extension);
-                String payloadDescription = originalPath + extension;
+                String payloadDescription = stripTrailingSlashes(originalPath) + extension;
 
                 HttpRequest modifiedRequest = baseRequest.withPath(modifiedPath);
                 if (!attackExecutor.execute(getAttackType(), payloadDescription, modifiedRequest, resultCallback, shouldContinue, rateLimiter)) {
@@ -92,12 +92,12 @@ public class ExtensionAttack implements AttackStrategy {
                     int queryStart = pathAndQuery.indexOf('?');
                     if (queryStart != -1) {
                         // Insert extension before query string
-                        String path = pathAndQuery.substring(0, queryStart);
+                        String path = stripTrailingSlashes(pathAndQuery.substring(0, queryStart));
                         String query = pathAndQuery.substring(queryStart);
                         return path + extension + query;
                     } else {
                         // No query string, just append extension
-                        return pathAndQuery + extension;
+                        return stripTrailingSlashes(pathAndQuery) + extension;
                     }
                 }
             }
@@ -108,6 +108,17 @@ public class ExtensionAttack implements AttackStrategy {
         } catch (Exception e) {
             return "/" + extension;
         }
+    }
+
+    private String stripTrailingSlashes(String path) {
+        if (path == null || path.length() <= 1) {
+            return path;
+        }
+        int end = path.length();
+        while (end > 1 && path.charAt(end - 1) == '/') {
+            end--;
+        }
+        return path.substring(0, end);
     }
 
     /**

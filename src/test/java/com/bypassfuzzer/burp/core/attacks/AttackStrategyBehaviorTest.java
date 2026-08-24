@@ -17,6 +17,49 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AttackStrategyBehaviorTest {
 
     @Test
+    void extensionAttackAttachesExtensionBeforeOriginalTrailingSlash() {
+        ExtensionAttack attack = new ExtensionAttack("https://example.com/yamplus_api/extreport/");
+        List<AttackResult> results = new ArrayList<>();
+
+        attack.execute(
+            api(),
+            request("/yamplus_api/extreport/", "", "GET", null, ""),
+            "https://example.com/yamplus_api/extreport/",
+            results::add,
+            () -> true,
+            null,
+            nullResponseExecutor()
+        );
+
+        assertTrue(results.stream()
+            .map(result -> result.getRequest().path())
+            .anyMatch("/yamplus_api/extreport.config"::equals));
+        assertTrue(results.stream()
+            .map(result -> result.getRequest().path())
+            .noneMatch("/yamplus_api/extreport/.config"::equals));
+    }
+
+    @Test
+    void extensionAttackPreservesQueryAfterRemovingTrailingSlash() {
+        ExtensionAttack attack = new ExtensionAttack("https://example.com/report/?format=full");
+        List<AttackResult> results = new ArrayList<>();
+
+        attack.execute(
+            api(),
+            request("/report/", "format=full", "GET", null, ""),
+            "https://example.com/report/?format=full",
+            results::add,
+            () -> true,
+            null,
+            nullResponseExecutor()
+        );
+
+        assertTrue(results.stream()
+            .map(result -> result.getRequest().path())
+            .anyMatch("/report.config?format=full"::equals));
+    }
+
+    @Test
     void pathAttackSendsMatrixJsonSuffixForBlockedEndpointMiss() {
         // Client miss: GET /something returned 401, but GET /something;.json
         // returned 200 with the protected data. The path attack must send that

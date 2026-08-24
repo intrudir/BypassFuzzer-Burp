@@ -7,7 +7,8 @@
 # - HEADER: add/replace an explicit header, optionally with "path=/; header=Name: value"
 #
 # Template placeholders:
-# - {PATH}: original path without query
+# - {PATH}: original path without query or non-root trailing slashes (for suffix probes)
+# - {PATH_ORIGINAL}: original path without query, preserving trailing slashes
 # - {QUERY}: original query with leading ? when present, otherwise blank
 # - {PATH_NO_LEADING_SLASH}: original path without leading slashes
 # - {PATH_TRAILING_SLASH_TOGGLE}: original path with trailing slash added or removed
@@ -131,14 +132,14 @@ PATH|Encoding|Double URL encode first path separator|{PATH_DOUBLE_ENCODE_FIRST_S
 PATH|Encoding|Fully URL encode first path segment|{PATH_FIRST_SEGMENT_FULLY_URL_ENCODED}
 PATH|Encoding|Fully double URL encode first path segment|{PATH_FIRST_SEGMENT_FULLY_DOUBLE_URL_ENCODED}
 PATH|Encoding|Fully URL encode last path segment|{PATH_LAST_SEGMENT_FULLY_URL_ENCODED}
-PATH|Debug Params|Append debug=true|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}debug=true
-PATH|Debug Params|Append debug=1|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}debug=1
-PATH|Debug Params|Append test=true|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}test=true
-PATH|Debug Params|Append admin=true|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}admin=true
-PATH|Debug Params|Append admin=1|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}admin=1
-PATH|Debug Params|Append isAdmin=true|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}isAdmin=true
-PATH|Debug Params|Append role=admin|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}role=admin
-PATH|Debug Params|Append user=admin|{PATH}{QUERY}{QUERY_APPEND_SEPARATOR}user=admin
+PATH|Debug Params|Append debug=true|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}debug=true
+PATH|Debug Params|Append debug=1|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}debug=1
+PATH|Debug Params|Append test=true|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}test=true
+PATH|Debug Params|Append admin=true|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}admin=true
+PATH|Debug Params|Append admin=1|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}admin=1
+PATH|Debug Params|Append isAdmin=true|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}isAdmin=true
+PATH|Debug Params|Append role=admin|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}role=admin
+PATH|Debug Params|Append user=admin|{PATH_ORIGINAL}{QUERY}{QUERY_APPEND_SEPARATOR}user=admin
 HEADER|Content-Type|Content-Type application/json|Content-Type: application/json
 HEADER|Content-Type|Content-Type JSON charset|Content-Type: application/json; charset=utf-8
 HEADER|Content-Type|Content-Type form urlencoded|Content-Type: application/x-www-form-urlencoded

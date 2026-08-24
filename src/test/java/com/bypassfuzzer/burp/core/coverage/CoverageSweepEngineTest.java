@@ -37,6 +37,31 @@ import static org.mockito.Mockito.when;
 class CoverageSweepEngineTest {
 
     @Test
+    void sweepSuffixAndNegotiationProbesNormalizeOriginalTrailingSlash() {
+        CoverageSweepEngine engine = new CoverageSweepEngine(
+            api(List.of()), new StaticSender(response(403, "text/plain", "blocked")),
+            new CoverageSweepProbeGenerator());
+        CoverageSweepCandidate candidate = candidate(
+            request("/yamplus_api/extreport/", "", "GET", null, ""), 403);
+
+        List<CoverageSweepProbe> probes = engine.buildProbes(candidate, CoverageSweepOptions.defaults());
+
+        assertEquals("/yamplus_api/extreport.json", probePath(probes, "Path suffix .json"));
+        assertEquals("/yamplus_api/extreport?.json", probePath(probes, "Query .json"));
+        assertEquals("/yamplus_api/extreport/.", probePath(probes, "Append /."));
+        assertEquals("/yamplus_api/extreport/?debug=true", probePath(probes, "Append debug=true"));
+    }
+
+    private String probePath(List<CoverageSweepProbe> probes, String label) {
+        return probes.stream()
+            .filter(probe -> label.equals(probe.label()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Missing probe: " + label))
+            .request()
+            .path();
+    }
+
+    @Test
     void allPayloadsUsesTheCompleteBypassCatalogWithoutTheHighSignalCap() {
         HttpRequest original = requestWithHeaders("/admin/users", "id=7", "POST", Map.of(
             "Content-Type", "application/json",

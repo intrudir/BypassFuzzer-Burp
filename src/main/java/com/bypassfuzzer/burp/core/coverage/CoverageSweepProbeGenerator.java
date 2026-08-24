@@ -343,11 +343,13 @@ public class CoverageSweepProbeGenerator {
 
     private String renderTemplate(String template, String pathWithQuery) {
         String path = RequestPathUtils.pathWithoutQuery(pathWithQuery);
+        String pathWithoutTrailingSlash = stripTrailingSlashes(path);
         String query = RequestPathUtils.queryFromPath(pathWithQuery);
         String queryWithPrefix = query.isEmpty() ? "" : "?" + query;
         String queryAppendSeparator = query.isEmpty() ? "?" : "&";
 
         return template
+            .replace("{PATH_ORIGINAL}", path)
             .replace("{PATH_NO_LEADING_SLASH}", path.replaceFirst("^/+", ""))
             .replace("{PATH_TRAILING_SLASH_TOGGLE}", toggleTrailingSlash(path))
             .replace("{PATH_DUPLICATE_SLASH_ONCE}", duplicateSlash(pathWithQuery, 1))
@@ -372,7 +374,18 @@ public class CoverageSweepProbeGenerator {
             .replace("{PATH_LAST_SEGMENT_FULLY_URL_ENCODED}", fullyEncodeSegment(pathWithQuery, false, false))
             .replace("{QUERY_APPEND_SEPARATOR}", queryAppendSeparator)
             .replace("{QUERY}", queryWithPrefix)
-            .replace("{PATH}", path);
+            .replace("{PATH}", pathWithoutTrailingSlash);
+    }
+
+    private String stripTrailingSlashes(String path) {
+        if (path == null || path.length() <= 1) {
+            return path;
+        }
+        int end = path.length();
+        while (end > 1 && path.charAt(end - 1) == '/') {
+            end--;
+        }
+        return path.substring(0, end);
     }
 
     private String doubleEncodePathCharacterWithQuery(String pathWithQuery, int ordinal) {

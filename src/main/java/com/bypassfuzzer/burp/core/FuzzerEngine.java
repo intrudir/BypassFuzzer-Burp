@@ -171,7 +171,8 @@ public class FuzzerEngine {
         safeLog("Adaptive rate control: pacing each host just under its rate limit; throttle codes "
             + config.getThrottleStatusCodes());
 
-        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(config.getRequestHeaders());
+        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
+            config.getRequestHeaders(), config.getUserAgentMode(), config.getUserAgentRandomizationSeed());
         List<RegisteredAttack> attacks = attackRegistry.buildEnabledAttacks(config, targetUrl);
         AttackExecutor attackExecutor = new AttackExecutor(
             new MontoyaRequestSender(api, globalGovernor),

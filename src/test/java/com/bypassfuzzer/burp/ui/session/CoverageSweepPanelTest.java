@@ -19,6 +19,7 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepPayloadSet;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbeGenerator;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
+import com.bypassfuzzer.burp.http.UserAgentMode;
 import com.bypassfuzzer.burp.http.ConfiguredHeader;
 import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
 import org.junit.jupiter.api.Test;
@@ -123,6 +124,78 @@ class CoverageSweepPanelTest {
 
         List<ConfiguredHeader> headers = currentOptions(panel).requestHeaders();
         assertEquals(List.of(new ConfiguredHeader("User-Agent", "my-scanner/1.0")), headers);
+    }
+
+    @Test
+    void requestHeadersMenuOffersSyntheticAndBrowserLikeUserAgentRandomization() throws Exception {
+        CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
+        RequestHeadersControl control = field(panel, "requestHeadersControl", RequestHeadersControl.class);
+        JCheckBox randomize = field(
+            control, "userAgentRandomizationCheckBox", JCheckBox.class);
+        JComboBox<?> style = field(control, "userAgentStyleComboBox", JComboBox.class);
+        JCheckBox browserPreset = field(panel, "browserUserAgentCheckBox", JCheckBox.class);
+        Method buildUserAgentPanel = RequestHeadersControl.class.getDeclaredMethod("buildUserAgentPanel");
+        buildUserAgentPanel.setAccessible(true);
+        JPanel userAgentPanel = (JPanel) buildUserAgentPanel.invoke(control);
+
+        assertEquals("Randomize User-Agent for every request", randomize.getText());
+        assertTrue(SwingUtilities.isDescendingFrom(randomize, userAgentPanel));
+        assertTrue(SwingUtilities.isDescendingFrom(style, userAgentPanel));
+        assertFalse(randomize.isSelected());
+        assertEquals("Synthetic tokens (recommended)", style.getItemAt(0));
+        assertEquals("Browser-like variants", style.getItemAt(1));
+        assertEquals(UserAgentMode.DISABLED, currentOptions(panel).userAgentMode());
+        assertTrue(browserPreset.isEnabled());
+
+        control.setUserAgentMode(UserAgentMode.SYNTHETIC);
+
+        assertEquals(UserAgentMode.SYNTHETIC, currentOptions(panel).userAgentMode());
+        assertTrue(currentOptions(panel).requestHeaders().isEmpty(),
+            "the fixed browser preset must not be added when randomization is active");
+        assertTrue(browserPreset.isSelected(), "the preset selection should be preserved");
+        assertFalse(browserPreset.isEnabled(), "the overridden preset should be visibly inactive");
+        assertTrue(control.button().getText().contains("UA synthetic"));
+
+        control.setUserAgentMode(UserAgentMode.BROWSER_LIKE);
+        assertEquals(UserAgentMode.BROWSER_LIKE, currentOptions(panel).userAgentMode());
+        assertTrue(control.button().getText().contains("UA browser-like"));
+
+        control.setUserAgentMode(UserAgentMode.DISABLED);
+        assertTrue(browserPreset.isEnabled());
+        assertTrue(currentOptions(panel).requestHeaders().get(0).value().contains("Chrome/"));
+    }
+
+    @Test
+    void userAgentRandomizationOverridesFixedHeaderAtEngineBoundary() throws Exception {
+        CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
+        RequestHeadersControl control = field(panel, "requestHeadersControl", RequestHeadersControl.class);
+        control.setHeaders(List.of(new ConfiguredHeader("User-Agent", "fixed-agent")));
+        control.setUserAgentMode(UserAgentMode.SYNTHETIC);
+        CoverageSweepOptions panelOptions = currentOptions(panel);
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            panelOptions.statuses(), panelOptions.inScopeOnly(), panelOptions.maxCandidates(), 8,
+            panelOptions.concurrency(), panelOptions.perHostConcurrency(), panelOptions.throttleStatusCodes(),
+            panelOptions.mode(), panelOptions.authSelection(), panelOptions.excludeStaticAssets(),
+            panelOptions.verifyUnauthenticatedAccess(), panelOptions.hostPortProbePorts(),
+            panelOptions.requestHeaders(), panelOptions.payloadSet(), panelOptions.posture(),
+            panelOptions.familySelection(), panelOptions.pauseMode(), panelOptions.fixedPauseMillis(),
+            panelOptions.userAgentMode(), panelOptions.userAgentRandomizationSeed());
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()));
+        HttpRequest original = requestWithHeaders("/admin", "", "GET",
+            Map.of("User-Agent", "captured-agent"), "");
+
+        List<CoverageSweepProbe> firstPreview = engine.buildProbes(candidate(original, 403), options);
+        List<CoverageSweepProbe> secondPreview = engine.buildProbes(candidate(original, 403), options);
+        List<String> firstValues = firstPreview.stream()
+            .map(probe -> probe.request().headerValue("User-Agent")).toList();
+        List<String> secondValues = secondPreview.stream()
+            .map(probe -> probe.request().headerValue("User-Agent")).toList();
+
+        assertEquals(firstValues, secondValues, "the exact preview must be stable for one Sweep run");
+        assertTrue(firstValues.stream().allMatch(value -> value.startsWith("vexa-")), firstValues.toString());
+        assertTrue(firstValues.stream().noneMatch("fixed-agent"::equals));
+        assertTrue(firstValues.stream().distinct().count() > 1,
+            "distinct generated requests should not share one User-Agent");
     }
 
     @Test
@@ -359,7 +432,7 @@ class CoverageSweepPanelTest {
     }
 
     @Test
-    void browserUserAgentSitsBesideStateChangingMethodsAndSweepHidesInlineRetryRow() throws Exception {
+    void browserUserAgentSitsBesideStateChangingMethodsAndSweepUsesSharedRetryRow() throws Exception {
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
         JCheckBox browser = checkbox(panel, "browserUserAgentCheckBox");
         JCheckBox unsafe = checkbox(panel, "includeUnsafeMethodsCheckBox");
@@ -367,8 +440,8 @@ class CoverageSweepPanelTest {
         JPanel retryRow = field(workspace, "retryRow", JPanel.class);
 
         assertSame(unsafe.getParent(), browser.getParent());
-        assertFalse(retryRow.isVisible());
-        assertTrue(button(panel, "retryQueueButton").getText().startsWith("Retry queue"));
+        assertTrue(retryRow.isVisible());
+        assertTrue(field(workspace, "retryQueueButton", JButton.class).getText().startsWith("Retry queue"));
         assertEquals("Pause", button(panel, "pauseButton").getText());
         assertFalse(button(panel, "pauseButton").isEnabled());
     }
@@ -377,7 +450,7 @@ class CoverageSweepPanelTest {
     void retryQueueButtonsAlwaysUseTheSameVisibleQueueCount() throws Exception {
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
         SessionResultsWorkspace workspace = field(panel, "resultsWorkspace", SessionResultsWorkspace.class);
-        JButton queueButton = button(panel, "retryQueueButton");
+        JButton queueButton = field(workspace, "retryQueueButton", JButton.class);
         JButton retryButton = workspace.retryThrottledButton();
         HttpRequest throttledRequest = request("/limited", "", "GET", null, "");
 
@@ -849,7 +922,7 @@ class CoverageSweepPanelTest {
 
         String preview = panel.renderProbePreview(candidate, probes);
 
-        assertTrue(preview.contains("Probe count: 164"));
+        assertTrue(preview.contains("Probe count: 182"));
         assertTrue(preview.contains("Matrix / Extension - Path suffix ;.json"));
         assertTrue(preview.contains("GET /admin/users;.json HTTP/1.1"));
         assertTrue(preview.contains("GET /admin/users?format=json HTTP/1.1"));
@@ -1013,6 +1086,22 @@ class CoverageSweepPanelTest {
             0,
             0,
             "",
+            ZonedDateTime.now()
+        );
+    }
+
+    private CoverageSweepCandidate candidate(HttpRequest request, int status) {
+        return new CoverageSweepCandidate(
+            request,
+            response(status, "text/plain", "blocked"),
+            request.method() + request.url(),
+            request.url(),
+            request.method(),
+            "example.com",
+            request.path(),
+            status,
+            7,
+            "text/plain",
             ZonedDateTime.now()
         );
     }

@@ -250,14 +250,16 @@ public class CoverageSweepEngine {
             return List.of();
         }
         CoverageSweepOptions effective = options == null ? CoverageSweepOptions.defaults() : options;
-        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(effective.requestHeaders());
+        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
+            effective.requestHeaders(), effective.userAgentMode(),
+            effective.userAgentRandomizationSeed());
         if (effective.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC) {
             HttpRequest anonymousRequest = stripAuthentication(candidate.request(), effective.authSelection());
             return reconcileProbes(generateProbes(anonymousRequest, effective, false),
-                anonymousRequest, headerPolicy);
+                anonymousRequest, headerPolicy, effective);
         }
         return reconcileProbes(generateProbes(candidate.request(), effective, true),
-            candidate.request(), headerPolicy);
+            candidate.request(), headerPolicy, effective);
     }
 
     private List<CoverageSweepProbe> generateProbes(HttpRequest request,
@@ -497,7 +499,8 @@ public class CoverageSweepEngine {
                                   CoverageSweepOptions options,
                                   Consumer<AttackResult> resultCallback,
                                   ConcurrentLinkedQueue<RetryTask> retryQueue) {
-        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(options.requestHeaders());
+        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
+            options.requestHeaders(), options.userAgentMode(), options.userAgentRandomizationSeed());
         HttpResponse controlResponse = null;
         HttpResponse anonymousControlResponse = null;
         HttpRequest verificationRequest = null;
@@ -909,10 +912,14 @@ public class CoverageSweepEngine {
 
     private List<CoverageSweepProbe> reconcileProbes(List<CoverageSweepProbe> probes,
                                                       HttpRequest baseline,
-                                                      ConfiguredHeaderPolicy headerPolicy) {
+                                                      ConfiguredHeaderPolicy headerPolicy,
+                                                      CoverageSweepOptions options) {
         return probes.stream()
-            .map(probe -> new CoverageSweepProbe(probe.label(), probe.family(),
-                headerPolicy.reconcileMutation(baseline, probe.request()), probe.httpMode()))
+            .map(probe -> {
+                HttpRequest reconciled = headerPolicy.reconcileMutation(baseline, probe.request());
+                return new CoverageSweepProbe(
+                    probe.label(), probe.family(), reconciled, probe.httpMode());
+            })
             .toList();
     }
 

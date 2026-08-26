@@ -8,9 +8,9 @@ IDOR compares an authorized identifier with a target identifier, establishes con
 - `idor-identifiers` configures `Identifier 1 (authorized)` and `Identifier 2 (target)` as exact literals across the request.
 - `idor-baselines` sends the original authorized control and target-identifier unauthorized baseline before playbooks.
 - `idor-playbooks` runs registered path, query, body, and hybrid playbooks appropriate to discovered identifier locations.
-- `idor-options` configures concurrency, throttle codes, custom request headers, and other run options.
+- `idor-options` uses the shared request-header and throttle controls, including User-Agent variation, global/per-host concurrency, posture, and fixed/smart pause behavior.
 - `idor-diagnostics` opens `Playbooks` and `Debug Info`, then copies or saves diagnostics.
-- `idor-results` pauses/resumes, stops, clears, filters, inspects results/baselines, and retries queued throttles.
+- `idor-results` pauses/resumes, stops, clears, filters, inspects results/baselines, and opens the shared `Retry queue (n)` viewer.
 
 ## How to get to it (user POV)
 
@@ -30,6 +30,7 @@ Preconditions:
 
 - **Automated control/engine proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" idor`. The harness proves the context-menu child, mode-specific `Configure Attack`/`Debug Info` surface, per-mode headers, baseline ordering, registered playbook execution, and representative mutation behavior.
 - **Configure.** Choose `Configure Attack`, enter both identifiers, and confirm the note `Identifiers are replaced as exact literals across the request.` Review options before choosing `Start IDOR Analysis`.
+- **Review shared execution settings.** The IDOR dialog exposes the same `Request Headers...` User-Agent randomizer and complete `Throttle...` dialog used by Bypass, Sweep, and URL Validation.
 - **Confirm baselines.** In results, identify the original authorized control and identifier-2 unauthorized baseline before interpreting any playbook result. Capture their request/response viewers.
 - **Inspect a mutation.** Select a result from a playbook applicable to the identifier location. Require the request to show identifier 2 plus the named mutation and compare its status/body/length with both baselines.
 - **Inspect diagnostics.** Choose `Debug Info`; verify it identifies both values and discovered locations. If testing save, choose `Save to File`, then read the saved file back and retain it with evidence.

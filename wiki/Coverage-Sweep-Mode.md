@@ -174,6 +174,18 @@ queue.
 The `Browser User-Agent` preset (on by default) sends every probe with a current desktop Chrome
 `User-Agent`. If you set your own `User-Agent` in `Request Headers`, that value is used instead.
 
+The shared `Request Headers...` control used by Bypass, Sweep, IDOR, and URL Validation also offers
+`Randomize User-Agent for every request`. It is off by default.
+When enabled, it overrides both the Browser preset and any fixed `User-Agent` line while leaving
+other configured headers unchanged. `Synthetic tokens (recommended)` generates valid, deliberately
+non-browser product tokens such as `vexa-... orbit-...`; `Browser-like variants` generates varied
+Chrome-, Firefox-, and Safari-shaped strings for applications that require browser syntax.
+
+Each distinct generated request receives a stable value for that Sweep run, so `Preview Probes`
+continues to show the exact initial request. Intentional User-Agent attack payloads remain as an
+additional header value. Treat UA variation as a transport/fingerprinting option: compare it with an
+unrandomized control, because it can also change cache, bot-defense, and content-negotiation behavior.
+
 ### Payload families
 
 `Payload Families...` controls which technique categories Sweep may send. The dialog keeps separate
@@ -196,7 +208,9 @@ and request deduplication are applied.
 
 ## Probe Budget
 
-Sweep uses a bounded probe set with a default cap of 280 unique probes per endpoint.
+Sweep uses a bounded probe set with a default cap of 350 unique probes per endpoint.
+High Signal promotes the full Path attack's raw and encoded backslash primitive as prefix, suffix,
+and sandwich mutations on every path segment.
 
 Generated requests are deduplicated before sending. This matters for short paths such as `/admin`, where some templates collapse to the same effective request:
 

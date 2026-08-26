@@ -58,7 +58,7 @@ public class ThrottleSettingsControl {
             "No global pause (adaptive)", "Fixed pause", "Smart Pause"
         });
         pauseModeComboBox.setToolTipText(
-            "Choose per-host adaptive pacing alone, a fixed Sweep-wide cooldown, or an automatic smart cooldown.");
+            "Choose per-host adaptive pacing alone, a fixed run-wide cooldown, or an automatic smart cooldown.");
         pauseModeComboBox.setSelectedIndex(switch (defaults.pauseMode()) {
             case FIXED -> 1;
             case SMART -> 2;
@@ -186,9 +186,9 @@ public class ThrottleSettingsControl {
 
             JTextArea pauseHelp = new JTextArea(
                 "No global pause (adaptive) adjusts each host's rate independently and does not pause "
-                + "the entire Sweep; "
+                + "the entire run; "
                 + "a Retry-After response still pauses that individual host. "
-                + "Fixed pause stops all Sweep hosts after any throttle response for the chosen time. "
+                + "Fixed pause stops all hosts after any throttle response for the chosen time. "
                 + "Smart Pause tolerates isolated throttles, pauses a saturated host after a sustained "
                 + "streak or high rolling throttle ratio, and pauses the whole Sweep only when saturation "
                 + "spans multiple hosts. It uses escalating 10-120 second cooldowns, then requires five "

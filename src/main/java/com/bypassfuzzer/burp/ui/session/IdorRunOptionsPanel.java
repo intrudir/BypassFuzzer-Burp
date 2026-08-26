@@ -15,6 +15,7 @@ public class IdorRunOptionsPanel extends JPanel {
 
     private final ThrottleSettingsControl throttleControl;
     private final RequestHeadersControl requestHeadersControl;
+    private long userAgentRandomizationSeed;
 
     public IdorRunOptionsPanel(IdorRunOptions defaults) {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -29,6 +30,8 @@ public class IdorRunOptionsPanel extends JPanel {
         JPanel headersRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         requestHeadersControl = new RequestHeadersControl(this);
         requestHeadersControl.setHeaders(defaults.requestHeaders());
+        requestHeadersControl.setUserAgentMode(defaults.userAgentMode());
+        userAgentRandomizationSeed = defaults.userAgentRandomizationSeed();
         headersRow.add(requestHeadersControl.button());
         add(headersRow);
     }
@@ -36,9 +39,25 @@ public class IdorRunOptionsPanel extends JPanel {
     public IdorRunOptions collect() {
         return new IdorRunOptions(
             throttleControl.throttleStatusCodes(),
+            throttleControl.concurrency(),
+            throttleControl.perHostConcurrency(),
             throttleControl.posture(),
-            requestHeadersControl.headers()
+            throttleControl.pauseMode(),
+            throttleControl.fixedPauseMillis(),
+            requestHeadersControl.headers(),
+            requestHeadersControl.userAgentMode(),
+            effectiveUserAgentSeed()
         );
+    }
+
+    private long effectiveUserAgentSeed() {
+        if (requestHeadersControl.userAgentMode() == com.bypassfuzzer.burp.http.UserAgentMode.DISABLED) {
+            return 0L;
+        }
+        if (userAgentRandomizationSeed == 0L) {
+            userAgentRandomizationSeed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
+        }
+        return userAgentRandomizationSeed;
     }
 
     public void setControlsEnabled(boolean enabled) {

@@ -52,6 +52,30 @@ class CoverageSweepEngineTest {
         assertEquals("/yamplus_api/extreport/?debug=true", probePath(probes, "Append debug=true"));
     }
 
+    @Test
+    void highSignalPromotesFullCatalogBackslashMutationsAtEverySegment() {
+        CoverageSweepEngine engine = new CoverageSweepEngine(
+            api(List.of()), new StaticSender(response(403, "text/plain", "blocked")),
+            new CoverageSweepProbeGenerator());
+
+        List<CoverageSweepProbe> financeProbes = engine.buildProbes(
+            candidate(request("/docs/index.html", "", "GET", null, ""), 403),
+            CoverageSweepOptions.defaults());
+        List<CoverageSweepProbe> iqueryProbes = engine.buildProbes(
+            candidate(request("/ws/chart-api/docs", "", "GET", null, ""), 403),
+            CoverageSweepOptions.defaults());
+
+        assertEquals("/docs\\/index.html",
+            probePath(financeProbes, "Backslash raw suffix on segment 1"));
+        assertEquals("/ws/chart-api/\\docs",
+            probePath(iqueryProbes, "Backslash raw prefix on segment 3"));
+        assertEquals("/ws/chart-api/%5cdocs",
+            probePath(iqueryProbes, "Backslash encoded lowercase prefix on segment 3"));
+        assertEquals("/ws/chart-api/%5Cdocs",
+            probePath(iqueryProbes, "Backslash encoded uppercase prefix on segment 3"));
+        assertTrue(iqueryProbes.size() <= CoverageSweepOptions.defaults().maxProbesPerCandidate() + 2);
+    }
+
     private String probePath(List<CoverageSweepProbe> probes, String label) {
         return probes.stream()
             .filter(probe -> label.equals(probe.label()))
@@ -744,7 +768,7 @@ class CoverageSweepEngineTest {
         List<CoverageSweepProbe> probes = new CoverageSweepEngine(api(List.of()), new StaticSender(response(403, "text/plain", "blocked")), new CoverageSweepProbeGenerator())
             .buildProbes(candidate, CoverageSweepOptions.defaults());
 
-        assertEquals(164, probes.size());
+        assertEquals(182, probes.size());
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users;.json")));
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users;.html")));
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users;.xml")));

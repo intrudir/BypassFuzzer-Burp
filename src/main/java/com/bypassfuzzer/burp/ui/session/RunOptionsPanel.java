@@ -13,6 +13,7 @@ public class RunOptionsPanel extends JPanel {
     private final JCheckBox fuzzExistingCookiesCheckbox;
     private final ThrottleSettingsControl throttleControl;
     private final RequestHeadersControl requestHeadersControl;
+    private long userAgentRandomizationSeed;
 
     public RunOptionsPanel(FuzzerConfig config, boolean collaboratorAvailable) {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -52,6 +53,8 @@ public class RunOptionsPanel extends JPanel {
         JPanel headersRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         requestHeadersControl = new RequestHeadersControl(this);
         requestHeadersControl.setHeaders(config.getRequestHeaders());
+        requestHeadersControl.setUserAgentMode(config.getUserAgentMode());
+        userAgentRandomizationSeed = config.getUserAgentRandomizationSeed();
         headersRow.add(requestHeadersControl.button());
         add(headersRow);
     }
@@ -72,6 +75,8 @@ public class RunOptionsPanel extends JPanel {
         return String.valueOf(throttleControl.concurrency());
     }
 
+    public int perHostConcurrency() { return throttleControl.perHostConcurrency(); }
+
     public String throttleStatusCodesText() {
         return throttleControl.throttleStatusCodesText();
     }
@@ -80,8 +85,26 @@ public class RunOptionsPanel extends JPanel {
         return throttleControl.posture();
     }
 
+    public com.bypassfuzzer.burp.core.throttle.ThrottleSettings.PauseMode pauseMode() {
+        return throttleControl.pauseMode();
+    }
+
+    public long fixedPauseMillis() { return throttleControl.fixedPauseMillis(); }
+
     public java.util.List<ConfiguredHeader> requestHeaders() {
         return requestHeadersControl.headers();
+    }
+
+    public com.bypassfuzzer.burp.http.UserAgentMode userAgentMode() {
+        return requestHeadersControl.userAgentMode();
+    }
+
+    public long userAgentRandomizationSeed() {
+        if (userAgentMode() == com.bypassfuzzer.burp.http.UserAgentMode.DISABLED) return 0L;
+        if (userAgentRandomizationSeed == 0L) {
+            userAgentRandomizationSeed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
+        }
+        return userAgentRandomizationSeed;
     }
 
     public void setControlsEnabled(boolean enabled, boolean collaboratorAvailable) {

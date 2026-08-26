@@ -333,7 +333,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         }
 
         runOptions.applyTo(config);
-        resultsWorkspace.configureThrottleRetries(runOptions.throttleStatusCodes());
+        resultsWorkspace.configureThrottleRetries(runOptions.throttleSettings());
         resultsWorkspace.setPrimaryRunActive(true);
         warningLabel.setVisible(false);
         setAttackControlsEnabled(false);

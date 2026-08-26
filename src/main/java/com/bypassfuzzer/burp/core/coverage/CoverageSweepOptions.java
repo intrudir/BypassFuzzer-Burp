@@ -2,6 +2,7 @@ package com.bypassfuzzer.burp.core.coverage;
 
 import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
 import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.burp.http.UserAgentMode;
 
 import java.util.List;
 import java.util.Set;
@@ -24,7 +25,9 @@ public record CoverageSweepOptions(
     ThrottleSettings.Posture posture,
     CoverageSweepFamilySelection familySelection,
     ThrottleSettings.PauseMode pauseMode,
-    long fixedPauseMillis
+    long fixedPauseMillis,
+    UserAgentMode userAgentMode,
+    long userAgentRandomizationSeed
 ) {
 
     public CoverageSweepOptions {
@@ -38,6 +41,24 @@ public record CoverageSweepOptions(
         pauseMode = pauseMode == null ? ThrottleSettings.PauseMode.OFF : pauseMode;
         fixedPauseMillis = Math.max(1_000L, fixedPauseMillis);
         perHostConcurrency = Math.max(1, perHostConcurrency);
+        userAgentMode = userAgentMode == null ? UserAgentMode.DISABLED : userAgentMode;
+        userAgentRandomizationSeed = userAgentMode == UserAgentMode.DISABLED
+            ? 0L : userAgentRandomizationSeed;
+    }
+
+    /** Full constructor retained for callers that do not use User-Agent randomization. */
+    public CoverageSweepOptions(Set<Integer> statuses, boolean inScopeOnly, int maxCandidates,
+                                int maxProbesPerCandidate, int concurrency, int perHostConcurrency,
+                                Set<Integer> throttleStatusCodes, CoverageSweepMode mode,
+                                CoverageSweepAuthSelection authSelection, boolean excludeStaticAssets,
+                                boolean verifyUnauthenticatedAccess, List<Integer> hostPortProbePorts,
+                                List<ConfiguredHeader> requestHeaders, CoverageSweepPayloadSet payloadSet,
+                                ThrottleSettings.Posture posture, CoverageSweepFamilySelection familySelection,
+                                ThrottleSettings.PauseMode pauseMode, long fixedPauseMillis) {
+        this(statuses, inScopeOnly, maxCandidates, maxProbesPerCandidate, concurrency,
+            perHostConcurrency, throttleStatusCodes, mode, authSelection, excludeStaticAssets,
+            verifyUnauthenticatedAccess, hostPortProbePorts, requestHeaders, payloadSet, posture,
+            familySelection, pauseMode, fixedPauseMillis, UserAgentMode.DISABLED, 0L);
     }
 
     /** Backward-compatible full constructor with no global throttle pause. */
@@ -138,7 +159,7 @@ public record CoverageSweepOptions(
             Set.of(401, 403),
             true,
             100,
-            280,
+            350,
             1,
             1,
             Set.of(429, 503),
@@ -152,7 +173,9 @@ public record CoverageSweepOptions(
             ThrottleSettings.Posture.RIDE_HARD,
             CoverageSweepFamilySelection.defaults(),
             ThrottleSettings.PauseMode.OFF,
-            30_000L
+            30_000L,
+            UserAgentMode.DISABLED,
+            0L
         );
     }
 
@@ -161,13 +184,13 @@ public record CoverageSweepOptions(
             concurrency, perHostConcurrency, throttleStatusCodes,
             CoverageSweepMode.AUTHENTICATED_TRAFFIC, selection, excludeStaticAssets,
             verifyUnauthenticatedAccess, hostPortProbePorts, requestHeaders, payloadSet, posture,
-            familySelection, pauseMode, fixedPauseMillis);
+            familySelection, pauseMode, fixedPauseMillis, userAgentMode, userAgentRandomizationSeed);
     }
 
     public CoverageSweepOptions withHostPortProbePorts(List<Integer> ports) {
         return new CoverageSweepOptions(statuses, inScopeOnly, maxCandidates, maxProbesPerCandidate,
             concurrency, perHostConcurrency, throttleStatusCodes, mode, authSelection,
             excludeStaticAssets, verifyUnauthenticatedAccess, ports, requestHeaders, payloadSet, posture,
-            familySelection, pauseMode, fixedPauseMillis);
+            familySelection, pauseMode, fixedPauseMillis, userAgentMode, userAgentRandomizationSeed);
     }
 }

@@ -34,9 +34,14 @@ public final class SessionRunOptionsSupport {
             attackSelectionPanel.isCookieParamAttackEnabled(),
             runOptionsPanel.isFuzzExistingCookiesEnabled(),
             concurrency,
+            runOptionsPanel.perHostConcurrency(),
             SessionInputParsers.parseStatusCodes(runOptionsPanel.throttleStatusCodesText()),
             runOptionsPanel.posture(),
-            runOptionsPanel.requestHeaders()
+            runOptionsPanel.pauseMode(),
+            runOptionsPanel.fixedPauseMillis(),
+            runOptionsPanel.requestHeaders(),
+            runOptionsPanel.userAgentMode(),
+            runOptionsPanel.userAgentRandomizationSeed()
         );
     }
 }

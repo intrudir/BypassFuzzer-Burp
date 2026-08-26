@@ -17,6 +17,11 @@ import java.util.Set;
 public class CoverageSweepProbeGenerator {
 
     private static final String SWEEP_PROBES_FILE = "sweep_probes.txt";
+    private static final List<BackslashVariant> BACKSLASH_VARIANTS = List.of(
+        new BackslashVariant("raw", "\\"),
+        new BackslashVariant("encoded lowercase", "%5c"),
+        new BackslashVariant("encoded uppercase", "%5C")
+    );
     private final List<CoverageSweepProbeTemplate> templates;
     private final HostPortBypassPayloadGenerator hostPortPayloadGenerator = new HostPortBypassPayloadGenerator();
 
@@ -57,6 +62,9 @@ public class CoverageSweepProbeGenerator {
         }
 
         String path = safePath(request.path());
+        if (familyEnabled(options, "Path Normalization")) {
+            addBackslashPathProbes(probes, seen, limit, request, path);
+        }
         for (CoverageSweepProbeTemplate template : templates) {
             if (!familyEnabled(options, template.family())) {
                 continue;
@@ -68,6 +76,40 @@ public class CoverageSweepProbeGenerator {
         }
 
         return probes;
+    }
+
+    /** Promotes the full Bypass catalog's backslash primitive into bounded High Signal coverage. */
+    private void addBackslashPathProbes(List<CoverageSweepProbe> probes,
+                                        Set<String> seen,
+                                        int limit,
+                                        HttpRequest request,
+                                        String pathWithQuery) {
+        String path = RequestPathUtils.pathWithoutQuery(pathWithQuery);
+        String query = RequestPathUtils.queryFromPath(pathWithQuery);
+        List<int[]> segments = pathSegments(path);
+        for (BackslashVariant variant : BACKSLASH_VARIANTS) {
+            for (int index = 0; index < segments.size(); index++) {
+                int start = segments.get(index)[0];
+                int end = segments.get(index)[1];
+                int segmentNumber = index + 1;
+                add(probes, seen, limit, backslashProbe(request, query,
+                    "Backslash " + variant.label() + " prefix on segment " + segmentNumber,
+                    path.substring(0, start) + variant.marker() + path.substring(start)));
+                add(probes, seen, limit, backslashProbe(request, query,
+                    "Backslash " + variant.label() + " suffix on segment " + segmentNumber,
+                    path.substring(0, end) + variant.marker() + path.substring(end)));
+                add(probes, seen, limit, backslashProbe(request, query,
+                    "Backslash " + variant.label() + " sandwich on segment " + segmentNumber,
+                    path.substring(0, start) + variant.marker() + path.substring(start, end)
+                        + variant.marker() + path.substring(end)));
+            }
+        }
+    }
+
+    private CoverageSweepProbe backslashProbe(HttpRequest request, String query,
+                                               String label, String path) {
+        return new CoverageSweepProbe(label, "Path Normalization",
+            request.withPath(RequestPathUtils.replaceQuery(path, query)));
     }
 
     private void addStandaloneNormalizationMarkerProbes(List<CoverageSweepProbe> probes,
@@ -131,6 +173,21 @@ public class CoverageSweepProbeGenerator {
     private List<String> standaloneMarkerSegmentSurroundPaths(String pathWithQuery, String marker) {
         String path = RequestPathUtils.pathWithoutQuery(pathWithQuery);
         String query = RequestPathUtils.queryFromPath(pathWithQuery);
+        List<int[]> segments = pathSegments(path);
+
+        List<String> variants = new ArrayList<>();
+        for (int[] segment : segments) {
+            int start = segment[0];
+            int end = segment[1];
+            String surrounded = path.substring(0, start)
+                + marker + "/" + path.substring(start, end) + "/" + marker
+                + path.substring(end);
+            variants.add(RequestPathUtils.replaceQuery(surrounded, query));
+        }
+        return variants;
+    }
+
+    private List<int[]> pathSegments(String path) {
         List<int[]> segments = new ArrayList<>();
         int index = 0;
         while (index < path.length()) {
@@ -146,17 +203,7 @@ public class CoverageSweepProbeGenerator {
             }
             segments.add(new int[]{start, index});
         }
-
-        List<String> variants = new ArrayList<>();
-        for (int[] segment : segments) {
-            int start = segment[0];
-            int end = segment[1];
-            String surrounded = path.substring(0, start)
-                + marker + "/" + path.substring(start, end) + "/" + marker
-                + path.substring(end);
-            variants.add(RequestPathUtils.replaceQuery(surrounded, query));
-        }
-        return variants;
+        return segments;
     }
 
     private CoverageSweepProbe buildProbe(CoverageSweepProbeTemplate template, HttpRequest request, String path) {
@@ -461,6 +508,9 @@ public class CoverageSweepProbeGenerator {
             loaded.add(parseTemplate(line));
         }
         return loaded;
+    }
+
+    private record BackslashVariant(String label, String marker) {
     }
 
     private static CoverageSweepProbeTemplate parseTemplate(String line) {

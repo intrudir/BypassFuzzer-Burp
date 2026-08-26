@@ -8,11 +8,13 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
+import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
 import com.bypassfuzzer.burp.http.RequestSender;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import java.lang.reflect.Field;
 import java.lang.reflect.Proxy;
 import java.util.ArrayDeque;
 import java.util.List;
@@ -29,6 +31,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class SessionResultsWorkspaceTest {
+
+    @Test
+    void sharedWorkspaceAlwaysExposesTheRetryQueueControl() throws Exception {
+        SessionResultsWorkspace workspace = workspace(new SequenceSender(response(200)));
+        Field field = SessionResultsWorkspace.class.getDeclaredField("retryQueueButton");
+        field.setAccessible(true);
+        javax.swing.JButton queue = (javax.swing.JButton) field.get(workspace);
+
+        assertTrue(queue.isVisible());
+        assertEquals("Retry queue (0)", queue.getText());
+    }
 
     @Test
     void noResponseResultAppearsInVisibleRetryQueueAndClearsAfterSuccess() throws Exception {
@@ -57,7 +70,7 @@ class SessionResultsWorkspaceTest {
     void successfulRetryLeavesAuditRowAndRemovesRequestFromQueue() throws Exception {
         SequenceSender sender = new SequenceSender(response(200));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         AttackResult throttled = new AttackResult("Header", "payload", request("/admin", "", "GET", null, ""),
             response(429));
 
@@ -80,7 +93,7 @@ class SessionResultsWorkspaceTest {
     void requestThatRemainsThrottledStaysQueuedForAnotherPass() throws Exception {
         SequenceSender sender = new SequenceSender(response(429));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(new AttackResult("Path", "variant",
             request("/admin", "", "GET", null, ""), response(429)));
 
@@ -97,7 +110,7 @@ class SessionResultsWorkspaceTest {
     void unsafeMethodsRemainQueuedUnlessExplicitlyIncluded() throws Exception {
         SequenceSender sender = new SequenceSender(response(200));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(new AttackResult("Header", "payload",
             request("/update", "", "POST", null, ""), response(429)));
 
@@ -118,7 +131,7 @@ class SessionResultsWorkspaceTest {
     void primaryRunDisablesDeferredRetryUntilCompletion() throws Exception {
         SequenceSender sender = new SequenceSender(response(200));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(new AttackResult("Header", "payload",
             request("/admin", "", "GET", null, ""), response(429)));
         workspace.setPrimaryRunActive(true);
@@ -134,7 +147,7 @@ class SessionResultsWorkspaceTest {
     void sweepRetryQuarantinesAnEntireStablePayloadShapeAfterOneControlAndSample() throws Exception {
         SequenceSender sender = new SequenceSender(response(403), response(429));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(sweepResult("GET /one", "/one.bak", "/one", "Path suffix .bak"));
         workspace.addResult(sweepResult("GET /two", "/two.bak", "/two", "Path suffix .bak"));
 
@@ -157,7 +170,7 @@ class SessionResultsWorkspaceTest {
     void sweepRetryContinuesGroupWhenControlAndSampleAreNoLongerThrottled() throws Exception {
         SequenceSender sender = new SequenceSender(response(403), response(403), response(403));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(sweepResult("GET /one", "/one.bak", "/one", "Path suffix .bak"));
         workspace.addResult(sweepResult("GET /two", "/two.bak", "/two", "Path suffix .bak"));
 
@@ -174,7 +187,7 @@ class SessionResultsWorkspaceTest {
     void sweepRetryKeepsQueueRetryableWhenControlIsAlsoThrottled() throws Exception {
         SequenceSender sender = new SequenceSender(response(429));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(sweepResult("GET /one", "/one.bak", "/one", "Path suffix .bak"));
         workspace.addResult(sweepResult("GET /two", "/two.bak", "/two", "Path suffix .bak"));
 
@@ -191,7 +204,7 @@ class SessionResultsWorkspaceTest {
     void manualRetryCanPauseBetweenRequestsAndResumeWhereItLeftOff() throws Exception {
         BlockingFirstSender sender = new BlockingFirstSender(response(429));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(new AttackResult("Path", "one",
             request("/one", "", "GET", null, ""), response(429)));
         workspace.addResult(new AttackResult("Path", "two",
@@ -218,7 +231,7 @@ class SessionResultsWorkspaceTest {
     void stoppingManualRetryKeepsUnfinishedRequestsQueued() throws Exception {
         BlockingFirstSender sender = new BlockingFirstSender(response(429));
         SessionResultsWorkspace workspace = workspace(sender);
-        workspace.configureThrottleRetries(Set.of(429));
+        workspace.configureThrottleRetries(retrySettings(Set.of(429)));
         workspace.addResult(new AttackResult("Path", "one",
             request("/one", "", "GET", null, ""), response(429)));
         workspace.addResult(new AttackResult("Path", "two",
@@ -282,6 +295,11 @@ class SessionResultsWorkspaceTest {
         when(body.length()).thenReturn(0);
         when(response.headers()).thenReturn(List.of(header("Content-Type", "text/plain")));
         return response;
+    }
+
+    private static ThrottleSettings retrySettings(Set<Integer> statusCodes) {
+        return new ThrottleSettings(statusCodes, 1, 1, 400.0,
+            ThrottleSettings.Posture.CONSERVATIVE);
     }
 
     private HttpHeader header(String name, String value) {

@@ -48,6 +48,7 @@ public class UrlValidationOptionsPanel extends JPanel {
     private final JCheckBox encodingUnicodeEscapeCheckbox;
     private final ThrottleSettingsControl throttleControl;
     private final RequestHeadersControl requestHeadersControl;
+    private long userAgentRandomizationSeed;
 
     public UrlValidationOptionsPanel(HttpRequest request, boolean collaboratorAvailable) {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -184,8 +185,30 @@ public class UrlValidationOptionsPanel extends JPanel {
         return throttleControl.posture();
     }
 
+    public int concurrency() { return throttleControl.concurrency(); }
+
+    public int perHostConcurrency() { return throttleControl.perHostConcurrency(); }
+
+    public com.bypassfuzzer.burp.core.throttle.ThrottleSettings.PauseMode pauseMode() {
+        return throttleControl.pauseMode();
+    }
+
+    public long fixedPauseMillis() { return throttleControl.fixedPauseMillis(); }
+
     public java.util.List<ConfiguredHeader> requestHeaders() {
         return requestHeadersControl.headers();
+    }
+
+    public com.bypassfuzzer.burp.http.UserAgentMode userAgentMode() {
+        return requestHeadersControl.userAgentMode();
+    }
+
+    public long userAgentRandomizationSeed() {
+        if (userAgentMode() == com.bypassfuzzer.burp.http.UserAgentMode.DISABLED) return 0L;
+        if (userAgentRandomizationSeed == 0L) {
+            userAgentRandomizationSeed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
+        }
+        return userAgentRandomizationSeed;
     }
 
     public void setControlsEnabled(boolean enabled) {

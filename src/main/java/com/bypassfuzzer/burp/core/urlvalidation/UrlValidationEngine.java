@@ -100,7 +100,8 @@ public class UrlValidationEngine {
         String targetUrl = targetUrlResolver.resolve(request);
         coordinator = new HostThrottleCoordinator(options.throttleSettings(), api);
 
-        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(options.requestHeaders());
+        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
+            options.requestHeaders(), options.userAgentMode(), options.userAgentRandomizationSeed());
         UrlValidationAttack attack = new UrlValidationAttack(options);
         AttackExecutor attackExecutor = new AttackExecutor(
             new MontoyaRequestSender(api, globalGovernor),

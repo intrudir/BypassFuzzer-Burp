@@ -38,9 +38,11 @@ BypassFuzzer has four main testing areas:
   - Imports OpenAPI 3 and Swagger 2 JSON/YAML specifications as method-aware sweep candidates
   - Imports Postman Collection v2.0/v2.1 JSON, preserving methods, parameters, headers, auth, and request bodies
   - Deduplicates endpoint shapes before sending probes
-  - Uses a bounded, mile-wide/inch-deep probe set with a default cap of 280 probes per endpoint
+  - Uses a bounded, mile-wide/inch-deep probe set with a default cap of 350 probes per endpoint
   - Adaptive per-host rate control: automatically discovers each host's rate-limit ceiling and rides just under it (no delay/rate knobs to tune), sweeping every host in parallel at its own speed
   - Optional one-click browser User-Agent preset on sweep probes
+  - Shared request-header controls in every mode, including optional per-request User-Agent variation with synthetic non-browser tokens or browser-like variants
+  - Shared full throttle controls and a common deferred retry queue across Bypass, Sweep, IDOR, and URL Validation
   - Includes a preview table and exact probe preview before sending requests
   - Uses an explicit build-time wordlist at `src/main/resources/payloads/sweep_probes.txt`
   - Shows concrete signals such as `403 -> 200` and suppresses noisy `4xx` probe signals
@@ -145,8 +147,8 @@ The `Sweep` tab is available as soon as the extension loads. It is intended for 
 4. Review the deduped candidate table
    - Use **View** to open the selected request and response side by side
 5. Uncheck candidates you do not want to probe
-6. Adjust concurrency and throttle status codes if needed. `Throttle...` also provides a fixed
-   Sweep-wide cooldown or Smart Pause for shared CDN/WAF rate limits. Smart Pause tolerates isolated
+6. Adjust global/per-host concurrency and throttle status codes if needed. Every mode's shared `Throttle...` dialog also provides a fixed
+   run-wide cooldown or Smart Pause for shared CDN/WAF rate limits. Smart Pause tolerates isolated
    throttles, detects sustained per-host or correlated multi-host saturation, and cautiously probes
    recovery before resuming full flow while honoring `Retry-After`.
 7. Use **Payload Families...** to disable any High Signal categories or full Bypass attack families you do not want to send
@@ -160,8 +162,9 @@ position or queued retries.
 
 **What Sweep sends**
 
-Sweep does not run the full BypassFuzzer payload inventory. It uses a curated wordlist capped at 280 probes per endpoint by default. The bundled wordlist focuses on:
+Sweep does not run the full BypassFuzzer payload inventory. It uses a curated wordlist capped at 350 probes per endpoint by default. The bundled wordlist focuses on:
 
+- raw and encoded backslash prefix, suffix, and sandwich mutations on every path segment
 - matrix and extension normalization such as `;.json`, `;.html`, `.json;`, and `.html;`
 - standalone dot/semicolon markers inserted at boundaries and around each segment, including URL-encoded, double-encoded, and legacy `%u` forms
 - lightweight content negotiation query probes such as `?.json` and `?format=json`

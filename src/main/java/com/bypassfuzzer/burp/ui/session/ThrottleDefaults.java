@@ -32,10 +32,11 @@ public record ThrottleDefaults(
     static ThrottleDefaults forBypassFuzzer(FuzzerConfig config) {
         return new ThrottleDefaults(
             config.getConcurrency(),
-            -1,
+            config.getPerHostConcurrency(),
             config.getThrottleStatusCodes(),
             config.getThrottlePosture(),
-            "Concurrency", false, ThrottleSettings.PauseMode.OFF, 30_000L
+            "Global concurrency", true, config.getThrottlePauseMode(),
+            config.getThrottleFixedPauseMillis()
         );
     }
 
@@ -51,21 +52,21 @@ public record ThrottleDefaults(
 
     static ThrottleDefaults forIdor(IdorRunOptions defaults) {
         return new ThrottleDefaults(
-            -1,
-            -1,
+            defaults.concurrency(),
+            defaults.perHostConcurrency(),
             defaults.throttleStatusCodes(),
             defaults.throttlePosture(),
-            "Concurrency", false, ThrottleSettings.PauseMode.OFF, 30_000L
+            "Global concurrency", true, defaults.pauseMode(), defaults.fixedPauseMillis()
         );
     }
 
     static ThrottleDefaults forUrlValidation() {
         return new ThrottleDefaults(
-            -1,
-            -1,
+            1,
+            1,
             Set.of(429, 503),
             ThrottleSettings.Posture.RIDE_HARD,
-            "Concurrency", false, ThrottleSettings.PauseMode.OFF, 30_000L
+            "Global concurrency", true, ThrottleSettings.PauseMode.OFF, 30_000L
         );
     }
 }

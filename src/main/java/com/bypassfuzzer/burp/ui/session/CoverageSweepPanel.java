@@ -15,6 +15,7 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepOptions;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPayloadSet;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
+import com.bypassfuzzer.burp.http.UserAgentMode;
 import com.bypassfuzzer.burp.core.coverage.PostmanCollectionParser;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
@@ -86,7 +87,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JButton applyOpenApiBaseUrlButton;
     private JButton configurationToggleButton;
     private JButton throttleButton;
-    private JButton retryQueueButton;
     private JButton importMenuButton;
     private JButton excludeHostsButton;
     private JPanel configurationActionsRow;
@@ -100,6 +100,9 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private HostPortsControl hostPortsControl;
     private JCheckBox dedupeImportedEndpointsCheckBox;
     private RequestHeadersControl requestHeadersControl;
+    private long userAgentRandomizationSeed =
+        java.util.concurrent.ThreadLocalRandom.current().nextLong();
+    private boolean configurationControlsEnabled = true;
     private ThrottleSettingsControl throttleControl;
     private JCheckBox status401CheckBox;
     private JCheckBox status403CheckBox;
@@ -116,9 +119,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JScrollPane candidatesScrollPane;
     private JSplitPane centerSplitPane;
     private SessionResultsWorkspace resultsWorkspace;
-    private JDialog retryQueueDialog;
-    private RetryQueueTableModel retryQueueTableModel;
-    private JButton retryQueueExportJsonButton;
     private volatile boolean stopRequested = false;
     private boolean retryExecutionControlsActive;
     private List<CoverageSweepCandidate> cachedHistoryCandidates = List.of();
@@ -189,9 +189,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         engine.cleanup();
         if (resultsWorkspace != null) {
             resultsWorkspace.cleanup();
-        }
-        if (retryQueueDialog != null) {
-            retryQueueDialog.dispose();
         }
     }
 
@@ -325,6 +322,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         browserUserAgentCheckBox = new JCheckBox("Browser User-Agent", true);
         browserUserAgentCheckBox.setToolTipText(
             "Send every probe with a current desktop Chrome User-Agent (unless you set one yourself in Request Headers).");
+        requestHeadersControl.setOnChange(this::updateBrowserUserAgentControl);
+        updateBrowserUserAgentControl();
         executionRow.add(new JLabel("Payload set:"));
         executionRow.add(payloadSetComboBox);
         executionRow.add(payloadFamilyControl.button());
@@ -366,10 +365,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         exportButton.setEnabled(false);
         exportButton.setToolTipText("Export results, completed hosts, or deferred retry data.");
         exportButton.addActionListener(e -> openExportDialog());
-        retryQueueButton = new JButton("Retry queue (0)");
-        retryQueueButton.setToolTipText("View payloads deferred because their host returned a throttle response.");
-        retryQueueButton.setEnabled(false);
-        retryQueueButton.addActionListener(e -> openRetryQueueDialog());
         importMenuButton = new JButton("Import...");
         importMenuButton.setToolTipText("Import targets or an exact retry-package JSON file.");
         importMenuButton.addActionListener(e -> openImportDialog());
@@ -386,7 +381,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         modeActionsRow.add(requestHeadersControl.button());
         modeActionsRow.add(clearButton);
         modeActionsRow.add(authIdentifiersButton);
-        modeActionsRow.add(retryQueueButton);
         resultActionsRow.add(startButton);
         resultActionsRow.add(stopButton);
         resultActionsRow.add(pauseButton);
@@ -455,58 +449,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         if (viewRows.length > 0) {
             candidateTableModel.fireTableDataChanged();
         }
-    }
-
-    private void openRetryQueueDialog() {
-        if (retryQueueDialog == null) {
-            retryQueueTableModel = new RetryQueueTableModel();
-            JTable table = new JTable(retryQueueTableModel);
-            table.setAutoCreateRowSorter(true);
-            table.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
-            JScrollPane scrollPane = new JScrollPane(table);
-            scrollPane.setPreferredSize(new Dimension(900, 300));
-            Window owner = SwingUtilities.getWindowAncestor(this);
-            retryQueueDialog = new JDialog(owner, "Deferred throttle retry queue",
-                Dialog.ModalityType.MODELESS);
-            retryQueueDialog.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
-            JPanel content = new JPanel(new BorderLayout(8, 8));
-            content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-            content.add(scrollPane, BorderLayout.CENTER);
-
-            retryQueueExportJsonButton = new JButton("Export JSON...");
-            retryQueueExportJsonButton.setToolTipText(
-                "Export exact retry requests and payload metadata for later replay.");
-            retryQueueExportJsonButton.addActionListener(e ->
-                exportRetryQueueJson(resultsWorkspace.throttledRetrySnapshot()));
-            JButton closeButton = new JButton("Close");
-            closeButton.addActionListener(e -> retryQueueDialog.setVisible(false));
-            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-            buttons.add(resultsWorkspace.retryThrottledButton());
-            buttons.add(retryQueueExportJsonButton);
-            buttons.add(closeButton);
-            JPanel retryControls = new JPanel(new BorderLayout());
-            retryControls.add(resultsWorkspace.retryStatusLabel(), BorderLayout.CENTER);
-            retryControls.add(buttons, BorderLayout.EAST);
-            content.add(retryControls, BorderLayout.SOUTH);
-
-            retryQueueDialog.setContentPane(content);
-            retryQueueDialog.setSize(920, 380);
-        }
-        refreshRetryQueueDialog();
-        retryQueueDialog.setLocationRelativeTo(SwingUtilities.getWindowAncestor(this));
-        retryQueueDialog.setVisible(true);
-    }
-
-    private void refreshRetryQueueDialog() {
-        if (retryQueueDialog == null || retryQueueTableModel == null) {
-            return;
-        }
-        List<AttackResult> queued = resultsWorkspace.throttledRetrySnapshot();
-        retryQueueTableModel.setResults(queued);
-        retryQueueDialog.setTitle("Deferred throttle retry queue ("
-            + resultsWorkspace.throttledRetryCount() + " retryable, "
-            + resultsWorkspace.patternBlockedRetryCount() + " stable pattern-blocked)");
-        retryQueueExportJsonButton.setEnabled(!queued.isEmpty());
     }
 
     private void exportRetryQueueWordlist(List<AttackResult> queued) {
@@ -750,44 +692,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                                      String url, String method, String httpMode, String payloadLabel) {
     }
 
-    private static final class RetryQueueTableModel extends AbstractTableModel {
-        private static final String[] COLUMNS = {"Target", "Method", "Payload", "Status", "Attempt"};
-        private List<AttackResult> results = List.of();
-
-        void setResults(List<AttackResult> results) {
-            this.results = results == null ? List.of() : List.copyOf(results);
-            fireTableDataChanged();
-        }
-
-        @Override
-        public int getRowCount() {
-            return results.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return COLUMNS.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return COLUMNS[column];
-        }
-
-        @Override
-        public Object getValueAt(int rowIndex, int columnIndex) {
-            AttackResult result = results.get(rowIndex);
-            return switch (columnIndex) {
-                case 0 -> result.getTargetLabel();
-                case 1 -> result.getRequest() == null ? "" : result.getRequest().method();
-                case 2 -> result.getPayload();
-                case 3 -> result.getStatusCode();
-                case 4 -> result.getThrottleRetryAttempt();
-                default -> "";
-            };
-        }
-    }
-
     private void toggleConfigurationPanel() {
         boolean expanded = configurationPanel.isVisible();
         configurationPanel.setVisible(!expanded);
@@ -849,11 +753,11 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             false,
             globalGovernor
         );
-        resultsWorkspace.setInlineRetryControlsVisible(false);
         resultsWorkspace.setAuthVerificationTabsVisible(false);
+        resultsWorkspace.setRetryQueueExportAction(() ->
+            exportRetryQueueJson(resultsWorkspace.throttledRetrySnapshot()));
         resultsWorkspace.setThrottleRetryQueueChangedListener(() -> {
             updateRetryQueueButton();
-            refreshRetryQueueDialog();
             updateExecutionControlsForRetry();
         });
 
@@ -1310,7 +1214,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
         CoverageSweepOptions options = currentOptions();
         activePayloadSet = options.payloadSet();
-        resultsWorkspace.configureThrottleRetries(options.throttleStatusCodes());
+        resultsWorkspace.configureThrottleRetries(options.throttleSettings());
         resultsWorkspace.setPrimaryRunActive(true);
         sweepPreparationWorker = new SwingWorker<>() {
             @Override
@@ -1465,6 +1369,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 + ".");
             updateRetryQueueButton();
             updateCompletedHostsLabel();
+            userAgentRandomizationSeed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
         });
     }
 
@@ -1476,15 +1381,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void updateRetryQueueButton() {
-        if (retryQueueButton == null) {
-            return;
-        }
-        int count = resultsWorkspace.throttledRetryCount();
-        int stable = resultsWorkspace.patternBlockedRetryCount();
-        retryQueueButton.setText(stable > 0
-            ? "Retry queue (" + count + " retryable, " + stable + " stable)"
-            : "Retry queue (" + count + ")");
-        retryQueueButton.setEnabled(count + stable > 0);
         updateExportButton();
     }
 
@@ -1627,7 +1523,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 : com.bypassfuzzer.burp.core.coverage.CoverageSweepFamilySelection.defaults(),
             throttleControl != null ? throttleControl.pauseMode()
                 : com.bypassfuzzer.burp.core.throttle.ThrottleSettings.PauseMode.OFF,
-            throttleControl != null ? throttleControl.fixedPauseMillis() : 30_000L
+            throttleControl != null ? throttleControl.fixedPauseMillis() : 30_000L,
+            requestHeadersControl != null ? requestHeadersControl.userAgentMode()
+                : UserAgentMode.DISABLED,
+            userAgentRandomizationSeed
         );
     }
 
@@ -1643,6 +1542,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private java.util.List<com.bypassfuzzer.burp.http.ConfiguredHeader> effectiveRequestHeaders() {
         java.util.List<com.bypassfuzzer.burp.http.ConfiguredHeader> headers =
             requestHeadersControl == null ? java.util.List.of() : requestHeadersControl.headers();
+        if (requestHeadersControl != null
+            && requestHeadersControl.userAgentMode() != UserAgentMode.DISABLED) {
+            return headers;
+        }
         if (browserUserAgentCheckBox == null || !browserUserAgentCheckBox.isSelected()) {
             return headers;
         }
@@ -1688,6 +1591,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void setStatusControlsEnabled(boolean enabled) {
+        configurationControlsEnabled = enabled;
         status401CheckBox.setEnabled(enabled);
         status403CheckBox.setEnabled(enabled);
         status3xxCheckBox.setEnabled(enabled);
@@ -1697,7 +1601,19 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         payloadFamilyControl.setEnabled(enabled);
         requestHeadersControl.setEnabled(enabled);
         modeComboBox.setEnabled(enabled);
+        updateBrowserUserAgentControl();
         updateModeControls();
+    }
+
+    private void updateBrowserUserAgentControl() {
+        if (browserUserAgentCheckBox == null || requestHeadersControl == null) {
+            return;
+        }
+        boolean randomized = requestHeadersControl.userAgentMode() != UserAgentMode.DISABLED;
+        browserUserAgentCheckBox.setEnabled(configurationControlsEnabled && !randomized);
+        browserUserAgentCheckBox.setToolTipText(randomized
+            ? "Ignored while Request Headers User-Agent randomization is enabled."
+            : "Send every probe with a current desktop Chrome User-Agent unless Request Headers supplies one.");
     }
 
     private CoverageSweepMode currentMode() {

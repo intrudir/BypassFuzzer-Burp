@@ -124,7 +124,9 @@ public class IdorEngine {
             return;
         }
 
-        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(options.runOptions().requestHeaders());
+        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
+            options.runOptions().requestHeaders(), options.runOptions().userAgentMode(),
+            options.runOptions().userAgentRandomizationSeed());
         IdorRequestContext context = contextAnalyzer.analyze(request, options);
         HttpRequest targetRequest = context.targetRequest();
         if (!running) {

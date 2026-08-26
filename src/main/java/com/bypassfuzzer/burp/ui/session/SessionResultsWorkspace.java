@@ -15,17 +15,23 @@ import com.bypassfuzzer.burp.http.MontoyaRequestSender;
 import com.bypassfuzzer.burp.http.RequestSender;
 
 import javax.swing.JButton;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTable;
+import javax.swing.WindowConstants;
 import javax.swing.SwingWorker;
 import javax.swing.SwingUtilities;
+import javax.swing.table.AbstractTableModel;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GraphicsEnvironment;
+import java.awt.Dialog;
+import java.awt.Window;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,10 +62,13 @@ public class SessionResultsWorkspace {
     private final Consumer<SessionResultsWorkspace> filterAppliedListener;
     private final RequestSender retrySender;
     private final JButton retryThrottledButton;
+    private final JButton retryQueueButton;
     private final JLabel retryStatusLabel;
     private JPanel retryRow;
     private final Map<String, DeferredRetry> throttledRetries = new LinkedHashMap<>();
-    private Set<Integer> throttleStatusCodes = Set.of(429, 503);
+    private ThrottleSettings retryThrottleSettings = new ThrottleSettings(
+        Set.of(429, 503), 1, 1, 400.0, ThrottleSettings.Posture.CONSERVATIVE);
+    private Set<Integer> throttleStatusCodes = retryThrottleSettings.throttleStatusCodes();
     private boolean primaryRunActive;
     private volatile boolean retryRunning;
     private long queueGeneration;
@@ -70,6 +79,10 @@ public class SessionResultsWorkspace {
     private volatile boolean retryStopRequested;
     private boolean filtersCollapsed;
     private Runnable throttleRetryQueueChangedListener = () -> { };
+    private JDialog retryQueueDialog;
+    private RetryQueueTableModel retryQueueTableModel;
+    private JButton retryQueueExportButton;
+    private Runnable retryQueueExportAction;
 
     public SessionResultsWorkspace(MontoyaApi api,
                                    Consumer<String> errorLogger,
@@ -110,6 +123,11 @@ public class SessionResultsWorkspace {
             "Retry throttled and no-response requests, using control canaries for Sweep groups. "
                 + "Unsafe methods require confirmation.");
         this.retryThrottledButton.addActionListener(event -> retryThrottledFromButton());
+        this.retryQueueButton = new JButton("Retry queue (0)");
+        this.retryQueueButton.setEnabled(false);
+        this.retryQueueButton.setToolTipText(
+            "View, export, and retry throttled or no-response requests.");
+        this.retryQueueButton.addActionListener(event -> openRetryQueueDialog());
         this.retryStatusLabel = new JLabel("");
         this.splitPane = buildSplitPane(borderlessSidebar);
         updateFilterStatus();
@@ -122,12 +140,6 @@ public class SessionResultsWorkspace {
 
     public void setAuthVerificationTabsVisible(boolean visible) {
         resultsPanel.setAuthVerificationTabsVisible(visible);
-    }
-
-    public void setInlineRetryControlsVisible(boolean visible) {
-        if (retryRow != null) {
-            retryRow.setVisible(visible);
-        }
     }
 
     JButton retryThrottledButton() {
@@ -171,12 +183,22 @@ public class SessionResultsWorkspace {
 
     public void cleanup() {
         cancelRetryWorker();
+        if (retryQueueDialog != null) retryQueueDialog.dispose();
     }
 
-    /** Sets which response codes mark a result as throttled (and thus eligible for manual retry). */
-    public void configureThrottleRetries(Set<Integer> statusCodes) {
-        throttleStatusCodes = statusCodes == null ? Set.of() : Set.copyOf(statusCodes);
+    /** Uses the run's centralized throttle settings for queue classification and retry pacing. */
+    public void configureThrottleRetries(ThrottleSettings settings) {
+        retryThrottleSettings = settings == null
+            ? new ThrottleSettings(Set.of(), 1, 1, 400.0, ThrottleSettings.Posture.CONSERVATIVE)
+            : settings;
+        throttleStatusCodes = retryThrottleSettings.throttleStatusCodes();
         updateRetryControls();
+    }
+
+    /** Adds a mode-specific export to the otherwise shared retry-queue dialog. */
+    public void setRetryQueueExportAction(Runnable action) {
+        retryQueueExportAction = action;
+        if (retryQueueExportButton != null) retryQueueExportButton.setVisible(action != null);
     }
 
     public void setPrimaryRunActive(boolean active) {
@@ -283,12 +305,11 @@ public class SessionResultsWorkspace {
         retryStatusLabel.setText("Classifying and retrying " + selected.size()
             + " queued request(s)...");
         updateRetryControls();
-        // Manual retries are paced per host by the adaptive controller (conservative posture, one
-        // request in flight). The controller learns from each new response -- it does not replay the
-        // original 429, which previously compounded backoff on every item.
+        // Manual retries use the run's shared adaptive throttle settings. The controller learns from
+        // each new response -- it does not replay the original 429, which previously compounded
+        // backoff on every item.
         HostThrottleCoordinator coordinator = new HostThrottleCoordinator(
-            new ThrottleSettings(throttleStatusCodes, 1, 1, 400.0, ThrottleSettings.Posture.CONSERVATIVE),
-            (burp.api.montoya.MontoyaApi) null);
+            retryThrottleSettings, (burp.api.montoya.MontoyaApi) null);
         retryCoordinator = coordinator;
         Set<String> processedKeys = ConcurrentHashMap.newKeySet();
         Map<String, List<Map.Entry<String, DeferredRetry>>> retryGroups = groupRetries(selected);
@@ -477,7 +498,7 @@ public class SessionResultsWorkspace {
 
         JPanel resultsContainer = new JPanel(new BorderLayout());
         retryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
-        retryRow.add(retryThrottledButton);
+        retryRow.add(retryQueueButton);
         retryRow.add(retryStatusLabel);
         resultsContainer.add(retryRow, BorderLayout.NORTH);
         resultsContainer.add(resultsPanel, BorderLayout.CENTER);
@@ -526,6 +547,56 @@ public class SessionResultsWorkspace {
             includeUnsafe = choice == 1;
         }
         retryThrottled(includeUnsafe);
+    }
+
+    private void openRetryQueueDialog() {
+        if (GraphicsEnvironment.isHeadless()) return;
+        if (retryQueueDialog == null) {
+            retryQueueTableModel = new RetryQueueTableModel();
+            JTable table = new JTable(retryQueueTableModel);
+            table.setAutoCreateRowSorter(true);
+            table.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
+            JScrollPane scrollPane = new JScrollPane(table);
+            scrollPane.setPreferredSize(new Dimension(900, 300));
+            Window owner = SwingUtilities.getWindowAncestor(splitPane);
+            retryQueueDialog = new JDialog(owner, "Deferred throttle retry queue",
+                Dialog.ModalityType.MODELESS);
+            retryQueueDialog.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+            JPanel content = new JPanel(new BorderLayout(8, 8));
+            content.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            content.add(scrollPane, BorderLayout.CENTER);
+
+            retryQueueExportButton = new JButton("Export JSON...");
+            retryQueueExportButton.setToolTipText("Export queued requests for later replay.");
+            retryQueueExportButton.addActionListener(event -> {
+                if (retryQueueExportAction != null) retryQueueExportAction.run();
+            });
+            retryQueueExportButton.setVisible(retryQueueExportAction != null);
+            JButton closeButton = new JButton("Close");
+            closeButton.addActionListener(event -> retryQueueDialog.setVisible(false));
+            JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            buttons.add(retryThrottledButton);
+            buttons.add(retryQueueExportButton);
+            buttons.add(closeButton);
+            JPanel retryControls = new JPanel(new BorderLayout());
+            retryControls.add(retryStatusLabel, BorderLayout.CENTER);
+            retryControls.add(buttons, BorderLayout.EAST);
+            content.add(retryControls, BorderLayout.SOUTH);
+            retryQueueDialog.setContentPane(content);
+            retryQueueDialog.setSize(920, 380);
+        }
+        refreshRetryQueueDialog();
+        retryQueueDialog.setLocationRelativeTo(SwingUtilities.getWindowAncestor(splitPane));
+        retryQueueDialog.setVisible(true);
+    }
+
+    private void refreshRetryQueueDialog() {
+        if (retryQueueTableModel == null) return;
+        List<AttackResult> queued = throttledRetrySnapshot();
+        retryQueueTableModel.setResults(queued);
+        retryQueueDialog.setTitle("Deferred throttle retry queue (" + throttledRetryCount()
+            + " retryable, " + patternBlockedRetryCount() + " stable pattern-blocked)");
+        if (retryQueueExportButton != null) retryQueueExportButton.setEnabled(!queued.isEmpty());
     }
 
     private void trackThrottleResult(AttackResult result) {
@@ -666,6 +737,12 @@ public class SessionResultsWorkspace {
             int count = throttledRetryCount();
             retryThrottledButton.setText("Retry Queued (" + count + ")");
             retryThrottledButton.setEnabled(count > 0 && !primaryRunActive && !retryRunning);
+            int stable = patternBlockedRetryCount();
+            retryQueueButton.setText(stable > 0
+                ? "Retry queue (" + count + " retryable, " + stable + " stable)"
+                : "Retry queue (" + count + ")");
+            retryQueueButton.setEnabled(count + stable > 0);
+            refreshRetryQueueDialog();
             throttleRetryQueueChangedListener.run();
         };
         if (SwingUtilities.isEventDispatchThread()) {
@@ -683,6 +760,33 @@ public class SessionResultsWorkspace {
 
     private record RetryOutcome(String key, DeferredRetry retry, HttpResponse response, long generation,
                                 List<Map.Entry<String, DeferredRetry>> stablePatternGroup) {
+    }
+
+    private static final class RetryQueueTableModel extends AbstractTableModel {
+        private static final String[] COLUMNS = {"Target", "Method", "Payload", "Status", "Attempt"};
+        private List<AttackResult> results = List.of();
+
+        void setResults(List<AttackResult> results) {
+            this.results = results == null ? List.of() : List.copyOf(results);
+            fireTableDataChanged();
+        }
+
+        @Override public int getRowCount() { return results.size(); }
+        @Override public int getColumnCount() { return COLUMNS.length; }
+        @Override public String getColumnName(int column) { return COLUMNS[column]; }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            AttackResult result = results.get(rowIndex);
+            return switch (columnIndex) {
+                case 0 -> result.getTargetLabel();
+                case 1 -> result.getRequest() == null ? "" : result.getRequest().method();
+                case 2 -> result.getPayload();
+                case 3 -> result.getStatusCode();
+                case 4 -> result.getThrottleRetryAttempt();
+                default -> "";
+            };
+        }
     }
 
 }

@@ -167,7 +167,13 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.previewTableUpdatesAfterLoadingProxyHistory \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importsTargetUrlsFromTextFileIntoPreviewTable \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.probePreviewRendersExactGeneratedRequests \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.requestHeadersMenuOffersSyntheticAndBrowserLikeUserAgentRandomization \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.userAgentRandomizationOverridesFixedHeaderAtEngineBoundary \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.startAndStopButtonsReflectRunningState \
+        --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
+        --tests com.bypassfuzzer.burp.http.UserAgentRandomizerTest \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.highSignalPromotesFullCatalogBackslashMutationsAtEverySegment \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.executionLabelsLikelyBypassResults
       copy_results "$evidence_dir" test
       ;;
@@ -175,7 +181,9 @@ drive() {
       run_gradle "$evidence_dir" user-path.log test \
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.requestSessionIsNestedUnderSelectedMode \
-        --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.bypassKeepsAttackTypesInlineAndMovesRunOptionsBehindButton
+        --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.bypassKeepsAttackTypesInlineAndMovesRunOptionsBehindButton \
+        --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl
       copy_results "$evidence_dir" test
       run_gradle "$evidence_dir" live-engine.log smokeTestPlaybooks \
         --tests com.bypassfuzzer.burp.smoke.AttackPlaybookSmokeTest.headerAttackFindsHeaderBypass
@@ -188,6 +196,8 @@ drive() {
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorMovesIdentifiersAndRunOptionsBehindConfigureAttack \
         --tests com.bypassfuzzer.burp.ui.session.IdorRunOptionsPanelTest \
+        --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
         --tests com.bypassfuzzer.burp.core.idor.IdorEngineTest \
         --tests com.bypassfuzzer.burp.core.idor.IdorPlaybookBehaviorTest
       copy_results "$evidence_dir" test
@@ -197,6 +207,8 @@ drive() {
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.targetedSessionContainsOnlyItsSelectedMode \
         --tests com.bypassfuzzer.burp.ui.session.UrlValidationOptionsPanelTest \
+        --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
         --tests com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayloadGeneratorTest
       copy_results "$evidence_dir" test
       run_gradle "$evidence_dir" live-engine.log smokeTestPlaybooks \

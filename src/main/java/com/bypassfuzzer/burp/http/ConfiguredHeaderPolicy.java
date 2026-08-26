@@ -14,9 +14,18 @@ public final class ConfiguredHeaderPolicy {
 
     private final List<ConfiguredHeader> headers;
     private final Map<String, List<ConfiguredHeader>> byName;
+    private final UserAgentMode userAgentMode;
+    private final long userAgentSeed;
 
     public ConfiguredHeaderPolicy(List<ConfiguredHeader> headers) {
+        this(headers, UserAgentMode.DISABLED, 0L);
+    }
+
+    public ConfiguredHeaderPolicy(List<ConfiguredHeader> headers, UserAgentMode userAgentMode,
+                                  long userAgentSeed) {
         this.headers = headers == null ? List.of() : List.copyOf(headers);
+        this.userAgentMode = userAgentMode == null ? UserAgentMode.DISABLED : userAgentMode;
+        this.userAgentSeed = this.userAgentMode == UserAgentMode.DISABLED ? 0L : userAgentSeed;
         Map<String, List<ConfiguredHeader>> grouped = new LinkedHashMap<>();
         for (ConfiguredHeader header : this.headers) {
             grouped.computeIfAbsent(normalize(header.name()), ignored -> new ArrayList<>()).add(header);
@@ -52,8 +61,11 @@ public final class ConfiguredHeaderPolicy {
 
     /** Reconciles a generated request by comparing it with the pre-mutation source request. */
     public HttpRequest reconcileMutation(HttpRequest baseline, HttpRequest request) {
-        if (request == null || headers.isEmpty()) {
+        if (request == null) {
             return request;
+        }
+        if (headers.isEmpty()) {
+            return UserAgentRandomizer.reconcile(baseline, request, userAgentMode, userAgentSeed);
         }
         Map<String, List<String>> payloads = new LinkedHashMap<>();
         for (List<ConfiguredHeader> sameName : byName.values()) {
@@ -73,7 +85,8 @@ public final class ConfiguredHeaderPolicy {
                 updated = updated.withAddedHeader(name, payloadValue);
             }
         }
-        return updated;
+        return UserAgentRandomizer.reconcile(
+            applyToBase(baseline), updated, userAgentMode, userAgentSeed);
     }
 
     public ConfiguredHeaderPolicy withoutAuthentication(java.util.Set<String> authHeaderNames,
@@ -100,7 +113,7 @@ public final class ConfiguredHeaderPolicy {
                 retained.add(header);
             }
         }
-        return new ConfiguredHeaderPolicy(retained);
+        return new ConfiguredHeaderPolicy(retained, userAgentMode, userAgentSeed);
     }
 
     private List<String> values(HttpRequest request, String name) {

@@ -3,6 +3,7 @@ package com.bypassfuzzer.burp.config;
 import com.bypassfuzzer.burp.core.attacks.AttackType;
 import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
 import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.burp.http.UserAgentMode;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -32,9 +33,14 @@ public class FuzzerConfig {
 
     // Rate limiting (adaptive; pacing is automatic per host)
     private int concurrency = 1;
+    private int perHostConcurrency = 1;
     private Set<Integer> throttleStatusCodes = new java.util.HashSet<>();
     private ThrottleSettings.Posture throttlePosture = ThrottleSettings.Posture.RIDE_HARD;
+    private ThrottleSettings.PauseMode throttlePauseMode = ThrottleSettings.PauseMode.OFF;
+    private long throttleFixedPauseMillis = 30_000L;
     private List<ConfiguredHeader> requestHeaders = List.of();
+    private UserAgentMode userAgentMode = UserAgentMode.DISABLED;
+    private long userAgentRandomizationSeed;
 
     // OOB payload
     private String oobPayload = null;
@@ -162,6 +168,14 @@ public class FuzzerConfig {
         this.concurrency = Math.max(1, concurrency);
     }
 
+    public int getPerHostConcurrency() {
+        return perHostConcurrency;
+    }
+
+    public void setPerHostConcurrency(int perHostConcurrency) {
+        this.perHostConcurrency = Math.max(1, perHostConcurrency);
+    }
+
     public Set<Integer> getThrottleStatusCodes() {
         return throttleStatusCodes;
     }
@@ -171,8 +185,9 @@ public class FuzzerConfig {
      * the concurrency value becomes the in-flight resource cap.
      */
     public ThrottleSettings throttleSettings() {
-        return new ThrottleSettings(throttleStatusCodes, Math.max(50, concurrency), 50, 400.0,
-            throttlePosture);
+        return new ThrottleSettings(throttleStatusCodes, Math.max(50, concurrency),
+            Math.max(50, perHostConcurrency), 400.0, throttlePosture, throttlePauseMode,
+            throttleFixedPauseMillis);
     }
 
     public void setThrottleStatusCodes(Set<Integer> throttleStatusCodes) {
@@ -187,12 +202,47 @@ public class FuzzerConfig {
         this.throttlePosture = throttlePosture == null ? ThrottleSettings.Posture.RIDE_HARD : throttlePosture;
     }
 
+    public ThrottleSettings.PauseMode getThrottlePauseMode() {
+        return throttlePauseMode;
+    }
+
+    public void setThrottlePauseMode(ThrottleSettings.PauseMode throttlePauseMode) {
+        this.throttlePauseMode = throttlePauseMode == null
+            ? ThrottleSettings.PauseMode.OFF : throttlePauseMode;
+    }
+
+    public long getThrottleFixedPauseMillis() {
+        return throttleFixedPauseMillis;
+    }
+
+    public void setThrottleFixedPauseMillis(long throttleFixedPauseMillis) {
+        this.throttleFixedPauseMillis = Math.max(1_000L, throttleFixedPauseMillis);
+    }
+
     public List<ConfiguredHeader> getRequestHeaders() {
         return requestHeaders;
     }
 
     public void setRequestHeaders(List<ConfiguredHeader> requestHeaders) {
         this.requestHeaders = requestHeaders == null ? List.of() : List.copyOf(requestHeaders);
+    }
+
+    public UserAgentMode getUserAgentMode() {
+        return userAgentMode;
+    }
+
+    public void setUserAgentMode(UserAgentMode userAgentMode) {
+        this.userAgentMode = userAgentMode == null ? UserAgentMode.DISABLED : userAgentMode;
+        if (this.userAgentMode == UserAgentMode.DISABLED) userAgentRandomizationSeed = 0L;
+    }
+
+    public long getUserAgentRandomizationSeed() {
+        return userAgentRandomizationSeed;
+    }
+
+    public void setUserAgentRandomizationSeed(long userAgentRandomizationSeed) {
+        this.userAgentRandomizationSeed = userAgentMode == UserAgentMode.DISABLED
+            ? 0L : userAgentRandomizationSeed;
     }
 
     public String getOobPayload() {

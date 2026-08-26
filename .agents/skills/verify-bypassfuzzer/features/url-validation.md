@@ -7,10 +7,10 @@ URL Validation edits a selected request around one or more `{INJECT}` markers, p
 - `urlval-route` sends a selected request through `Send to BypassFuzzer` -> `URL Validation`.
 - `urlval-workbench` edits the exact request, places `{INJECT}` markers, and resets to the original request.
 - `urlval-context` configures Absolute URL, Host header, or CORS contexts plus allowed and attacker-controlled hosts.
-- `urlval-families` selects attack settings, encoding variants, Collaborator usage, request headers, concurrency, and throttle codes.
+- `urlval-families` selects attack settings and encodings, then uses the shared request-header/User-Agent and complete throttle controls.
 - `urlval-preview` uses `View Payloads` or `Copy Payloads` to inspect the exact generated set before execution.
 - `urlval-run` starts, pauses/resumes, stops, clears, and reports marker/payload progress.
-- `urlval-results` inspects request/response pairs, filters rows, and retries queued throttle responses.
+- `urlval-results` inspects request/response pairs, filters rows, and opens the shared `Retry queue (n)` viewer.
 
 ## How to get to it (user POV)
 
@@ -32,6 +32,7 @@ Preconditions:
 - **Automated user-path/live proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" url-validation`. The harness proves mode routing, mode-specific controls and headers, payload generation, then runs marker mode through the production URL Validation engine against an isolated lab and requires the URL allow-list bypass marker.
 - **Set marker.** Send `GET /redirect/next?next={INJECT}` to URL Validation, choose `Configure Attack`, and confirm the Request Workbench still contains the marker in the exact request that will be sent.
 - **Configure and preview.** Select the Absolute URL context, enter the trusted and attacker hosts used by the lab recipe, and choose `View Payloads`. Capture at least one generated `trusted@attacker`-style payload and confirm the preview count matches the enabled settings/encodings.
+- **Review shared execution settings.** `Request Headers...` includes synthetic/browser-like per-request User-Agent variation. `Throttle...` includes global/per-host concurrency, throttle codes, posture, and fixed/smart run-wide pauses.
 - **Run and inspect.** Choose `Start URL Validation`; the dialog hides, status becomes `URL validation fuzzing in progress...`, and results appear. Require a request in which `{INJECT}` was replaced and a response carrying the lab's `url-allowlist-bypass` marker.
 - **Reset.** Reopen `Configure Attack`, choose `Reset Request`, and confirm the original request replaces all edits before starting another scenario.
 - **Proof.** Retain `user-path.log`, `live-engine.log`, copied XML, preview screenshots, and one result's Request/Response viewers.

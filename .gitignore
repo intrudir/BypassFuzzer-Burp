@@ -33,3 +33,6 @@ docs/*.pdf
 docs/*.pptx
 docs/*.png
 scripts/build-presentation.py
+
+# Local verification evidence
+artifacts/verification/

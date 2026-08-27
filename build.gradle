@@ -6,11 +6,21 @@ plugins {
 group = 'com.bypassfuzzer'
 version = '1.4.1'
 
+subprojects {
+    group = rootProject.group
+    version = rootProject.version
+    repositories {
+        mavenCentral()
+    }
+}
+
 repositories {
     mavenCentral()
 }
 
 dependencies {
+    implementation project(':core')
+
     // Burp Montoya API (provided by Burp at runtime)
     compileOnly 'net.portswigger.burp.extensions:montoya-api:2023.12.1'
     testImplementation 'net.portswigger.burp.extensions:montoya-api:2023.12.1'
@@ -23,6 +33,18 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
     testImplementation 'org.mockito:mockito-core:5.8.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.1'
+}
+
+tasks.register('cliShadowJar') {
+    group = 'build'
+    description = 'Builds the standalone BypassFuzzer CLI fat JAR.'
+    dependsOn ':cli:shadowJar'
+}
+
+tasks.register('cliDistZip') {
+    group = 'distribution'
+    description = 'Builds the standalone BypassFuzzer CLI distribution archive.'
+    dependsOn ':cli:distZip'
 }
 
 java {
@@ -129,4 +151,4 @@ tasks.register('runSweepHarness', JavaExec) {
 }
 
 // Make shadowJar the default build artifact
-build.dependsOn shadowJar
+build.dependsOn shadowJar, ':core:test', ':cli:test', ':cli:shadowJar', ':cli:distZip'

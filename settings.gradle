@@ -3,3 +3,5 @@ plugins {
 }
 
 rootProject.name = 'bypassfuzzer-burp'
+
+include 'core', 'cli'

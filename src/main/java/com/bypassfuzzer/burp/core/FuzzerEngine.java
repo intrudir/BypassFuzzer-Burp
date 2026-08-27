@@ -4,19 +4,24 @@ import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.attacks.*;
+import com.bypassfuzzer.burp.core.collaborator.CollaboratorSupport;
 import com.bypassfuzzer.burp.core.throttle.HostThrottleCoordinator;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.core.throttle.RetryQueue;
 import com.bypassfuzzer.burp.http.MontoyaRequestSender;
 import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
 import com.bypassfuzzer.burp.http.TargetUrlResolver;
+import com.bypassfuzzer.burp.http.CoreRequestAdapter;
+import com.bypassfuzzer.core.scan.AttackFamily;
+import com.bypassfuzzer.core.scan.BypassPlanner;
+import com.bypassfuzzer.core.scan.PlannedRequest;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.function.Consumer;
+import java.util.Set;
+import java.util.LinkedHashSet;
 
 /**
  * Main fuzzer engine that orchestrates all attack strategies.
@@ -30,7 +35,6 @@ public class FuzzerEngine {
     private volatile HostThrottleCoordinator coordinator;
     private RetryQueue<ThrottledRequest> retryQueue;
     private final TargetUrlResolver targetUrlResolver;
-    private final AttackRegistry attackRegistry;
     private final ExecutionPauseController pauseController = new ExecutionPauseController();
     private final GlobalTrafficGovernor globalGovernor;
 
@@ -43,7 +47,6 @@ public class FuzzerEngine {
         this.config = config;
         this.globalGovernor = globalGovernor == null ? new GlobalTrafficGovernor() : globalGovernor;
         this.targetUrlResolver = new TargetUrlResolver();
-        this.attackRegistry = new AttackRegistry();
     }
 
     /**
@@ -173,11 +176,22 @@ public class FuzzerEngine {
 
         ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
             config.getRequestHeaders(), config.getUserAgentMode(), config.getUserAgentRandomizationSeed());
-        List<RegisteredAttack> attacks = attackRegistry.buildEnabledAttacks(config, targetUrl);
+        CoreRequestAdapter coreRequestAdapter = new CoreRequestAdapter();
+        Set<AttackFamily> enabledFamilies = new LinkedHashSet<>();
+        for (AttackType type : config.getEnabledAttackTypes()) {
+            enabledFamilies.add(AttackFamily.parse(type.id()));
+        }
+        BypassPlanner planner = new BypassPlanner(() -> {
+            if (!config.isEnableCollaboratorPayloads() || !CollaboratorSupport.isAvailable(api)) return "";
+            String payload = CollaboratorSupport.generatePayload(api);
+            return payload == null ? "" : payload.replaceFirst("^https?://", "").replaceFirst("/.*$", "");
+        });
+        List<PlannedRequest> plannedRequests = planner.plan(coreRequestAdapter.fromMontoya(request),
+            enabledFamilies, config.isEnableFuzzExistingCookies(), Integer.MAX_VALUE);
         AttackExecutor attackExecutor = new AttackExecutor(
             new MontoyaRequestSender(api, globalGovernor),
             mutated -> headerPolicy.reconcileMutation(request, mutated));
-        safeLog("Built " + attacks.size() + " attack strategies");
+        safeLog("Built " + plannedRequests.size() + " requests from the shared attack planner");
 
         // Keep many requests in flight so the adaptive controller can drive each host at full speed;
         // throttled payloads are re-queued and retried so coverage stays complete.
@@ -191,11 +205,15 @@ public class FuzzerEngine {
         attackExecutor.enablePauseController(pauseController);
         attackExecutor.enableRetryQueue(retryQueue);
 
-        int concurrency = Math.max(1, config.getConcurrency());
-        if (concurrency > 1 && attacks.size() > 1) {
-            executeAttacksConcurrently(request, targetUrl, resultCallback, attacks, attackExecutor, concurrency);
-        } else {
-            executeAttacksSequentially(request, targetUrl, resultCallback, attacks, attackExecutor);
+        for (PlannedRequest planned : plannedRequests) {
+            if (!running) break;
+            HttpRequest mutation = coreRequestAdapter.toMontoya(request, planned.request());
+            if (!attackExecutor.execute(planned.family(), planned.payload(), request.method() + " " + request.path(),
+                    planned.family(), planned.encoding(), mutation,
+                    result -> { if (running) handleResult(result, resultCallback); },
+                    () -> running, coordinator, coreRequestAdapter.httpMode(planned.request().protocol()))) {
+                break;
+            }
         }
 
         // Wait for all in-flight concurrent sends to finish
@@ -209,79 +227,6 @@ public class FuzzerEngine {
         sendPool.shutdown();
 
         safeLog("\n=== BypassFuzzer Completed ===");
-    }
-
-    private void executeAttacksSequentially(HttpRequest request,
-                                            String targetUrl,
-                                            Consumer<AttackResult> resultCallback,
-                                            List<RegisteredAttack> attacks,
-                                            AttackExecutor attackExecutor) {
-        for (RegisteredAttack attack : attacks) {
-            if (!running) {
-                safeLog("Fuzzer stopped during execution");
-                break;
-            }
-
-            executeAttack(request, targetUrl, resultCallback, attack, attackExecutor);
-        }
-    }
-
-    private void executeAttacksConcurrently(HttpRequest request,
-                                            String targetUrl,
-                                            Consumer<AttackResult> resultCallback,
-                                            List<RegisteredAttack> attacks,
-                                            AttackExecutor attackExecutor,
-                                            int concurrency) {
-        ExecutorService executor = Executors.newFixedThreadPool(Math.min(concurrency, attacks.size()), runnable -> {
-            Thread thread = new Thread(runnable, "bypassfuzzer-attack-worker");
-            thread.setDaemon(true);
-            return thread;
-        });
-        try {
-            List<Future<?>> futures = new ArrayList<>();
-            for (RegisteredAttack attack : attacks) {
-                futures.add(executor.submit(() -> executeAttack(request, targetUrl, resultCallback, attack, attackExecutor)));
-            }
-
-            for (Future<?> future : futures) {
-                if (!running) {
-                    break;
-                }
-                try {
-                    future.get();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    running = false;
-                    break;
-                } catch (Exception e) {
-                    safeLogError("Concurrent attack worker error: " + e.getMessage());
-                }
-            }
-        } finally {
-            executor.shutdownNow();
-        }
-    }
-
-    private void executeAttack(HttpRequest request,
-                               String targetUrl,
-                               Consumer<AttackResult> resultCallback,
-                               RegisteredAttack attack,
-                               AttackExecutor attackExecutor) {
-        if (!running) {
-            return;
-        }
-
-        safeLog("\n=== Executing " + attack.type().displayName() + " Attack ===");
-
-        try {
-            attack.strategy().execute(api, request, targetUrl, result -> {
-                if (running) {
-                    handleResult(result, resultCallback);
-                }
-            }, () -> running, coordinator, attackExecutor);
-        } catch (Exception e) {
-            safeLogError("Error in " + attack.type().displayName() + " attack: " + e.getMessage());
-        }
     }
 
     private void drainRetryQueue(HttpRequest originalRequest, Consumer<AttackResult> resultCallback,

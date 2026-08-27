@@ -1,0 +1,57 @@
+plugins {
+    id 'application'
+    id 'com.gradleup.shadow' version '9.0.0-beta4'
+}
+
+dependencies {
+    implementation project(':core')
+    implementation 'info.picocli:picocli:4.7.6'
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.6'
+    implementation 'io.netty:netty-handler:4.1.118.Final'
+    implementation 'io.netty:netty-handler-proxy:4.1.118.Final'
+    implementation 'io.netty:netty-codec-http:4.1.118.Final'
+    implementation 'io.netty:netty-codec-http2:4.1.118.Final'
+    implementation 'org.yaml:snakeyaml:2.2'
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    testImplementation platform('org.junit:junit-bom:5.10.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+application {
+    mainClass = 'com.bypassfuzzer.cli.BypassFuzzerCli'
+    applicationName = 'bypassfuzzer'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Aproject=' + project.group + '/' + project.name]
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    filter {
+        failOnNoMatchingTests = false
+    }
+}
+
+shadowJar {
+    archiveBaseName.set('bypassfuzzer-cli')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    mergeServiceFiles()
+    manifest {
+        attributes(
+            'Main-Class': application.mainClass.get(),
+            'Implementation-Title': 'BypassFuzzer CLI',
+            'Implementation-Version': rootProject.version.toString()
+        )
+    }
+}

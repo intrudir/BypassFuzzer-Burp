@@ -1,6 +1,9 @@
 # Gradle
 .gradle/
 build/
+core/build/
+cli/build/
+bypassfuzzer-output/
 out/
 bin/
 

@@ -86,7 +86,7 @@ public class AttackExecutor {
                            Consumer<AttackResult> resultCallback,
                            BooleanSupplier shouldContinue,
                            HostThrottleCoordinator coordinator) {
-        return execute(attackType, payload, null, null, null, request, resultCallback, shouldContinue,
+        return executeInternal(attackType, payload, null, null, null, request, resultCallback, shouldContinue,
             coordinator, null);
     }
 
@@ -95,7 +95,7 @@ public class AttackExecutor {
                            BooleanSupplier shouldContinue,
                            HostThrottleCoordinator coordinator,
                            HttpMode httpMode) {
-        return execute(attackType, payload, null, null, null, request, resultCallback, shouldContinue,
+        return executeInternal(attackType, payload, null, null, null, request, resultCallback, shouldContinue,
             coordinator, httpMode);
     }
 
@@ -104,11 +104,21 @@ public class AttackExecutor {
                            Consumer<AttackResult> resultCallback,
                            BooleanSupplier shouldContinue,
                            HostThrottleCoordinator coordinator) {
-        return execute(attackType, payload, targetLabel, payloadFamily, payloadEncoding, request,
+        return executeInternal(attackType, payload, targetLabel, payloadFamily, payloadEncoding, request,
             resultCallback, shouldContinue, coordinator, null);
     }
 
-    private boolean execute(String attackType, String payload, String targetLabel, String payloadFamily,
+    public boolean execute(String attackType, String payload, String targetLabel, String payloadFamily,
+                           String payloadEncoding, HttpRequest request,
+                           Consumer<AttackResult> resultCallback,
+                           BooleanSupplier shouldContinue,
+                           HostThrottleCoordinator coordinator,
+                           HttpMode httpMode) {
+        return executeInternal(attackType, payload, targetLabel, payloadFamily, payloadEncoding, request,
+            resultCallback, shouldContinue, coordinator, httpMode);
+    }
+
+    private boolean executeInternal(String attackType, String payload, String targetLabel, String payloadFamily,
                             String payloadEncoding, HttpRequest request,
                             Consumer<AttackResult> resultCallback,
                             BooleanSupplier shouldContinue,

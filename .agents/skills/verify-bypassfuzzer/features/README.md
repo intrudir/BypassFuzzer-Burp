@@ -36,7 +36,7 @@ Each feature file describes the visible behavior, all major user entry points, e
 
 ## Features
 
-- [Dashboard and global control](./dashboard.md) covers activity visibility, per-row actions, global pause/stop, and extension-wide traffic limits.
+- [Dashboard and global control](./dashboard.md) covers activity visibility, per-row actions, global pause/stop, extension-wide traffic limits, and update notices.
 - [Coverage Sweep](./sweep.md) covers Proxy-history modes, imports, candidate/probe preview, execution controls, results, retry queue, and export.
 - [Targeted authorization bypass](./bypass.md) covers context-menu routing, attack selection/options, execution, filtering, result inspection, and retry.
 - [IDOR / BOLA analysis](./idor.md) covers identifier setup, baselines, playbooks, run options, diagnostics, results, and retry.

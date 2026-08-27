@@ -9,7 +9,7 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 - `bypass-options` uses the shared execution controls to configure fixed headers, per-request User-Agent variation, global/per-host concurrency, throttle response codes, posture, and fixed/smart pause behavior through `Options...`.
 - `bypass-run` starts, pauses/resumes, stops, clears, and reports state for a session.
 - `bypass-filter` applies Smart Filter and manual filters for status, length, content type, host, payload, signal, response content, and highlight.
-- `bypass-results` sorts results, opens Request/Response and original/baseline viewers, highlights rows, copies TSV, and opens the shared `Retry queue (n)` viewer for throttled/no-response requests.
+- `bypass-results` sorts results, opens the `Request` and `Response` viewers, highlights rows, copies TSV, and opens the shared `Retry queue (n)` viewer for throttled/no-response requests.
 
 ## How to get to it (user POV)
 
@@ -17,7 +17,7 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 - Choose top-level `Bypass`, then the nested tab titled `<METHOD> <path>`.
 - Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Start Fuzzing`, `Pause`, `Stop`, or `Clear Results`.
 - Use `Hide Filters`/`Show Filters`, `Enable (auto-detect patterns)`, `Enable Manual Filter`, and `Apply Manual Filters` beside the results table.
-- Select a result to inspect `Request`, `Response`, and available original/baseline viewers; use the table context menu for highlights or `Copy selected rows (TSV)`.
+- Select a result to inspect its `Request` and `Response`; use the table context menu for highlights or `Copy selected rows (TSV)`.
 
 ## Driving it with verify-bypassfuzzer
 

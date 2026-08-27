@@ -158,6 +158,7 @@ drive() {
     dashboard)
       run_gradle "$evidence_dir" swing-controls.log test \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.startsWithDashboardSweepAndTargetedModeTabs \
+        --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.updateBannerShowsVersionDetailsAndCanBeDismissed \
         --tests com.bypassfuzzer.burp.ui.dashboard.DashboardPanelTest
       copy_results "$evidence_dir" test
       ;;
@@ -167,6 +168,7 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.previewTableUpdatesAfterLoadingProxyHistory \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importsTargetUrlsFromTextFileIntoPreviewTable \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.probePreviewRendersExactGeneratedRequests \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.payloadSetDefaultsToHighSignalAndCanSelectAllPayloads \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.requestHeadersMenuOffersSyntheticAndBrowserLikeUserAgentRandomization \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.userAgentRandomizationOverridesFixedHeaderAtEngineBoundary \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.startAndStopButtonsReflectRunningState \
@@ -209,6 +211,7 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.UrlValidationOptionsPanelTest \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
+        --tests com.bypassfuzzer.burp.core.urlvalidation.UrlValidationCandidateFinderTest \
         --tests com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayloadGeneratorTest
       copy_results "$evidence_dir" test
       run_gradle "$evidence_dir" live-engine.log smokeTestPlaybooks \

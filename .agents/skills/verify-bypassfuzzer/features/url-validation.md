@@ -26,7 +26,7 @@ URL Validation edits a selected request around one or more `{INJECT}` markers, p
 Preconditions:
 
 - The launch and doctor commands passed for the current `RUN_ID`.
-- The edited request contains at least one literal `{INJECT}` marker or the selected automatic context has a valid candidate.
+- The edited request contains at least one literal `{INJECT}` marker.
 - An attacker host is configured unless Collaborator is both available and selected.
 
 - **Automated user-path/live proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" url-validation`. The harness proves mode routing, mode-specific controls and headers, payload generation, then runs marker mode through the production URL Validation engine against an isolated lab and requires the URL allow-list bypass marker.

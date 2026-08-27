@@ -44,6 +44,8 @@ Use the helper from the repository root:
 
 Supported feature IDs are `dashboard`, `sweep`, `bypass`, `idor`, and `url-validation`. Each command drives named Swing controls or table actions from production UI classes through the existing JUnit harness. `bypass` and `url-validation` additionally start a test-local vulnerable lab, send real HTTP traffic through production attack engines, assert the response-side bypass marker, and tear the lab down.
 
+The Dashboard drive also injects a synthetic newer-version result into the production suite banner, verifies its current/latest-version message, and dismisses it. It does not depend on the external update manifest.
+
 For the mapped Bypass path, the harness proves all three layers of the user journey:
 
 - `Send to BypassFuzzer` -> `Bypass` dispatches the selected request into a nested `Bypass` session.

@@ -300,6 +300,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
             false,
             sessionController.globalGovernor()
         );
+        resultsWorkspace.setResultsChangedListener(ignored -> updateResultStatus());
         return resultsWorkspace.component();
     }
 
@@ -386,28 +387,22 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     }
 
     private void addResult(AttackResult result) {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                resultsWorkspace.addResult(result);
+        resultsWorkspace.enqueueResult(result);
+    }
 
-                int totalSent = resultsWorkspace.allResultsCount();
-                int showing = resultsWorkspace.shownResultsCount();
-                statusLabel.setText(sessionController.isPaused()
-                    ? "Paused (" + totalSent + " requests sent, showing " + showing + ")"
-                    : sessionController.isRunning()
-                        ? "Fuzzing... (" + totalSent + " requests sent, showing " + showing + ")"
-                        : "Completed: " + totalSent + " requests sent, showing " + showing);
-
-                if (!sessionController.isRunning()) {
-                    startButton.setEnabled(true);
-                    stopButton.setEnabled(false);
-                    setAttackControlsEnabled(true);
-                }
-
-            } catch (Exception e) {
-                api.logging().logToError("Error in addResult: " + e.getMessage());
-            }
-        });
+    private void updateResultStatus() {
+        int totalSent = resultsWorkspace.allResultsCount();
+        int showing = resultsWorkspace.shownResultsCount();
+        statusLabel.setText(sessionController.isPaused()
+            ? "Paused (" + totalSent + " requests sent, showing " + showing + ")"
+            : sessionController.isRunning()
+                ? "Fuzzing... (" + totalSent + " requests sent, showing " + showing + ")"
+                : "Completed: " + totalSent + " requests sent, showing " + showing);
+        if (!sessionController.isRunning()) {
+            startButton.setEnabled(true);
+            stopButton.setEnabled(false);
+            setAttackControlsEnabled(true);
+        }
     }
 
     private void handleSessionStateChange(SessionState state) {

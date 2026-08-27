@@ -300,6 +300,7 @@ public class CoverageSweepEngine {
                 }
             }
         }, "bypassfuzzer-coverage-sweep");
+        runnerThread.setDaemon(true);
         runnerThread.start();
         return true;
     }
@@ -408,24 +409,7 @@ public class CoverageSweepEngine {
                          Consumer<AttackResult> resultCallback) {
         ThrottleSettings throttleSettings = options.throttleSettings();
         coordinator = new HostThrottleCoordinator(throttleSettings, api);
-        List<CandidatePlan> plans = new ArrayList<>(candidates.size());
-        int planned = 0;
-        for (CoverageSweepCandidate candidate : candidates) {
-            if (!canContinue()) {
-                return;
-            }
-            List<CoverageSweepProbe> probes = buildProbes(candidate, options);
-            plans.add(new CandidatePlan(candidate, probes));
-            planned += probes.size();
-            if (options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
-                && options.verifyUnauthenticatedAccess()) {
-                planned++;
-            }
-        }
-        plannedMainRequests.set(planned);
         phase = SweepPhase.MAIN_SWEEP;
-        // The adaptive controller paces every host; the thread pool is sized to the global in-flight
-        // cap so workers can keep all hosts saturated up to each host's discovered rate.
         int concurrency = throttleSettings.globalConcurrency();
         safeLog("Coverage sweep starting: " + candidates.size() + " candidate(s); adaptive rate control, "
             + "global in-flight: " + concurrency + "; per-host in-flight: " + throttleSettings.perHostConcurrency()
@@ -449,26 +433,34 @@ public class CoverageSweepEngine {
             pendingHostCandidates.computeIfAbsent(candidateHost, ignored -> new AtomicInteger()).incrementAndGet();
         }
 
-        // Interleave candidates by host so the thread pool works on all hosts
-        // concurrently instead of draining one host at a time.
-        List<CandidatePlan> interleaved = interleavePlansByHost(plans);
-
-        for (CandidatePlan plan : interleaved) {
-            if (!canContinue()) {
-                break;
-            }
+        // Workers pull candidates from a shared cursor. Probe lists therefore exist only for active
+        // candidates instead of materializing the complete scan before the first request is sent.
+        List<CoverageSweepCandidate> interleaved = interleaveCandidatesByHost(candidates);
+        AtomicInteger nextCandidate = new AtomicInteger();
+        int workerCount = Math.min(concurrency, interleaved.size());
+        for (int worker = 0; worker < workerCount; worker++) {
             executor.submit(() -> {
-                CoverageSweepCandidate candidate = plan.candidate();
-                try {
-                    executeCandidate(candidate, plan.probes(), options, resultCallback, retryQueue);
-                } catch (Exception e) {
-                    safeLogError("Coverage sweep candidate failed for " + candidate.displayUrl() + ": "
-                        + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-                } finally {
-                    String candidateHost = host(candidate.request(), candidate.displayUrl());
-                    AtomicInteger remaining = pendingHostCandidates.get(candidateHost);
-                    if (remaining != null && remaining.decrementAndGet() == 0) {
-                        completedSweepHosts.add(candidateHost);
+                while (canContinue()) {
+                    int candidateIndex = nextCandidate.getAndIncrement();
+                    if (candidateIndex >= interleaved.size()) {
+                        return;
+                    }
+                    CoverageSweepCandidate candidate = interleaved.get(candidateIndex);
+                    try {
+                        List<CoverageSweepProbe> probes = buildProbes(candidate, options);
+                        plannedMainRequests.addAndGet(probes.size()
+                            + (options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
+                                && options.verifyUnauthenticatedAccess() ? 1 : 0));
+                        executeCandidate(candidate, probes, options, resultCallback, retryQueue);
+                    } catch (Exception e) {
+                        safeLogError("Coverage sweep candidate failed for " + candidate.displayUrl() + ": "
+                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    } finally {
+                        String candidateHost = host(candidate.request(), candidate.displayUrl());
+                        AtomicInteger remaining = pendingHostCandidates.get(candidateHost);
+                        if (remaining != null && remaining.decrementAndGet() == 0) {
+                            completedSweepHosts.add(candidateHost);
+                        }
                     }
                 }
             });
@@ -518,7 +510,7 @@ public class CoverageSweepEngine {
                 String signal = anonymousControlResponse == null
                     ? "No response"
                     : CoverageSweepClassifier.unauthenticatedControlSignal(candidate, anonymousControlResponse);
-                resultCallback.accept(new AttackResult(
+                AttackResult result = new AttackResult(
                     "Authenticated Coverage Sweep",
                     "Original request without authentication",
                     candidate.method() + " " + candidate.displayUrl(),
@@ -530,7 +522,8 @@ public class CoverageSweepEngine {
                     candidate.originalResponse(),
                     verificationRequest,
                     anonymousControlResponse
-                ));
+                ).copyEvidenceToTempFile();
+                resultCallback.accept(result);
             }
         }
 
@@ -578,7 +571,7 @@ public class CoverageSweepEngine {
                     originalResponse,
                     verificationRequest,
                     anonymousControlResponse
-            );
+            ).copyEvidenceToTempFile();
             if (resultCallback != null) {
                 resultCallback.accept(result);
             }
@@ -692,7 +685,8 @@ public class CoverageSweepEngine {
         HttpResponse response = sendScheduled(probe.request(), () -> probe.httpMode() == null
             ? requestSender.send(probe.request(), this::awaitSendAdmission)
             : requestSender.send(probe.request(), probe.httpMode(), this::awaitSendAdmission));
-        AttackResult retryResult = AttackResult.throttleRetryOf(retry.result(), response, attempt);
+        AttackResult retryResult = AttackResult.throttleRetryOf(retry.result(), response, attempt)
+            .copyEvidenceToTempFile();
         if (resultCallback != null) {
             resultCallback.accept(retryResult);
         }
@@ -1219,28 +1213,24 @@ public class CoverageSweepEngine {
         return value == null ? "" : value;
     }
 
-    /** Round-robin interleave prepared candidates so all hosts make progress concurrently. */
-    private List<CandidatePlan> interleavePlansByHost(List<CandidatePlan> plans) {
-        Map<String, List<CandidatePlan>> byHost = new LinkedHashMap<>();
-        for (CandidatePlan plan : plans) {
-            CoverageSweepCandidate candidate = plan.candidate();
+    /** Round-robin interleave candidates so all hosts make progress concurrently. */
+    private List<CoverageSweepCandidate> interleaveCandidatesByHost(List<CoverageSweepCandidate> candidates) {
+        Map<String, List<CoverageSweepCandidate>> byHost = new LinkedHashMap<>();
+        for (CoverageSweepCandidate candidate : candidates) {
             String h = host(candidate.request(), candidate.displayUrl());
-            byHost.computeIfAbsent(h, ignored -> new ArrayList<>()).add(plan);
+            byHost.computeIfAbsent(h, ignored -> new ArrayList<>()).add(candidate);
         }
-        List<CandidatePlan> result = new ArrayList<>(plans.size());
+        List<CoverageSweepCandidate> result = new ArrayList<>(candidates.size());
         int maxSize = byHost.values().stream().mapToInt(List::size).max().orElse(0);
-        List<List<CandidatePlan>> buckets = new ArrayList<>(byHost.values());
+        List<List<CoverageSweepCandidate>> buckets = new ArrayList<>(byHost.values());
         for (int i = 0; i < maxSize; i++) {
-            for (List<CandidatePlan> bucket : buckets) {
+            for (List<CoverageSweepCandidate> bucket : buckets) {
                 if (i < bucket.size()) {
                     result.add(bucket.get(i));
                 }
             }
         }
         return result;
-    }
-
-    private record CandidatePlan(CoverageSweepCandidate candidate, List<CoverageSweepProbe> probes) {
     }
 
     private record RetryGroupKey(String authority, String family) {

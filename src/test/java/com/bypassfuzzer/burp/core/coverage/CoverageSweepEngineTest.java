@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request;
@@ -113,6 +114,39 @@ class CoverageSweepEngineTest {
             "TrailingSlash", "Extension", "ContentType", "Encoding", "Protocol", "Case")));
         assertTrue(probes.stream().anyMatch(probe ->
             "Header".equals(probe.family()) && probe.httpMode() == HttpMode.HTTP_1));
+    }
+
+    @Test
+    void allPayloadExecutionCompletesTheEntireGeneratedCatalog() throws Exception {
+        HttpRequest original = requestWithHeaders("/admin/users", "id=7", "POST", Map.of(
+            "Content-Type", "application/json", "Cookie", "session=secret", "Host", "example.com"
+        ), "{\"id\":7}");
+        CoverageSweepCandidate candidate = candidate(original, 403);
+        CoverageSweepOptions defaults = CoverageSweepOptions.defaults();
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            defaults.statuses(), defaults.inScopeOnly(), defaults.maxCandidates(),
+            defaults.maxProbesPerCandidate(), 1, 1, defaults.throttleStatusCodes(),
+            defaults.mode(), defaults.authSelection(), defaults.excludeStaticAssets(),
+            defaults.verifyUnauthenticatedAccess(), List.of(), defaults.requestHeaders(),
+            CoverageSweepPayloadSet.ALL_PAYLOADS,
+            com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
+            new CoverageSweepFamilySelection(Set.of(), Set.of(
+                com.bypassfuzzer.burp.core.attacks.AttackType.TRAILING_DOT,
+                com.bypassfuzzer.burp.core.attacks.AttackType.PROTOCOL)),
+            defaults.pauseMode(), defaults.fixedPauseMillis());
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
+            new StaticSender(response(403, "text/plain", "blocked")),
+            new CoverageSweepProbeGenerator());
+        int expected = engine.buildProbes(candidate, options).size();
+        List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
+
+        assertTrue(engine.start(List.of(candidate), options, results::add, () -> { }));
+        for (int i = 0; i < 500 && engine.isRunning(); i++) Thread.sleep(10);
+
+        assertFalse(engine.isRunning());
+        assertEquals(expected, engine.plannedMainRequestCount());
+        assertEquals(expected, engine.completedMainRequestCount());
+        assertEquals(expected, results.size());
     }
 
     @Test
@@ -1070,6 +1104,79 @@ class CoverageSweepEngineTest {
 
         assertEquals(2, results.size());
         assertTrue(sender.maxActive.get() > 1);
+    }
+
+    @Test
+    void configuredConcurrencyIsAnActualUpperBound() throws Exception {
+        ConcurrentTrackingSender sender = new ConcurrentTrackingSender(
+            response(403, "text/plain", "blocked"), 100);
+        CoverageSweepEngine engine = new CoverageSweepEngine(
+            api(List.of()), sender, new CoverageSweepProbeGenerator());
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            CoverageSweepOptions.defaults().statuses(), true, 100, 1, 2, 2,
+            CoverageSweepOptions.defaults().throttleStatusCodes());
+        List<CoverageSweepCandidate> candidates = java.util.stream.IntStream.range(0, 8)
+            .mapToObj(index -> candidate(request("/candidate-" + index, "", "GET", null, ""), 403))
+            .toList();
+
+        assertTrue(engine.start(candidates, options, ignored -> { }, () -> { }));
+        for (int i = 0; i < 100 && engine.isRunning(); i++) Thread.sleep(20);
+
+        assertEquals(2, options.throttleSettings().globalConcurrency());
+        assertEquals(2, options.throttleSettings().perHostConcurrency());
+        assertEquals(2, sender.maxActive.get());
+    }
+
+    @Test
+    void plansOnlyCandidatesThatHaveAnAvailableWorker() throws Exception {
+        CountDownLatch enteredSend = new CountDownLatch(2);
+        CountDownLatch releaseSend = new CountDownLatch(1);
+        AtomicInteger plannedCandidates = new AtomicInteger();
+        RequestSender sender = new RequestSender() {
+            @Override
+            public HttpResponse send(HttpRequest request) {
+                enteredSend.countDown();
+                try {
+                    releaseSend.await(2, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return response(403, "text/plain", "blocked");
+            }
+
+            @Override
+            public HttpResponse send(HttpRequest request, long timeout, TimeUnit unit) {
+                return send(request);
+            }
+        };
+        CoverageSweepProbeGenerator generator = new CoverageSweepProbeGenerator() {
+            @Override
+            public List<CoverageSweepProbe> buildProbes(HttpRequest request,
+                                                        CoverageSweepOptions options,
+                                                        boolean includeControl) {
+                plannedCandidates.incrementAndGet();
+                return List.of(new CoverageSweepProbe("Control", "Control", request));
+            }
+        };
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender, generator);
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            CoverageSweepOptions.defaults().statuses(), true, 100, 1, 2, 2,
+            CoverageSweepOptions.defaults().throttleStatusCodes());
+        List<CoverageSweepCandidate> candidates = java.util.stream.IntStream.range(0, 20)
+            .mapToObj(index -> candidate(request("/candidate-" + index, "", "GET", null, ""), 403))
+            .toList();
+
+        assertTrue(engine.start(candidates, options, ignored -> { }, () -> { }));
+        assertTrue(enteredSend.await(2, TimeUnit.SECONDS));
+        assertEquals(2, plannedCandidates.get());
+        Thread runner = Thread.getAllStackTraces().keySet().stream()
+            .filter(thread -> "bypassfuzzer-coverage-sweep".equals(thread.getName()))
+            .findFirst().orElseThrow();
+        assertTrue(runner.isDaemon());
+
+        engine.stop();
+        releaseSend.countDown();
+        for (int i = 0; i < 100 && engine.isRunning(); i++) Thread.sleep(20);
     }
 
     private MontoyaApi api(List<ProxyHttpRequestResponse> history) {

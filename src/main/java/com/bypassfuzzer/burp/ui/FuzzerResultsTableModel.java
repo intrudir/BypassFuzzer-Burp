@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Thread-safe table model for fuzzer results.
@@ -152,6 +153,20 @@ public class FuzzerResultsTableModel extends AbstractTableModel {
             int index = results.size();
             results.add(result);
             fireTableRowsInserted(index, index);
+        }
+    }
+
+    /** Adds a batch with one table notification, keeping the event thread responsive under load. */
+    public synchronized void addResults(List<AttackResult> additions, Predicate<AttackResult> filter) {
+        if (additions == null || additions.isEmpty()) return;
+        int firstVisible = results.size();
+        for (AttackResult result : additions) {
+            resultIds.putIfAbsent(result, nextResultId++);
+            allResults.add(result);
+            if (filter == null || filter.test(result)) results.add(result);
+        }
+        if (results.size() > firstVisible) {
+            fireTableRowsInserted(firstVisible, results.size() - 1);
         }
     }
 

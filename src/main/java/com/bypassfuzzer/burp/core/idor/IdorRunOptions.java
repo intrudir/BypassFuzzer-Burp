@@ -56,7 +56,7 @@ public record IdorRunOptions(
 
     /** Adaptive per-host throttle configuration shared with the other attack modes. */
     public ThrottleSettings throttleSettings() {
-        return new ThrottleSettings(throttleStatusCodes, Math.max(50, concurrency),
-            Math.max(50, perHostConcurrency), 400.0, posture, pauseMode, fixedPauseMillis);
+        return new ThrottleSettings(throttleStatusCodes, concurrency,
+            perHostConcurrency, 400.0, posture, pauseMode, fixedPauseMillis);
     }
 }

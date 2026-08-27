@@ -445,6 +445,7 @@ public class IdorPanel extends JPanel {
             false,
             globalGovernor
         );
+        resultsWorkspace.setResultsChangedListener(ignored -> updateResultStatus());
         return resultsWorkspace.component();
     }
 
@@ -542,20 +543,21 @@ public class IdorPanel extends JPanel {
     }
 
     private void addResult(AttackResult result) {
-        SwingUtilities.invokeLater(() -> {
-            resultsWorkspace.addResult(result);
-            int totalSent = resultsWorkspace.allResultsCount();
-            int showing = resultsWorkspace.shownResultsCount();
-            statusLabel.setText(engine.isPaused()
-                ? "Paused (" + totalSent + " requests sent, showing " + showing + ")"
-                : engine.isRunning()
-                    ? "IDOR analysis... (" + totalSent + " requests sent, showing " + showing + ")"
-                    : "Completed: " + totalSent + " requests sent, showing " + showing);
-        });
+        resultsWorkspace.enqueueResult(result);
+    }
+
+    private void updateResultStatus() {
+        int totalSent = resultsWorkspace.allResultsCount();
+        int showing = resultsWorkspace.shownResultsCount();
+        statusLabel.setText(engine.isPaused()
+            ? "Paused (" + totalSent + " requests sent, showing " + showing + ")"
+            : engine.isRunning()
+                ? "IDOR analysis... (" + totalSent + " requests sent, showing " + showing + ")"
+                : "Completed: " + totalSent + " requests sent, showing " + showing);
     }
 
     private void handleCompletion() {
-        SwingUtilities.invokeLater(() -> {
+        resultsWorkspace.afterPendingResults(() -> {
             resultsWorkspace.setPrimaryRunActive(false);
             if (shuttingDown) {
                 if (startButton != null) {

@@ -53,6 +53,7 @@ public class UrlValidationEngine {
                 }
             }
         }, "bypassfuzzer-url-validation");
+        runnerThread.setDaemon(true);
         runnerThread.start();
         return true;
     }

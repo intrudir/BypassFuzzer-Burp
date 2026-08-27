@@ -141,16 +141,9 @@ public record CoverageSweepOptions(
             CoverageSweepPayloadSet.HIGH_SIGNAL, ThrottleSettings.Posture.RIDE_HARD);
     }
 
-    /**
-     * The adaptive-throttle configuration for this run. Pacing is handled per host by the adaptive
-     * controller, so the concurrency fields become in-flight resource caps rather than rate knobs;
-     * they are floored high enough to let the controller saturate every host up to its discovered
-     * ceiling.
-     */
+    /** The adaptive-throttle configuration for this run. Concurrency values are hard in-flight caps. */
     public ThrottleSettings throttleSettings() {
-        int global = Math.max(50, concurrency);
-        int perHost = Math.max(50, perHostConcurrency);
-        return new ThrottleSettings(throttleStatusCodes, global, perHost, 400.0, posture,
+        return new ThrottleSettings(throttleStatusCodes, concurrency, perHostConcurrency, 400.0, posture,
             pauseMode, fixedPauseMillis);
     }
 

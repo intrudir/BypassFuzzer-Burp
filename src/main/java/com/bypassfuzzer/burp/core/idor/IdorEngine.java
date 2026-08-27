@@ -70,6 +70,7 @@ public class IdorEngine {
                 }
             }
         }, "bypassfuzzer-idor");
+        runnerThread.setDaemon(true);
         runnerThread.start();
         return true;
     }

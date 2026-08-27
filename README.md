@@ -523,7 +523,7 @@ apply immediately, and reset whenever Burp restarts.
 
 ### Sweep Tab
 
-The `Sweep` tab is available as soon as the extension loads. It is intended for broad, bounded coverage when you want to check many blocked endpoints or an imported target list without running the full Bypass playbooks against every request.
+The `Sweep` tab is available as soon as the extension loads. It supports a bounded High Signal pass or the complete selected Bypass payload inventory across blocked endpoints and imported targets.
 
 **Workflow**
 
@@ -542,9 +542,10 @@ The `Sweep` tab is available as soon as the extension loads. It is intended for 
    run-wide cooldown or Smart Pause for shared CDN/WAF rate limits. Smart Pause tolerates isolated
    throttles, detects sustained per-host or correlated multi-host saturation, and cautiously probes
    recovery before resuming full flow while honoring `Retry-After`.
-7. Use **Payload Families...** to disable any High Signal categories or full Bypass attack families you do not want to send
-8. Use **Preview Probes** to inspect the exact requests that will be sent for a selected candidate
-9. Click **Start Sweep**
+7. Choose **High signal** for the curated bounded corpus or **All payloads** for every payload in the selected Bypass families
+8. Use **Payload Families...** to disable any High Signal categories or full Bypass attack families you do not want to send
+9. Use **Preview Probes** to inspect the exact requests that will be sent for a selected candidate
+10. Click **Start Sweep**
 
 **Pause/Resume:** Pause stops new network sends and freezes throttle admission. Responses from
 already-sent requests may still arrive. Resume discards accumulated burst credit; after a pause of
@@ -553,7 +554,7 @@ position or queued retries.
 
 **What Sweep sends**
 
-Sweep does not run the full BypassFuzzer payload inventory. It uses a curated wordlist capped at 350 probes per endpoint by default. The bundled wordlist focuses on:
+High Signal uses a curated wordlist capped at 350 probes per endpoint by default. The bundled wordlist focuses on:
 
 - raw and encoded backslash prefix, suffix, and sandwich mutations on every path segment
 - matrix and extension normalization such as `;.json`, `;.html`, `.json;`, and `.html;`
@@ -570,6 +571,17 @@ Sweep does not run the full BypassFuzzer payload inventory. It uses a curated wo
 - selected debug parameters such as `debug=true`, `debug=1`, `admin=1`, `isAdmin=true`, `role=admin`, and `user=admin`
 - selected `Content-Type` probes such as `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, and XML/text variants
 - selected lightweight header probes such as `X-Forwarded-For` and placeholder `Authorization` values
+
+All Payloads runs the complete catalog from every selected Bypass family. It is not truncated by
+the High Signal per-endpoint cap. Sweep generates that catalog only when a worker is ready for an
+endpoint, so a large run does not hold every endpoint's mutated requests in memory at once. Global
+and per-host concurrency are hard in-flight limits: a value of `2` creates at most two active Sweep
+workers, rather than being silently raised.
+
+All selected payloads continue until they complete or you press **Stop**. Results are delivered to
+the Swing UI in bounded batches, and per-probe raw request/response evidence uses Burp's
+temp-file-backed message storage. The table and exports still expose the complete evidence while
+large response bodies do not accumulate on the Java heap.
 
 Sweep results show all responses. The `Signal` column is reserved for concrete interesting changes, such as:
 

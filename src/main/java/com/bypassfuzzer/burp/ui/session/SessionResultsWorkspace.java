@@ -83,6 +83,8 @@ public class SessionResultsWorkspace {
     private RetryQueueTableModel retryQueueTableModel;
     private JButton retryQueueExportButton;
     private Runnable retryQueueExportAction;
+    private final SwingBatchDispatcher<AttackResult> pendingResults;
+    private Consumer<List<AttackResult>> resultsChangedListener = ignored -> { };
 
     public SessionResultsWorkspace(MontoyaApi api,
                                    Consumer<String> errorLogger,
@@ -117,6 +119,7 @@ public class SessionResultsWorkspace {
         this.filterPanel = new FilterPanel(filterController.filterConfig(), errorLogger);
         this.filterPanel.setFilterChangeListener(this::applyFilters);
         this.resultsPanel = new SessionResultsPanel(api, filterController.highlighter(), this::applyFilters, viewerLayout, tableLayout);
+        this.pendingResults = new SwingBatchDispatcher<>(this::addResults);
         this.retryThrottledButton = new JButton("Retry Queued (0)");
         this.retryThrottledButton.setEnabled(false);
         this.retryThrottledButton.setToolTipText(
@@ -158,18 +161,41 @@ public class SessionResultsWorkspace {
     }
 
     public void addResult(AttackResult result) {
-        filterController.track(result);
-        resultsPanel.addResult(result, filterController.shouldShow(result));
-        if (isRetryableResult(result)) {
-            trackThrottleResult(result);
-        } else {
-            removeThrottleRetry(result);
+        addResults(List.of(result));
+    }
+
+    /** Accepts results from scan workers with bounded Swing-queue backpressure. */
+    public void enqueueResult(AttackResult result) {
+        if (result == null) return;
+        AttackResult durable = result.copyEvidenceToTempFile();
+        if (SwingUtilities.isEventDispatchThread()) addResults(List.of(durable));
+        else pendingResults.submit(durable);
+    }
+
+    /** Runs on the Swing thread after every previously enqueued result has been applied. */
+    public void afterPendingResults(Runnable callback) {
+        pendingResults.afterDrained(callback);
+    }
+
+    public void setResultsChangedListener(Consumer<List<AttackResult>> listener) {
+        resultsChangedListener = listener == null ? ignored -> { } : listener;
+    }
+
+    private void addResults(List<AttackResult> additions) {
+        for (AttackResult result : additions) filterController.track(result);
+        resultsPanel.addResults(additions, filterController::shouldShow);
+        for (AttackResult result : additions) {
+            if (isRetryableResult(result)) trackThrottleResult(result);
+            else removeThrottleRetry(result);
         }
         updateFilterStatus();
+        updateRetryControls();
+        resultsChangedListener.accept(additions);
     }
 
     public void clear() {
         cancelRetryWorker();
+        pendingResults.clear();
         synchronized (throttledRetries) {
             throttledRetries.clear();
             queueGeneration++;
@@ -183,6 +209,7 @@ public class SessionResultsWorkspace {
 
     public void cleanup() {
         cancelRetryWorker();
+        pendingResults.close();
         if (retryQueueDialog != null) retryQueueDialog.dispose();
     }
 
@@ -609,7 +636,6 @@ public class SessionResultsWorkspace {
             throttledRetries.put(key, new DeferredRetry(
                 result, existing != null && existing.patternBlocked()));
         }
-        updateRetryControls();
     }
 
     private boolean isRetryableResult(AttackResult result) {
@@ -624,7 +650,6 @@ public class SessionResultsWorkspace {
         synchronized (throttledRetries) {
             throttledRetries.remove(retryKey(result));
         }
-        updateRetryControls();
     }
 
     private String retryKey(AttackResult result) {

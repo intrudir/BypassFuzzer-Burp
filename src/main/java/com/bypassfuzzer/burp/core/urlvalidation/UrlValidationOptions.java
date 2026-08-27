@@ -41,8 +41,8 @@ public record UrlValidationOptions(
 
     /** Adaptive per-host throttle configuration; URL validation runs its single attack serially. */
     public ThrottleSettings throttleSettings() {
-        return new ThrottleSettings(throttleStatusCodes, Math.max(50, concurrency),
-            Math.max(50, perHostConcurrency), 400.0, posture, pauseMode, fixedPauseMillis);
+        return new ThrottleSettings(throttleStatusCodes, concurrency,
+            perHostConcurrency, 400.0, posture, pauseMode, fixedPauseMillis);
     }
 
     public UrlValidationOptions(String markerText, String allowedHost, String attackerHost,

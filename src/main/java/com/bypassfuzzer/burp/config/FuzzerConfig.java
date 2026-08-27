@@ -185,8 +185,8 @@ public class FuzzerConfig {
      * the concurrency value becomes the in-flight resource cap.
      */
     public ThrottleSettings throttleSettings() {
-        return new ThrottleSettings(throttleStatusCodes, Math.max(50, concurrency),
-            Math.max(50, perHostConcurrency), 400.0, throttlePosture, throttlePauseMode,
+        return new ThrottleSettings(throttleStatusCodes, concurrency,
+            perHostConcurrency, 400.0, throttlePosture, throttlePauseMode,
             throttleFixedPauseMillis);
     }
 

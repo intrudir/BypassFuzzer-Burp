@@ -96,6 +96,7 @@ public class FuzzerEngine {
             }
         }, "bypassfuzzer-engine");
 
+        fuzzerThread.setDaemon(true);
         fuzzerThread.start();
         return true;
     }

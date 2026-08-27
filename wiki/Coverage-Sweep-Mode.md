@@ -2,7 +2,7 @@
 
 The `Sweep` tab is the broad coverage mode for BypassFuzzer.
 
-It is designed for the case where an assessment has many blocked endpoints in Burp Proxy history, or a curated text file of target URLs, and the tester wants a bounded, high-signal check across them. It is not a full scanner and it does not run the full Bypass playbooks against every endpoint.
+It is designed for assessments with many blocked endpoints in Burp Proxy history or an imported target set. Use the bounded High Signal corpus for a broad first pass, or All Payloads to run the complete selected Bypass families against every selected endpoint.
 
 ## When To Use It
 
@@ -12,11 +12,12 @@ Use Sweep when:
 - you have a `.txt` file with one absolute target URL per line
 - you want a quick coverage pass across many blocked endpoints
 - you want to check common path-normalization and lightweight header cases without sending thousands of requests per endpoint
+- you want the complete selected Bypass payload catalog across a reviewed target set
 
 Use a targeted request tab instead when:
 
 - one endpoint deserves deeper testing
-- you want the full AuthZ bypass playbooks
+- you want a single request's full interactive Bypass workflow instead of Sweep's multi-endpoint execution
 - you want IDOR/BOLA mutation against a known object identifier
 - you need URL validation payload generation with `{INJECT}` markers
 
@@ -159,9 +160,9 @@ controllers:
   cooldown. After a quiet minute, escalation resets. A server-provided `Retry-After` value is always
   used when it requires a longer cooldown.
 
-`Concurrency` and `Per-host` bound how many requests may be *in flight* at once (a resource cap), not
-the rate. `Throttle codes` defaults to `429,503` and defines which responses count as a rate-limit
-signal.
+`Concurrency` and `Per-host` are hard bounds on how many requests may be *in flight* at once (a
+resource cap), not the rate. Sweep does not silently raise either value. `Throttle codes` defaults
+to `429,503` and defines which responses count as a rate-limit signal.
 
 Manual `Pause` freezes both network sending and throttle admission. Already-sent requests may still
 finish and appear in the results table. Resume discards token-bucket credit accumulated during the
@@ -208,7 +209,14 @@ and request deduplication are applied.
 
 ## Probe Budget
 
-Sweep uses a bounded probe set with a default cap of 350 unique probes per endpoint.
+High Signal uses a bounded probe set with a default cap of 350 unique probes per endpoint. All
+Payloads runs every mutation in each selected Bypass family and is not truncated by that cap.
+Candidates are planned lazily by the available workers, so All Payloads does not materialize the
+complete multi-endpoint scan in memory. Every selected payload runs unless the user stops the scan.
+
+Results are applied to Swing in bounded batches with producer backpressure. Per-probe requests and
+responses are retained through Burp's temp-file-backed HTTP messages, preserving table, viewer, and
+export evidence without retaining every response body on the Java heap.
 High Signal promotes the full Path attack's raw and encoded backslash primitive as prefix, suffix,
 and sandwich mutations on every path segment.
 

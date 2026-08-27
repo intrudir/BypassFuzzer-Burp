@@ -118,6 +118,10 @@ public class SessionResultsPanel extends JPanel {
         tableModel.addResult(result, passesFilter);
     }
 
+    public void addResults(List<AttackResult> results, Predicate<AttackResult> filter) {
+        tableModel.addResults(results, filter);
+    }
+
     public void applyFilter(Predicate<AttackResult> filter) {
         List<? extends javax.swing.RowSorter.SortKey> savedSortKeys = null;
         if (resultsTable.getRowSorter() != null) {

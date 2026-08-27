@@ -753,6 +753,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             false,
             globalGovernor
         );
+        resultsWorkspace.setResultsChangedListener(this::handleResultBatch);
         resultsWorkspace.setAuthVerificationTabsVisible(false);
         resultsWorkspace.setRetryQueueExportAction(() ->
             exportRetryQueueJson(resultsWorkspace.throttledRetrySnapshot()));
@@ -1343,20 +1344,23 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void addResult(AttackResult result) {
-        SwingUtilities.invokeLater(() -> {
+        resultsWorkspace.enqueueResult(result);
+    }
+
+    private void handleResultBatch(List<AttackResult> results) {
+        for (AttackResult result : results) {
             if (result.getOriginalRequest() != null && result.getOriginalResponse() != null) {
                 importedControlResponses.put(result.getOriginalRequest(), result.getOriginalResponse());
             }
-            resultsWorkspace.addResult(result);
-            updateExportButton();
-            updateRetryQueueButton();
-            updateCompletedHostsLabel();
-            statusLabel.setText(runningStatusText(engine.isPaused() ? "Paused. " : ""));
-        });
+        }
+        updateExportButton();
+        updateRetryQueueButton();
+        updateCompletedHostsLabel();
+        statusLabel.setText(runningStatusText(engine.isPaused() ? "Paused. " : ""));
     }
 
     private void handleCompletion() {
-        SwingUtilities.invokeLater(() -> {
+        resultsWorkspace.afterPendingResults(() -> {
             resultsWorkspace.setPrimaryRunActive(false);
             updateIdleUi((stopRequested ? "Stopped" : "Completed")
                 + " (" + payloadSetLabel(activePayloadSet) + "): "

@@ -23,6 +23,7 @@ public class AttackResult {
     private final String contentType;
     private final long timestamp;
     private final int throttleRetryAttempt;
+    private final boolean evidenceOnDisk;
 
     public AttackResult(String attackType, String payload, HttpRequest request, HttpResponse response) {
         this(attackType, payload, null, null, null, request, response, null);
@@ -60,6 +61,21 @@ public class AttackResult {
                          HttpRequest originalRequest, HttpResponse originalResponse,
                          HttpRequest verificationRequest, HttpResponse verificationResponse,
                          int throttleRetryAttempt) {
+        this(attackType, payload, targetLabel, payloadFamily, payloadEncoding, request, response,
+            originalRequest, originalResponse, verificationRequest, verificationResponse,
+            throttleRetryAttempt,
+            response != null ? response.statusCode() : 0,
+            response != null ? response.body().length() : 0,
+            response != null ? extractContentType(response) : "",
+            System.currentTimeMillis(), false);
+    }
+
+    private AttackResult(String attackType, String payload, String targetLabel, String payloadFamily,
+                         String payloadEncoding, HttpRequest request, HttpResponse response,
+                         HttpRequest originalRequest, HttpResponse originalResponse,
+                         HttpRequest verificationRequest, HttpResponse verificationResponse,
+                         int throttleRetryAttempt, int statusCode, int contentLength,
+                         String contentType, long timestamp, boolean evidenceOnDisk) {
         this.attackType = attackType;
         this.payload = payload;
         this.targetLabel = targetLabel == null ? "" : targetLabel;
@@ -71,11 +87,12 @@ public class AttackResult {
         this.originalResponse = originalResponse;
         this.verificationRequest = verificationRequest;
         this.verificationResponse = verificationResponse;
-        this.statusCode = response != null ? response.statusCode() : 0;
-        this.contentLength = response != null ? response.body().length() : 0;
-        this.contentType = response != null ? extractContentType(response) : "";
-        this.timestamp = System.currentTimeMillis();
+        this.statusCode = statusCode;
+        this.contentLength = contentLength;
+        this.contentType = contentType;
+        this.timestamp = timestamp;
         this.throttleRetryAttempt = Math.max(0, throttleRetryAttempt);
+        this.evidenceOnDisk = evidenceOnDisk;
     }
 
     public static AttackResult throttleRetryOf(AttackResult original, HttpResponse response, int attempt) {
@@ -95,7 +112,37 @@ public class AttackResult {
         );
     }
 
-    private String extractContentType(HttpResponse response) {
+    /**
+     * Moves the per-probe HTTP evidence behind Montoya's temp-file-backed message implementation.
+     * Candidate baselines remain shared by identity across their results, while selecting or
+     * exporting a row still exposes the complete request and response.
+     */
+    public AttackResult copyEvidenceToTempFile() {
+        if (evidenceOnDisk) return this;
+        return new AttackResult(
+            attackType, payload, targetLabel, payloadFamily, payloadEncoding,
+            tempFileCopy(request), tempFileCopy(response),
+            originalRequest, originalResponse, verificationRequest, verificationResponse,
+            throttleRetryAttempt, statusCode, contentLength, contentType, timestamp, true);
+    }
+
+    public boolean isEvidenceOnDisk() {
+        return evidenceOnDisk;
+    }
+
+    private static HttpRequest tempFileCopy(HttpRequest request) {
+        if (request == null) return null;
+        HttpRequest copy = request.copyToTempFile();
+        return copy == null ? request : copy;
+    }
+
+    private static HttpResponse tempFileCopy(HttpResponse response) {
+        if (response == null) return null;
+        HttpResponse copy = response.copyToTempFile();
+        return copy == null ? response : copy;
+    }
+
+    private static String extractContentType(HttpResponse response) {
         return response.headers().stream()
             .filter(h -> h.name().equalsIgnoreCase("Content-Type"))
             .map(h -> h.value())

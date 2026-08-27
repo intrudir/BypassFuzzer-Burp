@@ -174,7 +174,12 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.startAndStopButtonsReflectRunningState \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
+        --tests com.bypassfuzzer.burp.ui.session.SwingBatchDispatcherTest \
         --tests com.bypassfuzzer.burp.http.UserAgentRandomizerTest \
+        --tests com.bypassfuzzer.burp.core.attacks.AttackResultTest \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.allPayloadExecutionCompletesTheEntireGeneratedCatalog \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.configuredConcurrencyIsAnActualUpperBound \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.plansOnlyCandidatesThatHaveAnAvailableWorker \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.highSignalPromotesFullCatalogBackslashMutationsAtEverySegment \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.executionLabelsLikelyBypassResults
       copy_results "$evidence_dir" test

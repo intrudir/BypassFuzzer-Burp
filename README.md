@@ -1,20 +1,29 @@
-# BypassFuzzer - Burp Suite Extension
+# BypassFuzzer — Burp Suite and CLI
 
-A Burp Suite extension for testing authorization bypass vulnerabilities (401/403 bypasses). This is a Java port of the Python [BypassFuzzer](https://github.com/intrudir/BypassFuzzer) tool, fully integrated with Burp Suite.
+An authorization-bypass fuzzer available as both a Burp Suite extension and a standalone Java/Docker CLI. Both surfaces use the same payload resources and transport-neutral Bypass planner.
 
 ## Table of Contents
 
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+  - [Burp Suite extension](#burp-suite-extension)
+  - [Standalone CLI](#standalone-cli)
+  - [Docker](#docker)
   - [Building from source (optional)](#building-from-source-optional)
-- [Usage](#usage)
+- [CLI usage](#cli-usage)
+  - [Sweep](#sweep)
+  - [Targeted bypass](#targeted-bypass)
+  - [IDOR / BOLA](#idor--bola)
+  - [URL validation](#url-validation)
+  - [Runtime controls](#runtime-controls)
+  - [YAML jobs](#yaml-jobs)
+  - [Results and evidence](#results-and-evidence)
+- [Burp Suite usage](#burp-suite-usage)
   - [Basic Workflow](#basic-workflow)
   - [Sweep Tab](#sweep-tab)
   - [Bypass Tab](#bypass-tab)
   - [URL Validation tab](#url-validation-tab)
-  - [Smoke Testing](#smoke-testing)
-- [Vulnerable Lab](#vulnerable-lab)
 - [Documentation](#documentation)
 - [Custom Payloads](#custom-payloads)
 - [License](#license)
@@ -27,6 +36,19 @@ BypassFuzzer has four main testing areas:
 - **Bypass** for targeted authorization bypass testing against a request you send to BypassFuzzer.
 - **IDOR** for object identifier and BOLA-style request mutation.
 - **URL Validation** for marker-driven URL validation and SSRF-style allow-list bypass testing.
+
+All four modes are available from the CLI. Sweep accepts URL lists, raw-request manifests, OpenAPI/Swagger, Postman, and Burp version-1 retry packages. Proxy history and Burp Collaborator remain desktop-only.
+
+- **Standalone CLI:**
+  - Runs as a Java fat JAR, installable ZIP, or non-root Docker image
+  - Provides `sweep`, `bypass`, `idor`, and `url-validation` commands
+  - Uses the same Bypass planner and bundled payload resources as the Burp extension
+  - Preserves raw request targets, ordered duplicate headers, and request bodies
+  - Keeps the network destination separate from the fuzzable `Host` header
+  - Supports HTTP/1.0, HTTP/1.1, native HTTP/2, cleartext h2c, and ALPN negotiation
+  - Streams JSONL results while retaining raw request and response evidence for every probe
+  - Supports strict versioned YAML jobs with command-line flags taking precedence
+  - Excludes Burp Collaborator and all out-of-band payload generation
 
 - **Sweep Mode:**
   - Available immediately when the extension loads
@@ -70,21 +92,58 @@ BypassFuzzer has four main testing areas:
   - AIMD control law with slow-start; honors `Retry-After`; throttled requests are auto-retried so coverage stays complete
   - Configurable rate-limit status codes (default: 429, 503); no manual delay or requests-per-second tuning
 - **Collaborator Integration:** Dynamic Burp Collaborator payload generation to watch for out-of-band interactions (Burp Professional only)
-- **Smoke Testing:**
-  - Local vulnerable lab under `src/test/vulnerable_lab`
 
 ## Requirements
 
-- Java 17 or higher
-- Burp Suite Professional or Community Edition (2023.10+)
+- Java 17 or higher for the JAR or ZIP distribution
+- Docker for the container distribution
+- Burp Suite Professional or Community Edition (2023.10+) for the desktop extension only
 - Internet access on the first build if Java 17+ is not already installed (the build helper downloads a project-local Temurin JDK)
 
 ## Installation
+
+### Burp Suite extension
+
 1. Download latest JAR from the [releases page](https://github.com/intrudir/BypassFuzzer-Burp/releases)
 2. In Burp, go to **Extensions** → **Installed**
 3. Click **Add**
 4. Select **Extension file**: `bypassfuzzer.jar`
 5. The extension will load and a "BypassFuzzer" tab will appear
+
+### Standalone CLI
+
+Download `bypassfuzzer-cli.jar` from the [latest release](https://github.com/intrudir/BypassFuzzer-Burp/releases/latest), then run:
+
+```bash
+java -jar bypassfuzzer-cli.jar --version
+java -jar bypassfuzzer-cli.jar --help
+```
+
+The release ZIP contains launch scripts for macOS, Linux, and Windows. Set the version you downloaded, extract it, and run:
+
+```bash
+VERSION=1.4.1
+unzip "bypassfuzzer-$VERSION.zip"
+"./bypassfuzzer-$VERSION/bin/bypassfuzzer" --help
+```
+
+On Windows, use `bypassfuzzer.bat` from the extracted `bin` directory.
+
+### Docker
+
+Release images are published to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/intrudir/bypassfuzzer:latest
+
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" \
+  ghcr.io/intrudir/bypassfuzzer:latest \
+  sweep --urls /work/targets.txt --output /work/output/sweep
+```
+
+The image runs without root privileges. Mount input and output paths beneath `/work`.
 
 ### Building from source (optional)
 
@@ -94,15 +153,347 @@ sh build.sh clean shadowJar
 
 # The compiled JAR will be at:
 # build/libs/bypassfuzzer.jar
+
+# Build the standalone CLI JAR and distribution:
+./gradlew :cli:shadowJar :cli:distZip
+# cli/build/libs/bypassfuzzer-cli.jar
 ```
 
 On Windows PowerShell, run `.\build.ps1 clean shadowJar`. On systems where the shell does not preserve executable bits, run `sh build.sh clean shadowJar`. These helpers use an existing Java 17+ installation when available. Otherwise they download Temurin 17 into `.gradle/jdks` and reuse it on later builds. You can still invoke `./gradlew` or `gradlew.bat` directly when Java is already configured.
 
 Builds embed the public S3 version manifest URL by default so BypassFuzzer can notify users when a newer release is available. Override it for custom release channels with `-PupdateManifestUrl=...`. To preview the update banner locally without changing S3, build with `-PdevLatestVersion=1.4.1`.
 
-# Usage
+## CLI usage
 
-## Basic Workflow
+Only run active fuzzing against systems you are authorized to test. The examples below use the locally built JAR; replace `cli/build/libs/bypassfuzzer-cli.jar` with the path to a downloaded release JAR if needed.
+
+Create a URL list with one absolute HTTP or HTTPS URL per line:
+
+```text
+https://app.example/admin
+https://api.example/v1/reports/quarterly?format=json
+```
+
+For Bypass, IDOR, and URL Validation, save the exact HTTP request you want to mutate. For example, `blocked.raw`:
+
+```http
+GET /admin/reports HTTP/1.1
+Host: app.example
+Authorization: Bearer replace-with-your-token
+Accept: application/json
+
+```
+
+Raw requests require `--target-origin`. This is the real socket and TLS destination and must contain only the scheme, host, and optional port. A payload that changes `Host` or the request target will not silently redirect the scanner to another server.
+
+### Sweep
+
+High Signal is the default bounded Sweep corpus. It is the best starting point for broad coverage:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --urls targets.txt \
+  --payload-set high-signal \
+  --max-probes 80 \
+  --global-concurrency 10 \
+  --per-host-concurrency 5 \
+  --header 'Authorization: Bearer replace-with-your-token' \
+  --redact \
+  --output output/sweep-high-signal
+```
+
+URL-list inputs do not carry authentication. Add repeatable `--header` options for the authorization and session headers the application expects.
+
+To restrict High Signal categories, use their exact names:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --urls targets.txt \
+  --payload-set high-signal \
+  --families 'Header,Path Normalization,Encoding' \
+  --output output/sweep-selected
+```
+
+The available High Signal categories are `Matrix / Extension`, `Extension / Negotiation`, `Path Normalization`, `Encoding`, `Debug Params`, `Content-Type`, `Header`, and `Host Parsing`.
+
+Use `all` to run the full shared Bypass inventory. Restrict it to selected stable family IDs when you do not need every mutation:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --urls targets.txt \
+  --payload-set all \
+  --families header,path,verb,encoding,protocol \
+  --max-probes 500 \
+  --redact \
+  --output output/sweep-all
+```
+
+The twelve all-payload family IDs are:
+
+```text
+header,path,verb,param,cookie,trailingdot,trailingslash,extension,contenttype,encoding,protocol,case
+```
+
+Sweep accepts exactly one input source per run:
+
+```bash
+# One absolute URL per line
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --urls targets.txt --output output/urls
+
+# One raw request
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --request blocked.raw --target-origin https://app.example \
+  --output output/raw-request
+
+# OpenAPI or Swagger, from a local file or HTTPS URL
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --openapi openapi.yaml --base-url https://api.example \
+  --output output/openapi
+
+# Postman Collection v2.0/v2.1
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --postman collection.json --base-url https://api.example \
+  --output output/postman
+
+# A retry package exported by the Burp Sweep UI
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --retry-package bypassfuzzer-retry-queue.json \
+  --output output/retry-package
+```
+
+OpenAPI and Postman imports exclude `POST`, `PUT`, `PATCH`, and `DELETE` by default. Include them only when those state-changing operations are explicitly in scope:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --openapi openapi.yaml \
+  --base-url https://api.example \
+  --include-state-changing \
+  --output output/openapi-all-methods
+```
+
+A request manifest can hold several raw requests. Paths are relative to the manifest file:
+
+```yaml
+requests:
+  - requestFile: requests/admin.raw
+    targetOrigin: https://app.example
+  - requestFile: requests/report.raw
+    targetOrigin: https://api.example
+```
+
+Run it with:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --request-manifest requests.yaml \
+  --payload-set high-signal \
+  --output output/request-manifest
+```
+
+### Targeted bypass
+
+Run selected attack families against one blocked request:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar bypass \
+  --request blocked.raw \
+  --target-origin https://app.example \
+  --families header,path,verb,param,cookie,encoding \
+  --max-probes 1000 \
+  --redact \
+  --output output/bypass
+```
+
+Add `--fuzz-existing-cookies` when the request contains cookies whose current values should also be mutated:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar bypass \
+  --request blocked.raw \
+  --target-origin https://app.example \
+  --families cookie \
+  --fuzz-existing-cookies \
+  --output output/cookie-bypass
+```
+
+### IDOR / BOLA
+
+The authorized identifier must appear as an exact literal in the request. The CLI sends the authorized control and target-identifier baseline before its path, query, body, and hybrid playbooks:
+
+```http
+GET /api/users/100/orders?userId=100 HTTP/1.1
+Host: api.example
+Authorization: Bearer replace-with-your-token
+
+```
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar idor \
+  --request object.raw \
+  --target-origin https://api.example \
+  --authorized-id 100 \
+  --target-id 200 \
+  --max-probes 500 \
+  --redact \
+  --output output/idor
+```
+
+Always compare a possible finding with both baseline records before treating it as an authorization issue.
+
+### URL validation
+
+Put the literal marker `{INJECT}` wherever a generated URL payload should be inserted:
+
+```http
+GET /redirect?next={INJECT} HTTP/1.1
+Host: app.example
+Authorization: Bearer replace-with-your-token
+
+```
+
+Run an absolute-URL allow-list scenario:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar url-validation \
+  --request redirect.raw \
+  --target-origin https://app.example \
+  --marker '{INJECT}' \
+  --allowed-host trusted.example \
+  --attacker-host attacker.example \
+  --contexts absolute-url \
+  --attacks domain-allow-list-bypass \
+  --encodings raw,intruders \
+  --max-probes 500 \
+  --redact \
+  --output output/url-validation
+```
+
+Available contexts are `absolute-url`, `host-header`, and `cors`.
+
+Available attack IDs are:
+
+```text
+domain-allow-list-bypass,fake-relative-urls,loopback,ipv6,cloud-metadata-endpoints,url-splitting-unicode-characters,normalization-attack
+```
+
+Available encoding IDs are:
+
+```text
+raw,intruders,everything,special-chars,unicode-escape
+```
+
+The CLI requires an explicit attacker host and never creates Burp Collaborator or other out-of-band payloads.
+
+### Runtime controls
+
+The four commands share transport, concurrency, retry, header, and evidence controls. For example:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar bypass \
+  --request blocked.raw \
+  --target-origin https://app.example \
+  --protocol both \
+  --proxy http://127.0.0.1:8080 \
+  --connect-timeout 10 \
+  --request-timeout 20 \
+  --global-concurrency 10 \
+  --per-host-concurrency 4 \
+  --throttle-codes 429,503 \
+  --retry-attempts 2 \
+  --posture conservative \
+  --pause-mode smart \
+  --fixed-pause-ms 30000 \
+  --header 'X-Assessment-ID: authorized-run-42' \
+  --user-agent-mode synthetic \
+  --user-agent-seed 42 \
+  --redact \
+  --output output/bypass-controlled
+```
+
+Protocol modes:
+
+- `auto`: HTTPS negotiates HTTP/2 or HTTP/1 with ALPN; cleartext uses HTTP/1.
+- `http1`: HTTP/1.1, except payloads that deliberately select another HTTP/1 version.
+- `http2`: native HTTP/2 over TLS or h2c prior knowledge for cleartext targets.
+- `both`: runs the baseline and generated probes over HTTP/1.1 and HTTP/2.
+
+Use `--insecure` only when an authorized target intentionally uses an untrusted TLS certificate. Proxy URLs use `http://[user:password@]host:port` syntax.
+
+### YAML jobs
+
+Every mode accepts a strict version-1 YAML job. This example runs Bypass:
+
+```yaml
+schemaVersion: 1
+input:
+  request: requests/admin.raw
+  targetOrigin: https://app.example
+transport:
+  protocol: auto
+  requestTimeoutSeconds: 20
+  connectTimeoutSeconds: 10
+execution:
+  globalConcurrency: 10
+  perHostConcurrency: 5
+  throttleStatusCodes: [429, 503]
+  retryAttempts: 1
+  maxProbes: 750
+  posture: conservative
+  pauseMode: smart
+  fixedPauseMillis: 30000
+  headers:
+    - 'X-Assessment-ID: authorized-run-42'
+evidence:
+  output: output/admin-run
+  redact: true
+bypass:
+  families: [header, path, verb, encoding]
+  fuzzExistingCookies: false
+```
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar bypass --config job.yaml
+```
+
+Paths in YAML resolve relative to the YAML file. Command-line flags override YAML values, and YAML overrides built-in defaults. Unknown keys are rejected. Any key containing `collaborator` is also rejected because Collaborator is not part of the CLI.
+
+### Results and evidence
+
+Results stream as one JSON object per line on stdout, while progress goes to stderr. Save the stream separately if another tool will consume it:
+
+```bash
+mkdir -p output
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --urls targets.txt \
+  --output output/sweep \
+  > output/sweep-results.jsonl
+```
+
+Each output directory contains:
+
+```text
+run.json
+results.jsonl
+summary.json
+requests/000001-request.raw
+responses/000001-response.raw
+```
+
+Read the final state and inspect a referenced request/response pair:
+
+```bash
+sed -n '1,160p' output/sweep/summary.json
+sed -n '1,160p' output/sweep/requests/000001-request.raw
+sed -n '1,160p' output/sweep/responses/000001-response.raw
+```
+
+Useful result signals include `LIKELY_BYPASS`, `RESPONSE_CHANGED`, `THROTTLED`, `NO_SIGNAL`, and `NO_RESPONSE`. A signal is triage evidence, not a vulnerability verdict.
+
+Raw evidence can contain credentials. Use `--redact` to mask common credential headers in stored evidence without changing the requests sent on the wire. Preflight and usage errors return exit code `2`; once a scan starts, automation should read `summary.json` for final state and findings.
+
+## Burp Suite usage
+
+### Basic Workflow
 
 1. **Send Request to BypassFuzzer:**
    - In Proxy, Sitemap, or Repeater, find any 403/401, any suspiciously blocked request
@@ -225,62 +616,19 @@ If Burp receives no response, Sweep retries safe `GET`/`HEAD` probes over HTTP/1
 ![URL validation tab](/images/url_vali_tab.png)
 1) Configure Attack button opens configuration window
 
-2) {INJECT} marker is where all your pyloads get shoved into, in the request
+2) Add the `{INJECT}` marker wherever generated payloads should be inserted in the request.
 
-3) Add your "allow listed" host and your attacker controlled domain (or SSRF target). The tool will try different variations of bypasses ot trick the URL validation with these values.
+3) Add the allow-listed host and your attacker-controlled domain or SSRF target. The tool generates parser and allow-list bypass variations from these values.
 
-4) Advanced options that should work exactly like the Portswigger cheatsheet. 
-- Different payload families: playbooks for when you're attacking a CORS/origin header, attacking just a hostname, or if you wanna use full URLs + schemas.
-- Additonal payload options
-- Encoding options (I recommend Intruder's by default)
+4) Select the context, payload families, and encoding options appropriate to a CORS/origin header, hostname, or full URL with a scheme.
 
-5) Start URL validation button - will close the config window for you so you can see the results
-
-## Smoke Testing
-
-```bash
-# Unit and regression tests
-./gradlew test
-
-# Attack-driven smoke suite
-./gradlew smokeTestPlaybooks
-```
-
-The smoke testing suite starts a local vulnerable app automatically and exercises the real attack strategies, payload expansion, registry wiring, shared executor flow, and URL Validation workflow without requiring Burp.
-
---- 
-
-# Vulnerable Lab
-
-For manual Burp validation and local attack smoke tests, use the vulnerable app in [`src/test/vulnerable_lab`](src/test/vulnerable_lab).
-
-Manual run:
-
-```bash
-python3 src/test/vulnerable_lab/app.py
-```
-
-Then:
-
-Request `GET /login` to receive `session=lab-user`
-
-Run the extension against those requests or execute `./gradlew smokeTestPlaybooks`
-
-
-Real-world-style examples in the lab include:
-
-- reverse-proxy header trust on `/edge/private/reports/quarterly`, where `X-Forwarded-For`, `X-Custom-IP-Authorization`, `X-Original-URL`, or `X-Rewrite-URL` can incorrectly punch through an edge-protected report route
-- nested report and billing routes that return `403` until a path-normalization payload collapses them back to the protected backend path
-- a weak Bearer-token admin route on `/api/v2/admin/audit` that returns `403` for a normal user token and is bypassed because token shape is checked more than token validity
-- separate consultant-demo routes for method confusion, truthy query parameters, truthy cookies, trailing-dot host routing, content-type parser confusion, and HTTP/1.0 downgrade handling
-- the existing URL-validation examples for redirect, host, and CORS trust decisions
-
-The detailed route matrix and black-box lab checks are documented in [`src/test/vulnerable_lab/README.md`](src/test/vulnerable_lab/README.md).
+5) Click **Start URL Validation**. The configuration window closes and results begin streaming into the session.
 
 ## Documentation
 
 Wiki-style project documentation lives under [`wiki/`](wiki/), including:
 
+- [`docs/CLI.md`](docs/CLI.md) for the complete standalone CLI reference
 - [`wiki/Home.md`](wiki/Home.md)
 - [`wiki/Playbooks-Overview.md`](wiki/Playbooks-Overview.md)
 - [`wiki/Coverage-Sweep-Mode.md`](wiki/Coverage-Sweep-Mode.md)
@@ -328,6 +676,8 @@ The file documents all supported placeholders at the top. Edit it before buildin
    Example with Collaborator: `X-Forwarded-For: {OOB DOMAIN PAYLOAD}`
    Example for URL bypass: `X-Original-URL: {PATH SWAP}` (sends `GET /` with header `X-Original-URL: /edge/private/reports/quarterly`)
 
+   Collaborator placeholders are expanded only by the Burp extension. The standalone CLI skips OOB templates.
+
 2. **IP Payloads:** One IP address per line
 
    Example: `127.0.0.1`
@@ -350,7 +700,7 @@ To pull the latest payloads from upstream:
 python3 scripts/sync-url-cheatsheet.py
 ```
 
-The script clones the upstream repo, rebuilds our source JSON, and reports what changed. If payloads were added or removed, review the diff and update the `expected` map in `UrlValidationPayloadGeneratorTest#bundledSourceDataHasExpectedCategorySizes` before committing. Run `./gradlew test` afterward to confirm nothing regressed.
+The script clones the upstream repo, rebuilds the source JSON, and reports what changed. Review the generated payload diff before committing it.
 
 ## License
 

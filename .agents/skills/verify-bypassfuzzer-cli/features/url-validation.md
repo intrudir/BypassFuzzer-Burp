@@ -17,5 +17,5 @@ Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> url-valida
 ## Gotchas
 
 - The marker must be present in the active raw request.
-- Preview and execution are comparable only when contexts, attacks, encodings, hosts, and headers are unchanged.
+- Stored payload evidence reflects the exact contexts, attacks, encodings, hosts, and headers selected for that run.
 - Raw CR/LF payloads that cannot cross the safe request-model boundary are excluded; encoded variants remain.

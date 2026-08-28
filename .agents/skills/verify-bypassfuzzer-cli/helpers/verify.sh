@@ -16,6 +16,10 @@ manifest_value() {
   unzip -p "$JAR" META-INF/MANIFEST.MF | tr -d '\r' | sed -n "s/^$1: //p" | head -n 1
 }
 
+expected_version() {
+  sed -n "s/^version = '\([^']*\)'/\1/p" "$ROOT/build.gradle" | head -n 1
+}
+
 doctor() {
   test -f "$JAR"
   command -v java >/dev/null
@@ -23,7 +27,10 @@ doctor() {
   command -v unzip >/dev/null
   test "$(manifest_value Main-Class)" = "com.bypassfuzzer.cli.BypassFuzzerCli"
   test "$(manifest_value Implementation-Title)" = "BypassFuzzer CLI"
-  unzip -l "$JAR" payloads/sweep_probes.txt payloads/url_validation_source_data.json | grep -q sweep_probes.txt
+  test "$(manifest_value Implementation-Version)" = "$(expected_version)"
+  LISTING=$(unzip -Z1 "$JAR")
+  printf '%s\n' "$LISTING" | grep -Fqx payloads/sweep_probes.txt
+  printf '%s\n' "$LISTING" | grep -Fqx payloads/url_validation_source_data.json
   java -jar "$JAR" --help | grep -q 'url-validation'
   for feature in sweep bypass idor url-validation; do
     java -jar "$JAR" "$feature" --help | grep -q -- '--output'

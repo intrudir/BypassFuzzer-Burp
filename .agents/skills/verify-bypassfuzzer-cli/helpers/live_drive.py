@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import stat
 import subprocess
 import sys
 import tempfile
@@ -105,10 +106,12 @@ def run():
 
     summary = json.loads((scan / "summary.json").read_text(encoding="utf-8"))
     lines = [json.loads(line) for line in (scan / "results.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    streamed = [json.loads(line) for line in (evidence / "stdout.jsonl").read_text(encoding="utf-8").splitlines() if line]
     assert summary["state"] == "completed"
     assert summary["mode"] == feature
     assert summary["transportErrors"] == 0
     assert summary["records"] == len(lines) and len(lines) > 1
+    assert streamed == lines
     assert lines[0]["baseline"] is True
     for item in lines:
         assert (scan / item["requestRef"]).is_file()
@@ -117,6 +120,11 @@ def run():
     stored = "\n".join(path.read_text(encoding="iso-8859-1") for path in (scan / "requests").glob("*.raw"))
     assert "verification-secret" not in stored
     assert "Authorization: [REDACTED]" in stored
+    for directory in (scan, scan / "requests", scan / "responses"):
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    for path in scan.rglob("*"):
+        if path.is_file():
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
     if feature == "bypass":
         assert summary["findings"] > 0
         assert "CF-Connecting-IP: 127.0.0.1" in stored
@@ -130,7 +138,8 @@ def run():
     (evidence / "lab-requests.json").write_text(json.dumps(observed, indent=2) + "\n", encoding="utf-8")
     assertions = {"state": "PASS", "mode": feature, "records": len(lines),
                   "findings": summary["findings"], "labRequests": len(observed),
-                  "collaboratorRejected": True, "redactionVerified": True}
+                  "collaboratorRejected": True, "redactionVerified": True,
+                  "permissionsVerified": True, "streamingJsonlVerified": True}
     (evidence / "assertions.json").write_text(json.dumps(assertions, indent=2) + "\n", encoding="utf-8")
 
 

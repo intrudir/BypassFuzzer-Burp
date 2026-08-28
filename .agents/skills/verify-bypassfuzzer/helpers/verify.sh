@@ -190,7 +190,10 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.requestSessionIsNestedUnderSelectedMode \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.bypassKeepsAttackTypesInlineAndMovesRunOptionsBehindButton \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
-        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
+        --tests com.bypassfuzzer.burp.core.attacks.AttackExecutorThrottleTest \
+        --tests com.bypassfuzzer.burp.core.FuzzerEngineThrottleTest \
+        --tests com.bypassfuzzer.burp.core.throttle.RetryQueueTest
       copy_results "$evidence_dir" test
       run_gradle "$evidence_dir" live-engine.log smokeTestPlaybooks \
         --tests com.bypassfuzzer.burp.smoke.AttackPlaybookSmokeTest.headerAttackFindsHeaderBypass

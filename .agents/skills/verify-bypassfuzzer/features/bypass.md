@@ -7,9 +7,9 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 - `bypass-route` sends the selected Proxy, Sitemap, or Repeater request through `Send to BypassFuzzer` -> `Bypass`.
 - `bypass-selection` enables individual attack families or uses `Check All`/`Uncheck All`.
 - `bypass-options` uses the shared execution controls to configure fixed headers, per-request User-Agent variation, hard global/per-host concurrency caps, throttle response codes, posture, and fixed/smart pause behavior through `Options...`.
-- `bypass-run` starts, pauses/resumes, stops, clears, and reports state for a session.
+- `bypass-run` starts, pauses/resumes, stops, clears, and reports planned payloads, actual HTTP sends, recorded results, and deferred retries separately.
 - `bypass-filter` applies Smart Filter and manual filters for status, length, content type, host, payload, signal, response content, and highlight.
-- `bypass-results` receives bounded UI batches, retains raw request/response evidence in Burp's temp-file-backed messages, sorts and inspects results, highlights rows, copies TSV, and opens the shared `Retry queue (n)` viewer for throttled/no-response requests.
+- `bypass-results` receives bounded UI batches, retains every throttle attempt and raw request/response evidence in Burp's temp-file-backed messages, labels automatic retry attempts, sorts and inspects results, highlights rows, copies TSV, and keeps exhausted/capacity-rejected requests in the shared `Retry queue (n)` viewer.
 
 ## How to get to it (user POV)
 
@@ -27,7 +27,7 @@ Preconditions:
 - Live automated traffic is restricted to the repository's loopback vulnerable lab.
 - A manual Burp pass begins with the authenticated blocked request documented for `/edge/private/reports/quarterly`.
 
-- **Full automated proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" bypass`. The first layer clicks each `Send to BypassFuzzer` child and verifies nested mode routing. The second requires the Bypass controls. The third runs the production Header attack against an isolated lab and requires the `trusted X-Forwarded-For` bypass marker. A black-box lab transcript records baseline and mutated outcomes.
+- **Full automated proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" bypass`. The first layer clicks each `Send to BypassFuzzer` child and verifies nested mode routing. The second requires the Bypass controls and proves a `429` plus three automatic retry attempts remain visible, numbered, and deferred after exhaustion without overflowing silently. The third runs the production Header attack against an isolated lab and requires the `trusted X-Forwarded-For` bypass marker. A black-box lab transcript records baseline and mutated outcomes.
 - **Open the session manually.** Send `GET /edge/private/reports/quarterly` with `Cookie: session=lab-user` to `Bypass`. The selected top-level mode is `Bypass`, the nested title starts `GET /edge/private/reports/quarterly`, and the status identifies the same target.
 - **Choose scope.** Use `Uncheck All`, select `Header`, and review `Options...`. Keep Collaborator off unless Professional Collaborator is configured and explicitly in scope.
 - **Review shared execution settings.** `Request Headers...` includes the same synthetic/browser-like User-Agent randomizer as Sweep. `Throttle...` includes hard global and per-host in-flight caps, throttle codes, posture, and fixed/smart run-wide pause choices.
@@ -41,6 +41,7 @@ Preconditions:
 - `Pause` prevents new sends but does not suppress responses already in flight.
 - User-Agent randomization replaces fixed User-Agent values while preserving an intentional additional User-Agent attack value. It is off by default.
 - Smart/manual filters change visibility, not the underlying result count. Clear filters before claiming rows are missing.
+- The `#` column identifies recorded result rows. Compare the session's HTTP-send telemetry with Burp Logger; `429`/`503` attempts and their labeled retries must now appear in the table even when they remain deferred.
 - Collaborator is a production boundary and requires Burp Professional. Do not mock it as proof of an out-of-band interaction.
 - A successful status alone is insufficient. Inspect the mutated request and response marker/body against the blocked baseline.
 - Closing the nested tab prompts for confirmation and disposes the session; use a disposable run before testing close.

@@ -52,6 +52,7 @@ For the mapped Bypass path, the harness proves all three layers of the user jour
 
 - `Send to BypassFuzzer` -> `Bypass` dispatches the selected request into a nested `Bypass` session.
 - The session exposes `Start Fuzzing`, `Stop`, `Pause`, `Clear Results`, `Options...`, attack-family checkboxes, and the results workspace.
+- Every throttle response and automatic retry attempt remains visible; exhausted or capacity-rejected payloads remain in the shared retry queue, and planned/send/result counts are distinct.
 - The production Header attack sends mutated requests to `/edge/private/reports/quarterly` and finds the lab's `trusted X-Forwarded-For` bypass response.
 
 The harness is not proof that Burp rendered correctly on a particular workstation. When the change affects visual layout, dialog sizing, editor rendering, keyboard focus, or Burp theme integration, repeat the feature's user-POV path in a disposable Burp project and add screenshots plus the extension output transcript to the same evidence directory.

@@ -41,12 +41,6 @@ tasks.register('cliShadowJar') {
     dependsOn ':cli:shadowJar'
 }
 
-tasks.register('cliDistZip') {
-    group = 'distribution'
-    description = 'Builds the standalone BypassFuzzer CLI distribution archive.'
-    dependsOn ':cli:distZip'
-}
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(17)
@@ -151,4 +145,4 @@ tasks.register('runSweepHarness', JavaExec) {
 }
 
 // Make shadowJar the default build artifact
-build.dependsOn shadowJar, ':core:test', ':cli:test', ':cli:shadowJar', ':cli:distZip'
+build.dependsOn shadowJar, ':core:test', ':cli:test', ':cli:shadowJar'

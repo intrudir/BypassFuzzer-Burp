@@ -40,7 +40,7 @@ BypassFuzzer has four main testing areas:
 All four modes are available from the CLI. Sweep accepts URL lists, raw-request manifests, OpenAPI/Swagger, Postman, and Burp version-1 retry packages. Proxy history and Burp Collaborator remain desktop-only.
 
 - **Standalone CLI:**
-  - Runs as a Java fat JAR, installable ZIP, or non-root Docker image
+  - Runs as a Java fat JAR or a locally built non-root Docker image
   - Provides `sweep`, `bypass`, `idor`, and `url-validation` commands
   - Uses the same Bypass planner and bundled payload resources as the Burp extension
   - Preserves raw request targets, ordered duplicate headers, and request bodies
@@ -95,8 +95,8 @@ All four modes are available from the CLI. Sweep accepts URL lists, raw-request 
 
 ## Requirements
 
-- Java 17 or higher for the JAR or ZIP distribution
-- Docker for the container distribution
+- Java 17 or higher for the JAR distribution
+- Docker to build and run the container locally
 - Burp Suite Professional or Community Edition (2023.10+) for the desktop extension only
 - Internet access on the first build if Java 17+ is not already installed (the build helper downloads a project-local Temurin JDK)
 
@@ -119,27 +119,17 @@ java -jar bypassfuzzer-cli.jar --version
 java -jar bypassfuzzer-cli.jar --help
 ```
 
-The release ZIP contains launch scripts for macOS, Linux, and Windows. Set the version you downloaded, extract it, and run:
-
-```bash
-VERSION=1.4.2
-unzip "bypassfuzzer-$VERSION.zip"
-"./bypassfuzzer-$VERSION/bin/bypassfuzzer" --help
-```
-
-On Windows, use `bypassfuzzer.bat` from the extracted `bin` directory.
-
 ### Docker
 
-Release images are published to GitHub Container Registry:
+Build the CLI image locally from the repository:
 
 ```bash
-docker pull ghcr.io/intrudir/bypassfuzzer:latest
+docker build -t bypassfuzzer:1.4.2 .
 
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$PWD:/work" \
-  ghcr.io/intrudir/bypassfuzzer:latest \
+  bypassfuzzer:1.4.2 \
   sweep --urls /work/targets.txt --output /work/output/sweep
 ```
 
@@ -154,8 +144,8 @@ sh build.sh clean shadowJar
 # The compiled JAR will be at:
 # build/libs/bypassfuzzer.jar
 
-# Build the standalone CLI JAR and distribution:
-./gradlew :cli:shadowJar :cli:distZip
+# Build the standalone CLI JAR:
+./gradlew :cli:shadowJar
 # cli/build/libs/bypassfuzzer-cli.jar
 ```
 

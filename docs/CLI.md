@@ -5,14 +5,14 @@ The CLI runs Sweep, Bypass, IDOR, and URL Validation without Burp. Use it only a
 ## Build and launch
 
 ```bash
-./gradlew :cli:shadowJar :cli:distZip
+./gradlew :cli:shadowJar
 java -jar cli/build/libs/bypassfuzzer-cli.jar --help
 
 docker build -t bypassfuzzer .
 docker run --rm -v "$PWD:/work" bypassfuzzer sweep --urls /work/targets.txt --output /work/output
 ```
 
-Release images are published as `ghcr.io/intrudir/bypassfuzzer:<version>` and `:latest`.
+The Docker image is built locally from the same CLI source and is not published by the release workflow.
 
 ## Commands and inputs
 

@@ -4,7 +4,7 @@ Dashboard is BypassFuzzer's master view for every open Sweep, Bypass, IDOR, and 
 
 ## Sub-features
 
-- `dashboard-inventory` lists each open activity with mode, target, state, progress, result count, and actions.
+- `dashboard-inventory` lists each open activity with mode, target, state, progress, its displayed `Sent` metric, and actions.
 - `dashboard-open` returns to the selected activity through its `Open` table action.
 - `dashboard-row-control` pauses/resumes or stops one active activity.
 - `dashboard-global-pause` uses `Pause All` and `Resume All` as a global request-admission overlay without clearing local pauses.

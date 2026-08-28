@@ -9,7 +9,7 @@ URL Validation edits a selected request around one or more `{INJECT}` markers, p
 - `urlval-context` configures Absolute URL, Host header, or CORS contexts plus allowed and attacker-controlled hosts.
 - `urlval-families` selects attack settings and encodings, then uses the shared request-header/User-Agent controls and hard global/per-host concurrency caps.
 - `urlval-preview` uses `View Payloads` or `Copy Payloads` to inspect the exact generated set before execution.
-- `urlval-run` starts, pauses/resumes, stops, clears, and reports marker/payload progress.
+- `urlval-run` starts, pauses/resumes, stops, clears, identifies the active marker, and reports recorded/shown result counts while requests run.
 - `urlval-results` receives bounded UI batches, retains raw request/response evidence in Burp's temp-file-backed messages, inspects and filters rows, and opens the shared `Retry queue (n)` viewer.
 
 ## How to get to it (user POV)

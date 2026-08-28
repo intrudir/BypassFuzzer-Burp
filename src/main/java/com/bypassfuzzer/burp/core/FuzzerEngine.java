@@ -10,6 +10,7 @@ import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.core.throttle.RetryQueue;
 import com.bypassfuzzer.burp.http.MontoyaRequestSender;
 import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
+import com.bypassfuzzer.burp.http.RequestSender;
 import com.bypassfuzzer.burp.http.TargetUrlResolver;
 import com.bypassfuzzer.burp.http.CoreRequestAdapter;
 import com.bypassfuzzer.core.scan.AttackFamily;
@@ -22,6 +23,8 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.Set;
 import java.util.LinkedHashSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Main fuzzer engine that orchestrates all attack strategies.
@@ -37,15 +40,26 @@ public class FuzzerEngine {
     private final TargetUrlResolver targetUrlResolver;
     private final ExecutionPauseController pauseController = new ExecutionPauseController();
     private final GlobalTrafficGovernor globalGovernor;
+    private final RequestSender requestSender;
+    private final AtomicInteger plannedPayloads = new AtomicInteger();
+    private final AtomicLong httpRequestsSent = new AtomicLong();
+    private final AtomicLong resultsRecorded = new AtomicLong();
 
     public FuzzerEngine(MontoyaApi api, FuzzerConfig config) {
         this(api, config, new GlobalTrafficGovernor());
     }
 
     public FuzzerEngine(MontoyaApi api, FuzzerConfig config, GlobalTrafficGovernor globalGovernor) {
+        this(api, config, globalGovernor, null);
+    }
+
+    FuzzerEngine(MontoyaApi api, FuzzerConfig config, GlobalTrafficGovernor globalGovernor,
+                 RequestSender requestSender) {
         this.api = api;
         this.config = config;
         this.globalGovernor = globalGovernor == null ? new GlobalTrafficGovernor() : globalGovernor;
+        this.requestSender = requestSender == null
+            ? new MontoyaRequestSender(api, this.globalGovernor) : requestSender;
         this.targetUrlResolver = new TargetUrlResolver();
     }
 
@@ -81,6 +95,10 @@ public class FuzzerEngine {
         }
 
         pauseController.reset();
+        plannedPayloads.set(0);
+        httpRequestsSent.set(0);
+        resultsRecorded.set(0);
+        retryQueue = new RetryQueue<>();
         running = true;
 
         fuzzerThread = new Thread(() -> {
@@ -139,6 +157,17 @@ public class FuzzerEngine {
         return pauseController.isPaused();
     }
 
+    public FuzzerProgress progress() {
+        RetryQueue<ThrottledRequest> currentQueue = retryQueue;
+        return new FuzzerProgress(
+            plannedPayloads.get(),
+            httpRequestsSent.get(),
+            resultsRecorded.get(),
+            currentQueue == null ? 0 : currentQueue.size(),
+            currentQueue == null ? 0 : currentQueue.rejectedCount()
+        );
+    }
+
     /**
      * Cleanup and stop all fuzzing threads gracefully.
      * Called during extension unload.
@@ -167,7 +196,6 @@ public class FuzzerEngine {
 
         // Per-host adaptive rate control finds each host's ceiling and rides just under it.
         coordinator = new HostThrottleCoordinator(config.throttleSettings(), api);
-        retryQueue = new RetryQueue<>();
 
         safeLog("=== BypassFuzzer Started ===");
         safeLog("Target: " + targetUrl);
@@ -189,14 +217,16 @@ public class FuzzerEngine {
         });
         List<PlannedRequest> plannedRequests = planner.plan(coreRequestAdapter.fromMontoya(request),
             enabledFamilies, config.isEnableFuzzExistingCookies(), Integer.MAX_VALUE);
+        plannedPayloads.set(plannedRequests.size());
         AttackExecutor attackExecutor = new AttackExecutor(
-            new MontoyaRequestSender(api, globalGovernor),
+            requestSender,
             mutated -> headerPolicy.reconcileMutation(request, mutated));
         safeLog("Built " + plannedRequests.size() + " requests from the shared attack planner");
 
-        // Keep many requests in flight so the adaptive controller can drive each host at full speed;
-        // throttled payloads are re-queued and retried so coverage stays complete.
-        int maxInFlight = 50;
+        // Use the configured hard cap while the adaptive controller drives the host. Throttled
+        // payloads are re-queued automatically; every attempt remains visible, and any request that
+        // exhausts automatic retries remains explicit in the shared manual retry workspace.
+        int maxInFlight = Math.max(1, Math.min(config.getConcurrency(), plannedRequests.size()));
         ExecutorService sendPool = Executors.newFixedThreadPool(maxInFlight, runnable -> {
             Thread t = new Thread(runnable, "bypassfuzzer-send");
             t.setDaemon(true);
@@ -205,6 +235,7 @@ public class FuzzerEngine {
         attackExecutor.enableConcurrentSends(sendPool, maxInFlight);
         attackExecutor.enablePauseController(pauseController);
         attackExecutor.enableRetryQueue(retryQueue);
+        attackExecutor.setRequestAttemptListener(httpRequestsSent::incrementAndGet);
 
         for (PlannedRequest planned : plannedRequests) {
             if (!running) break;
@@ -222,16 +253,22 @@ public class FuzzerEngine {
 
         // Retry any requests that were throttled, while the send pool is still alive.
         if (!retryQueue.isEmpty()) {
-            drainRetryQueue(request, resultCallback, attackExecutor);
+            drainRetryQueue(resultCallback, attackExecutor);
         }
 
         sendPool.shutdown();
 
+        long rejected = retryQueue.rejectedCount();
+        if (rejected > 0) {
+            safeLog(String.format(
+                "Automatic retry capacity was reached for %d throttle attempt(s); "
+                    + "their 429/503 evidence remains visible in the shared Retry queue.", rejected));
+        }
+
         safeLog("\n=== BypassFuzzer Completed ===");
     }
 
-    private void drainRetryQueue(HttpRequest originalRequest, Consumer<AttackResult> resultCallback,
-                                 AttackExecutor attackExecutor) {
+    private void drainRetryQueue(Consumer<AttackResult> resultCallback, AttackExecutor attackExecutor) {
         int maxPasses = 3;
         for (int pass = 1; pass <= maxPasses && running && !retryQueue.isEmpty(); pass++) {
             List<ThrottledRequest> retries = retryQueue.drain(Integer.MAX_VALUE);
@@ -240,10 +277,8 @@ public class FuzzerEngine {
             safeLog(String.format("Retrying %d throttled requests (pass %d)...", retries.size(), pass));
             for (ThrottledRequest retry : retries) {
                 if (!running) break;
-                attackExecutor.execute(
-                    retry.attackType(), retry.payload(), retry.targetLabel(),
-                    retry.payloadFamily(), retry.payloadEncoding(),
-                    retry.request(),
+                attackExecutor.executeRetry(
+                    retry,
                     result -> { if (running) handleResult(result, resultCallback); },
                     () -> running,
                     coordinator
@@ -261,6 +296,7 @@ public class FuzzerEngine {
     private void handleResult(AttackResult result, Consumer<AttackResult> resultCallback) {
         try {
             resultCallback.accept(result);
+            resultsRecorded.incrementAndGet();
         } catch (Exception callbackEx) {
             safeLogError("Error sending result to UI callback: " + callbackEx.getMessage());
         }

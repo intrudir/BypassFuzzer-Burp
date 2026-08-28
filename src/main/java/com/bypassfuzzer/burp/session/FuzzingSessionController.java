@@ -4,6 +4,7 @@ import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.FuzzerEngine;
+import com.bypassfuzzer.burp.core.FuzzerProgress;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 
@@ -108,6 +109,8 @@ public class FuzzingSessionController {
     public void pause() { engine.pause(); }
     public void resume() { engine.resume(); }
     public boolean isPaused() { return engine.isPaused(); }
+
+    public FuzzerProgress progress() { return engine.progress(); }
 
     public void dispose() {
         if (!disposed.compareAndSet(false, true)) {

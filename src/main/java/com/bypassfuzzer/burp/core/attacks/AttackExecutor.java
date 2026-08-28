@@ -34,6 +34,7 @@ public class AttackExecutor {
     private volatile int maxInFlight;
     private volatile RetryQueue<ThrottledRequest> retryQueue;
     private volatile ExecutionPauseController pauseController;
+    private volatile Runnable requestAttemptListener = () -> { };
 
     public AttackExecutor(RequestSender requestSender) {
         this(requestSender, UnaryOperator.identity());
@@ -55,10 +56,9 @@ public class AttackExecutor {
     }
 
     /**
-     * Enable automatic re-queuing of throttled responses. When set, a response whose status is a
-     * throttle code is added to the queue and its result callback is suppressed (the payload did not
-     * land), for the caller to drain and retry later. When {@code null}, throttled responses are
-     * delivered as ordinary results.
+     * Enable automatic re-queuing of throttled responses. Every attempt is still delivered to the
+     * result callback as audit evidence; the caller can drain this queue for automatic replay while
+     * the shared UI queue retains any request that never reaches a non-throttle outcome.
      */
     public void enableRetryQueue(RetryQueue<ThrottledRequest> retryQueue) {
         this.retryQueue = retryQueue;
@@ -66,6 +66,11 @@ public class AttackExecutor {
 
     public void enablePauseController(ExecutionPauseController pauseController) {
         this.pauseController = pauseController;
+    }
+
+    /** Called at the network boundary for every initial or retry HTTP attempt. */
+    public void setRequestAttemptListener(Runnable listener) {
+        this.requestAttemptListener = listener == null ? () -> { } : listener;
     }
 
     /** Wait for all in-flight concurrent sends to complete. */
@@ -87,7 +92,7 @@ public class AttackExecutor {
                            BooleanSupplier shouldContinue,
                            HostThrottleCoordinator coordinator) {
         return executeInternal(attackType, payload, null, null, null, request, resultCallback, shouldContinue,
-            coordinator, null);
+            coordinator, null, 0);
     }
 
     public boolean execute(String attackType, String payload, HttpRequest request,
@@ -96,7 +101,7 @@ public class AttackExecutor {
                            HostThrottleCoordinator coordinator,
                            HttpMode httpMode) {
         return executeInternal(attackType, payload, null, null, null, request, resultCallback, shouldContinue,
-            coordinator, httpMode);
+            coordinator, httpMode, 0);
     }
 
     public boolean execute(String attackType, String payload, String targetLabel, String payloadFamily,
@@ -105,7 +110,7 @@ public class AttackExecutor {
                            BooleanSupplier shouldContinue,
                            HostThrottleCoordinator coordinator) {
         return executeInternal(attackType, payload, targetLabel, payloadFamily, payloadEncoding, request,
-            resultCallback, shouldContinue, coordinator, null);
+            resultCallback, shouldContinue, coordinator, null, 0);
     }
 
     public boolean execute(String attackType, String payload, String targetLabel, String payloadFamily,
@@ -115,7 +120,19 @@ public class AttackExecutor {
                            HostThrottleCoordinator coordinator,
                            HttpMode httpMode) {
         return executeInternal(attackType, payload, targetLabel, payloadFamily, payloadEncoding, request,
-            resultCallback, shouldContinue, coordinator, httpMode);
+            resultCallback, shouldContinue, coordinator, httpMode, 0);
+    }
+
+    /** Replays one throttled request while preserving its audit identity and retry attempt number. */
+    public boolean executeRetry(ThrottledRequest retry,
+                                Consumer<AttackResult> resultCallback,
+                                BooleanSupplier shouldContinue,
+                                HostThrottleCoordinator coordinator) {
+        if (retry == null) return false;
+        return executeInternal(
+            retry.attackType(), retry.payload(), retry.targetLabel(), retry.payloadFamily(),
+            retry.payloadEncoding(), retry.request(), resultCallback, shouldContinue, coordinator,
+            null, retry.retryCount() + 1);
     }
 
     private boolean executeInternal(String attackType, String payload, String targetLabel, String payloadFamily,
@@ -123,7 +140,8 @@ public class AttackExecutor {
                             Consumer<AttackResult> resultCallback,
                             BooleanSupplier shouldContinue,
                             HostThrottleCoordinator coordinator,
-                            HttpMode httpMode) {
+                            HttpMode httpMode,
+                            int throttleRetryAttempt) {
         if (!AttackExecutionSupport.canContinue(shouldContinue)) {
             return false;
         }
@@ -143,12 +161,10 @@ public class AttackExecutor {
                         return;
                     }
                     HttpResponse response = sendPaced(coordinator, sentRequest, httpMode, shouldContinue);
-                    if (enqueueIfThrottled(coordinator, response, sentRequest, attackType, payload,
-                            targetLabel, payloadFamily, payloadEncoding)) {
-                        return;
-                    }
-                    resultCallback.accept(buildResult(attackType, payload, targetLabel, payloadFamily,
-                        payloadEncoding, sentRequest, response));
+                    AttackResult result = buildResult(attackType, payload, targetLabel, payloadFamily,
+                        payloadEncoding, sentRequest, response, throttleRetryAttempt);
+                    enqueueIfThrottled(coordinator, result);
+                    resultCallback.accept(result);
                 } finally {
                     inFlightPermits.release();
                 }
@@ -160,12 +176,10 @@ public class AttackExecutor {
             return false;
         }
         HttpResponse response = sendPaced(coordinator, sentRequest, httpMode, shouldContinue);
-        if (enqueueIfThrottled(coordinator, response, sentRequest, attackType, payload, targetLabel,
-                payloadFamily, payloadEncoding)) {
-            return true;
-        }
-        resultCallback.accept(buildResult(attackType, payload, targetLabel, payloadFamily,
-            payloadEncoding, sentRequest, response));
+        AttackResult result = buildResult(attackType, payload, targetLabel, payloadFamily,
+            payloadEncoding, sentRequest, response, throttleRetryAttempt);
+        enqueueIfThrottled(coordinator, result);
+        resultCallback.accept(result);
         return true;
     }
 
@@ -183,8 +197,10 @@ public class AttackExecutor {
         if (!awaitResume(shouldContinue)) {
             return AttackExecutionResult.stopped();
         }
-        Supplier<HttpResponse> sender = () -> requestSender.send(
-            sentRequest, timeout, timeUnit, () -> awaitResume(shouldContinue));
+        Supplier<HttpResponse> sender = () -> {
+            requestAttemptListener.run();
+            return requestSender.send(sentRequest, timeout, timeUnit, () -> awaitResume(shouldContinue));
+        };
         HttpResponse response = coordinator == null
             ? (awaitResume(shouldContinue) ? sender.get() : null)
             : coordinator.send(sentRequest, sender, () -> awaitResume(shouldContinue));
@@ -194,18 +210,23 @@ public class AttackExecutor {
                 : AttackExecutionResult.stopped();
         }
 
-        if (enqueueIfThrottled(coordinator, response, sentRequest, attackType, payload, null, null, null)) {
-            return AttackExecutionResult.executed(response);
-        }
-        resultCallback.accept(new AttackResult(attackType, payload, sentRequest, response));
+        AttackResult result = new AttackResult(attackType, payload, sentRequest, response);
+        enqueueIfThrottled(coordinator, result);
+        resultCallback.accept(result);
         return AttackExecutionResult.executed(response);
     }
 
     private HttpResponse sendPaced(HostThrottleCoordinator coordinator, HttpRequest request, HttpMode httpMode,
                                    BooleanSupplier shouldContinue) {
         Supplier<HttpResponse> networkSend = httpMode == null
-            ? () -> requestSender.send(request, () -> awaitResume(shouldContinue))
-            : () -> requestSender.send(request, httpMode, () -> awaitResume(shouldContinue));
+            ? () -> {
+                requestAttemptListener.run();
+                return requestSender.send(request, () -> awaitResume(shouldContinue));
+            }
+            : () -> {
+                requestAttemptListener.run();
+                return requestSender.send(request, httpMode, () -> awaitResume(shouldContinue));
+            };
         // Recheck at the actual network boundary. A worker may have passed the first pause gate and
         // then waited in the throttle coordinator for pacing, a cooldown, or an in-flight permit.
         return coordinator == null
@@ -220,34 +241,33 @@ public class AttackExecutor {
 
     /**
      * If a retry queue is configured and the response is a throttle code, enqueue the request for
-     * retry and suppress the result callback (the payload did not land).
-     *
-     * @return true when the request was throttled and queued (caller should NOT deliver a result)
+     * automatic replay. The HTTP result is always delivered separately so the table and shared
+     * retry queue retain a complete audit trail even when automatic scheduling is at capacity.
      */
-    private boolean enqueueIfThrottled(HostThrottleCoordinator coordinator, HttpResponse response,
-                                       HttpRequest sentRequest, String attackType, String payload,
-                                       String targetLabel, String payloadFamily, String payloadEncoding) {
-        if (retryQueue == null || coordinator == null || response == null) {
-            return false;
+    private void enqueueIfThrottled(HostThrottleCoordinator coordinator, AttackResult result) {
+        if (retryQueue == null || coordinator == null || result == null || result.getResponse() == null) {
+            return;
         }
-        if (coordinator.isThrottleStatusCode(response.statusCode())) {
-            retryQueue.enqueue(new ThrottledRequest(sentRequest, attackType, payload,
-                targetLabel == null ? "" : targetLabel,
-                payloadFamily == null ? "" : payloadFamily,
-                payloadEncoding == null ? "" : payloadEncoding,
-                0));
-            return true;
+        if (coordinator.isThrottleStatusCode(result.getResponse().statusCode())) {
+            retryQueue.enqueue(new ThrottledRequest(
+                result.getRequest(), result.getAttackType(), result.getPayload(),
+                result.getTargetLabel(), result.getPayloadFamily(), result.getPayloadEncoding(),
+                result.getThrottleRetryAttempt()));
         }
-        return false;
     }
 
     private static AttackResult buildResult(String attackType, String payload, String targetLabel,
                                             String payloadFamily, String payloadEncoding,
-                                            HttpRequest request, HttpResponse response) {
+                                            HttpRequest request, HttpResponse response,
+                                            int throttleRetryAttempt) {
+        AttackResult result;
         if (targetLabel == null && payloadFamily == null && payloadEncoding == null) {
-            return new AttackResult(attackType, payload, request, response);
+            result = new AttackResult(attackType, payload, request, response);
+        } else {
+            result = new AttackResult(attackType, payload, targetLabel, payloadFamily, payloadEncoding,
+                request, response);
         }
-        return new AttackResult(attackType, payload, targetLabel, payloadFamily, payloadEncoding,
-            request, response);
+        return throttleRetryAttempt <= 0
+            ? result : AttackResult.throttleRetryOf(result, response, throttleRetryAttempt);
     }
 }

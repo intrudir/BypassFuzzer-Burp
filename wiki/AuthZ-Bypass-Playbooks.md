@@ -95,6 +95,16 @@ The Bypass tab does one thing in order, once per selected attack family:
 
 Per-family generation happens in `src/main/java/com/bypassfuzzer/burp/core/attacks/*Attack.java`. The path family in particular is built on top of `UrlPayloadProcessor` which expands the embedded `url_payloads.txt` file into thousands of target-preserving variants at run time.
 
+Every HTTP attempt remains visible in the results table, including configured throttle statuses such
+as `429` and `503`. Bypass automatically retries those payloads up to three times, labels each row
+`[throttle retry #N]`, and leaves requests that never reach a non-throttle outcome in the shared
+`Retry queue`. Automatic retry scheduling is bounded; if that capacity is reached, the response is
+still retained and the request remains available for manual retry instead of being silently dropped.
+
+The session status keeps four different quantities separate: selected payloads planned, actual HTTP
+requests sent, results recorded, and requests still deferred. The `#` column identifies result rows;
+it is not the count of requests observed in Burp Logger.
+
 ## Target-Preserving Guarantee
 
 For the path family the tool enforces a target-preserving contract:

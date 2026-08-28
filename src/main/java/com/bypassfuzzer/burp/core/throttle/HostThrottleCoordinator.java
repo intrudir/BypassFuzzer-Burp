@@ -349,7 +349,7 @@ public final class HostThrottleCoordinator {
     private void beginGlobalPause(long now, long durationMillis, String mode) {
         globalPauseUntilMillis = Math.max(globalPauseUntilMillis, now + durationMillis);
         logger.accept("Global " + mode + " throttle pause: " + durationMillis
-            + " ms before Sweep requests resume.");
+            + " ms before scan requests resume.");
         globalPauseLock.notifyAll();
     }
 

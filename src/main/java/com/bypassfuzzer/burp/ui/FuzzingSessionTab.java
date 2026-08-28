@@ -4,6 +4,7 @@ import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
+import com.bypassfuzzer.burp.core.FuzzerProgress;
 import com.bypassfuzzer.burp.core.collaborator.CollaboratorSupport;
 import com.bypassfuzzer.burp.http.RequestPathUtils;
 import com.bypassfuzzer.burp.session.FuzzingSessionController;
@@ -124,9 +125,11 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
                 default -> ActivityState.IDLE;
             };
         }
-        int sent = resultsWorkspace == null ? 0 : resultsWorkspace.allResultsCount();
+        FuzzerProgress progress = sessionController.progress();
+        int sent = (int) Math.min(Integer.MAX_VALUE, progress.httpRequestsSent());
+        long recorded = progress.resultsRecorded();
         return new ActivitySnapshot(activityId(), mode.title(), targetLabel(), activityState,
-            sent + " result" + (sent == 1 ? "" : "s"), sent);
+            recorded + " result" + (recorded == 1 ? "" : "s") + "; " + sent + " HTTP sent", sent);
     }
 
     @Override
@@ -391,13 +394,8 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     }
 
     private void updateResultStatus() {
-        int totalSent = resultsWorkspace.allResultsCount();
-        int showing = resultsWorkspace.shownResultsCount();
-        statusLabel.setText(sessionController.isPaused()
-            ? "Paused (" + totalSent + " requests sent, showing " + showing + ")"
-            : sessionController.isRunning()
-                ? "Fuzzing... (" + totalSent + " requests sent, showing " + showing + ")"
-                : "Completed: " + totalSent + " requests sent, showing " + showing);
+        statusLabel.setText(progressStatus(sessionController.isPaused()
+            ? "Paused" : sessionController.isRunning() ? "Fuzzing" : "Completed"));
         if (!sessionController.isRunning()) {
             startButton.setEnabled(true);
             stopButton.setEnabled(false);
@@ -422,17 +420,14 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
                 return;
             }
 
-            int totalSent = resultsWorkspace.allResultsCount();
-            int showing = resultsWorkspace.shownResultsCount();
-
             switch (state) {
                 case STOPPED -> {
                     resultsWorkspace.setPrimaryRunActive(false);
-                    updateIdleUi("Stopped: " + totalSent + " requests sent, showing " + showing);
+                    updateIdleUi(progressStatus("Stopped"));
                 }
                 case COMPLETED -> {
                     resultsWorkspace.setPrimaryRunActive(false);
-                    updateIdleUi("Completed: " + totalSent + " requests sent, showing " + showing);
+                    updateIdleUi(progressStatus("Completed"));
                 }
                 case DISPOSED -> {
                     resultsWorkspace.setPrimaryRunActive(false);
@@ -444,6 +439,21 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
                 }
             }
         });
+    }
+
+    private String progressStatus(String state) {
+        FuzzerProgress progress = sessionController.progress();
+        int showing = resultsWorkspace == null ? 0 : resultsWorkspace.shownResultsCount();
+        int deferred = resultsWorkspace == null ? 0 : resultsWorkspace.throttledRetryCount();
+        String filtered = showing == progress.resultsRecorded() ? "" : ", showing " + showing;
+        return state + ": " + progress.resultsRecorded() + " result(s) recorded" + filtered
+            + "; " + progress.httpRequestsSent() + " HTTP request(s) sent"
+            + "; " + progress.plannedPayloads() + " payload(s) planned"
+            + "; " + deferred + " deferred retry request(s)"
+            + (progress.automaticRetriesRejected() > 0
+                ? "; " + progress.automaticRetriesRejected()
+                    + " attempt(s) exceeded automatic retry capacity and remain visible"
+                : "");
     }
 
     private void updateIdleUi(String message) {

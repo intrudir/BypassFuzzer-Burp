@@ -601,7 +601,7 @@ If Burp receives no response, Sweep retries safe `GET`/`HEAD` probes over HTTP/1
 
 2) Optionally:
    - Enable Collaborator payloads (Burp Professional only)
-   - Configure concurrency for parallel attack-family execution
+   - Configure hard global/per-host in-flight concurrency caps
    - Configure rate-limit status codes (default: 429, 503); pacing is automatic and adaptive
 
 3) Manual & Smart filter
@@ -615,9 +615,13 @@ If Burp receives no response, Sweep retries safe `GET`/`HEAD` probes over HTTP/1
 **Start Fuzzing**
    - Click the **Start Fuzzing** button
    - Results appear in real-time, filtered with your criteria in real-time
+   - Every HTTP outcome is retained, including `429`/`503` throttle responses. Automatic attempts are
+     labeled `[throttle retry #N]`; requests that remain throttled stay in the shared **Retry queue**
    - Can stop fuzzing at any time with the `Stop` button
    - Adaptive rate control paces each session automatically; use Dashboard hard limits when several
      sessions share the same API quota
+   - Progress reports payloads planned, actual HTTP requests sent, results recorded, and deferred
+     retries separately; a result row number is not treated as a network-send counter
    - Can right click a request to color it for identification/filtering later
 
 **Scan History:**

@@ -48,11 +48,12 @@ public class ThrottleSettingsControl {
         perHostConcurrencyField = defaults.perHostConcurrency() >= 0
             ? new JTextField(String.valueOf(defaults.perHostConcurrency()), 4) : null;
         throttleStatusCodesField = new JTextField(formatStatusCodes(defaults.throttleStatusCodes()), 10);
-        rideHardCheckbox = new JCheckBox("Ride hard (fastest; blocked requests are retried)",
+        rideHardCheckbox = new JCheckBox("Ride hard (fastest; throttled attempts are shown and retried)",
             defaults.posture() != ThrottleSettings.Posture.CONSERVATIVE);
         rideHardCheckbox.setToolTipText(
-            "On: probe close to the rate limit for maximum speed; any blocked (throttled) requests are "
-            + "automatically retried. Off (cautious): hold a wider margin so fewer requests are blocked, "
+            "On: probe close to the rate limit for maximum speed; every throttle response remains "
+            + "visible and is automatically retried when capacity permits. Exhausted retries remain in "
+            + "the shared Retry queue. Off (cautious): hold a wider margin so fewer requests are blocked, "
             + "at some cost to speed.");
         pauseModeComboBox = new JComboBox<>(new String[]{
             "No global pause (adaptive)", "Fixed pause", "Smart Pause"
@@ -188,9 +189,9 @@ public class ThrottleSettingsControl {
                 "No global pause (adaptive) adjusts each host's rate independently and does not pause "
                 + "the entire run; "
                 + "a Retry-After response still pauses that individual host. "
-                + "Fixed pause stops all hosts after any throttle response for the chosen time. "
+                + "Fixed pause stops all run hosts after any throttle response for the chosen time. "
                 + "Smart Pause tolerates isolated throttles, pauses a saturated host after a sustained "
-                + "streak or high rolling throttle ratio, and pauses the whole Sweep only when saturation "
+                + "streak or high rolling throttle ratio, and pauses the whole run only when saturation "
                 + "spans multiple hosts. It uses escalating 10-120 second cooldowns, then requires five "
                 + "successful recovery probes before reopening. Retry-After is always honored.");
             pauseHelp.setEditable(false);

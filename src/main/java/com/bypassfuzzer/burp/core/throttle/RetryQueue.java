@@ -3,6 +3,8 @@ package com.bypassfuzzer.burp.core.throttle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A single bounded FIFO for requests that were throttled and should be retried, replacing the
@@ -18,6 +20,8 @@ public final class RetryQueue<T> {
 
     private final ConcurrentLinkedQueue<T> queue = new ConcurrentLinkedQueue<>();
     private final int maxSize;
+    private final AtomicInteger size = new AtomicInteger();
+    private final AtomicLong rejected = new AtomicLong();
 
     public RetryQueue() {
         this(DEFAULT_MAX_SIZE);
@@ -27,10 +31,25 @@ public final class RetryQueue<T> {
         this.maxSize = Math.max(1, maxSize);
     }
 
-    /** Adds an item unless the queue is already at its bound (in which case it is dropped). */
-    public void enqueue(T item) {
-        if (item != null && queue.size() < maxSize) {
-            queue.add(item);
+    /**
+     * Adds an item when capacity is available. A rejected automatic retry remains observable to the
+     * caller, which can retain the corresponding HTTP result for a manual retry instead of silently
+     * losing coverage.
+     */
+    public boolean enqueue(T item) {
+        if (item == null) {
+            return false;
+        }
+        while (true) {
+            int current = size.get();
+            if (current >= maxSize) {
+                rejected.incrementAndGet();
+                return false;
+            }
+            if (size.compareAndSet(current, current + 1)) {
+                queue.add(item);
+                return true;
+            }
         }
     }
 
@@ -42,16 +61,22 @@ public final class RetryQueue<T> {
             if (item == null) {
                 break;
             }
+            size.decrementAndGet();
             drained.add(item);
         }
         return drained;
     }
 
     public int size() {
-        return queue.size();
+        return size.get();
     }
 
     public boolean isEmpty() {
-        return queue.isEmpty();
+        return size.get() == 0;
+    }
+
+    /** Number of attempts that could not enter automatic retry scheduling. */
+    public long rejectedCount() {
+        return rejected.get();
     }
 }

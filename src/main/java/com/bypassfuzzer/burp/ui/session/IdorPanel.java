@@ -107,9 +107,11 @@ public class IdorPanel extends JPanel {
         } else if (engine.isRunning()) state = engine.isPaused() ? ActivityState.PAUSED : ActivityState.RUNNING;
         else if (stopRequested) state = ActivityState.STOPPED;
         else state = hasStarted ? ActivityState.COMPLETED : ActivityState.IDLE;
-        int sent = resultsWorkspace.allResultsCount();
+        long httpSent = totalHttpRequestsSent();
+        int sent = (int) Math.min(Integer.MAX_VALUE, httpSent);
+        int recorded = resultsWorkspace.allResultsCount();
         return new ActivitySnapshot(id, mode, target, state,
-            sent + " result" + (sent == 1 ? "" : "s"), sent);
+            recorded + " result" + (recorded == 1 ? "" : "s") + "; " + httpSent + " HTTP sent", sent);
     }
 
     public void pauseActivity() {
@@ -547,13 +549,14 @@ public class IdorPanel extends JPanel {
     }
 
     private void updateResultStatus() {
-        int totalSent = resultsWorkspace.allResultsCount();
+        long totalSent = totalHttpRequestsSent();
+        int recorded = resultsWorkspace.allResultsCount();
         int showing = resultsWorkspace.shownResultsCount();
         statusLabel.setText(engine.isPaused()
-            ? "Paused (" + totalSent + " requests sent, showing " + showing + ")"
+            ? "Paused (" + metrics(totalSent, recorded, showing) + ")"
             : engine.isRunning()
-                ? "IDOR analysis... (" + totalSent + " requests sent, showing " + showing + ")"
-                : "Completed: " + totalSent + " requests sent, showing " + showing);
+                ? "IDOR analysis... (" + metrics(totalSent, recorded, showing) + ")"
+                : "Completed: " + metrics(totalSent, recorded, showing));
     }
 
     private void handleCompletion() {
@@ -568,10 +571,21 @@ public class IdorPanel extends JPanel {
                 return;
             }
 
-            int totalSent = resultsWorkspace.allResultsCount();
+            long totalSent = totalHttpRequestsSent();
+            int recorded = resultsWorkspace.allResultsCount();
             int showing = resultsWorkspace.shownResultsCount();
-            updateIdleUi((stopRequested ? "Stopped: " : "Completed: ") + totalSent + " requests sent, showing " + showing);
+            updateIdleUi((stopRequested ? "Stopped: " : "Completed: ")
+                + metrics(totalSent, recorded, showing));
         });
+    }
+
+    private long totalHttpRequestsSent() {
+        return engine.httpRequestsSent() + resultsWorkspace.retryRequestCount();
+    }
+
+    private String metrics(long sent, int recorded, int showing) {
+        return sent + " HTTP request(s) sent; " + recorded + " result(s) recorded"
+            + (showing == recorded ? "" : ", showing " + showing);
     }
 
     private void updateIdleUi(String message) {

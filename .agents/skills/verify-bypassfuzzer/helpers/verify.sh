@@ -205,9 +205,11 @@ drive() {
       run_gradle "$evidence_dir" swing-and-engine.log test \
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorMovesIdentifiersAndRunOptionsBehindConfigureAttack \
+        --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorAndUrlValidationDoNotReportUnsentResultRowsAsHttpRequests \
         --tests com.bypassfuzzer.burp.ui.session.IdorRunOptionsPanelTest \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.aNewPrimaryRunResetsManualRetryRequestTelemetry \
         --tests com.bypassfuzzer.burp.core.idor.IdorEngineTest \
         --tests com.bypassfuzzer.burp.core.idor.IdorPlaybookBehaviorTest
       copy_results "$evidence_dir" test
@@ -216,9 +218,12 @@ drive() {
       run_gradle "$evidence_dir" user-path.log test \
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.targetedSessionContainsOnlyItsSelectedMode \
+        --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorAndUrlValidationDoNotReportUnsentResultRowsAsHttpRequests \
         --tests com.bypassfuzzer.burp.ui.session.UrlValidationOptionsPanelTest \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.aNewPrimaryRunResetsManualRetryRequestTelemetry \
+        --tests com.bypassfuzzer.burp.core.urlvalidation.UrlValidationEngineTest \
         --tests com.bypassfuzzer.burp.core.urlvalidation.UrlValidationCandidateFinderTest \
         --tests com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayloadGeneratorTest
       copy_results "$evidence_dir" test

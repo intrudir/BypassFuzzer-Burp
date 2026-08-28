@@ -17,6 +17,7 @@ import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -33,6 +34,7 @@ public class IdorEngine {
     private Thread runnerThread;
     private volatile HostThrottleCoordinator coordinator;
     private final ExecutionPauseController pauseController = new ExecutionPauseController();
+    private final AtomicLong httpRequestsSent = new AtomicLong();
 
     public IdorEngine(MontoyaApi api) {
         this(api, new IdorRequestContextAnalyzer(), new IdorPlaybookRegistry(), new MontoyaRequestSender(api));
@@ -59,6 +61,7 @@ public class IdorEngine {
         }
 
         pauseController.reset();
+        httpRequestsSent.set(0);
         running = true;
         runnerThread = new Thread(() -> {
             try {
@@ -114,6 +117,8 @@ public class IdorEngine {
     }
     public boolean isPaused() { return pauseController.isPaused(); }
 
+    public long httpRequestsSent() { return httpRequestsSent.get(); }
+
     private void execute(HttpRequest request, IdorOptions options, Consumer<AttackResult> resultCallback) {
         if (request == null || options == null || options.runOptions() == null) {
             return;
@@ -139,6 +144,7 @@ public class IdorEngine {
         AttackExecutor attackExecutor = new AttackExecutor(
             requestSender, mutated -> headerPolicy.reconcileMutation(request, mutated));
         attackExecutor.enablePauseController(pauseController);
+        attackExecutor.setRequestAttemptListener(httpRequestsSent::incrementAndGet);
         Consumer<AttackResult> publishingCallback = result -> {
             if (!running) {
                 return;

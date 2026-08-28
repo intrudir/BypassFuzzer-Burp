@@ -3,14 +3,21 @@ package com.bypassfuzzer.burp.ui;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
+import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.session.FuzzingSessionController;
+import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
+import com.bypassfuzzer.burp.ui.session.IdorPanel;
+import com.bypassfuzzer.burp.ui.session.SessionResultsWorkspace;
+import com.bypassfuzzer.burp.ui.session.UrlValidationPanel;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.JPanel;
 import java.awt.Component;
 import java.awt.Container;
+import java.lang.reflect.Field;
 
 import static com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -58,6 +65,28 @@ class FuzzingSessionTabTest {
         }
     }
 
+    @Test
+    void idorAndUrlValidationDoNotReportUnsentResultRowsAsHttpRequests() throws Exception {
+        for (TargetedMode mode : new TargetedMode[]{TargetedMode.IDOR, TargetedMode.URL_VALIDATION}) {
+            FuzzingSessionTab tab = session(mode);
+            try {
+                Object panel = mode == TargetedMode.IDOR
+                    ? field(tab, "idorPanel", IdorPanel.class)
+                    : field(tab, "urlValidationPanel", UrlValidationPanel.class);
+                SessionResultsWorkspace workspace = field(panel, "resultsWorkspace", SessionResultsWorkspace.class);
+                workspace.addResult(new AttackResult(
+                    mode.title(), "synthetic unsent row", request("/users/alice", "", "GET", null, ""), null));
+
+                ActivitySnapshot snapshot = tab.activitySnapshot();
+                assertEquals(0, snapshot.sentCount(), mode.title());
+                assertTrue(snapshot.progress().contains("1 result"), mode.title());
+                assertTrue(snapshot.progress().contains("0 HTTP sent"), mode.title());
+            } finally {
+                tab.cleanup();
+            }
+        }
+    }
+
     private FuzzingSessionTab session(TargetedMode mode) {
         return new FuzzingSessionTab(
             api(),
@@ -75,6 +104,12 @@ class FuzzingSessionTabTest {
         when(requestEditor.uiComponent()).thenReturn(new JPanel());
         when(responseEditor.uiComponent()).thenReturn(new JPanel());
         return api;
+    }
+
+    private <T> T field(Object target, String name, Class<T> type) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return type.cast(field.get(target));
     }
 
     private String visibleText(Component root) {

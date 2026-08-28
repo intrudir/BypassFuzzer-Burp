@@ -126,10 +126,13 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
             };
         }
         FuzzerProgress progress = sessionController.progress();
-        int sent = (int) Math.min(Integer.MAX_VALUE, progress.httpRequestsSent());
-        long recorded = progress.resultsRecorded();
+        long httpSent = progress.httpRequestsSent()
+            + (resultsWorkspace == null ? 0 : resultsWorkspace.retryRequestCount());
+        int sent = (int) Math.min(Integer.MAX_VALUE, httpSent);
+        long recorded = resultsWorkspace == null
+            ? progress.resultsRecorded() : resultsWorkspace.allResultsCount();
         return new ActivitySnapshot(activityId(), mode.title(), targetLabel(), activityState,
-            recorded + " result" + (recorded == 1 ? "" : "s") + "; " + sent + " HTTP sent", sent);
+            recorded + " result" + (recorded == 1 ? "" : "s") + "; " + httpSent + " HTTP sent", sent);
     }
 
     @Override
@@ -444,10 +447,15 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     private String progressStatus(String state) {
         FuzzerProgress progress = sessionController.progress();
         int showing = resultsWorkspace == null ? 0 : resultsWorkspace.shownResultsCount();
+        int recorded = resultsWorkspace == null
+            ? (int) Math.min(Integer.MAX_VALUE, progress.resultsRecorded())
+            : resultsWorkspace.allResultsCount();
+        long httpSent = progress.httpRequestsSent()
+            + (resultsWorkspace == null ? 0 : resultsWorkspace.retryRequestCount());
         int deferred = resultsWorkspace == null ? 0 : resultsWorkspace.throttledRetryCount();
-        String filtered = showing == progress.resultsRecorded() ? "" : ", showing " + showing;
-        return state + ": " + progress.resultsRecorded() + " result(s) recorded" + filtered
-            + "; " + progress.httpRequestsSent() + " HTTP request(s) sent"
+        String filtered = showing == recorded ? "" : ", showing " + showing;
+        return state + ": " + recorded + " result(s) recorded" + filtered
+            + "; " + httpSent + " HTTP request(s) sent"
             + "; " + progress.plannedPayloads() + " payload(s) planned"
             + "; " + deferred + " deferred retry request(s)"
             + (progress.automaticRetriesRejected() > 0

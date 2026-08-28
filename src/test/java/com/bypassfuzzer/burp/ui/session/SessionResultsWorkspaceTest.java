@@ -62,6 +62,7 @@ class SessionResultsWorkspaceTest {
         SwingUtilities.invokeAndWait(() -> { });
 
         assertEquals(1, sender.sendCount);
+        assertEquals(1, workspace.retryRequestCount());
         assertEquals(0, workspace.throttledRetryCount());
         assertTrue(workspace.retryThrottledButton().getText().contains("(0)"));
     }
@@ -155,6 +156,7 @@ class SessionResultsWorkspaceTest {
         waitForRetry(workspace);
 
         assertEquals(2, sender.sendCount);
+        assertEquals(2, workspace.retryRequestCount());
         assertEquals(0, workspace.throttledRetryCount());
         assertEquals(2, workspace.patternBlockedRetryCount());
         assertEquals(2, workspace.throttledRetrySnapshot().size());
@@ -164,6 +166,22 @@ class SessionResultsWorkspaceTest {
         workspace.retryThrottled(false);
         assertFalse(workspace.isRetryRunning());
         assertEquals(2, sender.sendCount);
+        assertEquals(2, workspace.retryRequestCount());
+    }
+
+    @Test
+    void aNewPrimaryRunResetsManualRetryRequestTelemetry() throws Exception {
+        SequenceSender sender = new SequenceSender(response(200));
+        SessionResultsWorkspace workspace = workspace(sender);
+        workspace.addResult(new AttackResult("Path", "variant",
+            request("/admin", "", "GET", null, ""), response(429)));
+
+        workspace.retryThrottled(false);
+        waitForRetry(workspace);
+        assertEquals(1, workspace.retryRequestCount());
+
+        workspace.setPrimaryRunActive(true);
+        assertEquals(0, workspace.retryRequestCount());
     }
 
     @Test

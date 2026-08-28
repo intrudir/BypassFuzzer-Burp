@@ -45,6 +45,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -61,6 +62,7 @@ public class SessionResultsWorkspace {
     private final JSplitPane splitPane;
     private final Consumer<SessionResultsWorkspace> filterAppliedListener;
     private final RequestSender retrySender;
+    private final AtomicLong retryRequestsSent = new AtomicLong();
     private final JButton retryThrottledButton;
     private final JButton retryQueueButton;
     private final JLabel retryStatusLabel;
@@ -229,8 +231,13 @@ public class SessionResultsWorkspace {
     }
 
     public void setPrimaryRunActive(boolean active) {
+        if (active && !primaryRunActive) retryRequestsSent.set(0);
         primaryRunActive = active;
         updateRetryControls();
+    }
+
+    public long retryRequestCount() {
+        return retryRequestsSent.get();
     }
 
     public int throttledRetryCount() {
@@ -682,6 +689,7 @@ public class SessionResultsWorkspace {
     private HttpResponse sendRetry(HttpRequest request,
                                    java.util.function.BooleanSupplier shouldContinue) {
         HttpMode mode = requestMode(request);
+        retryRequestsSent.incrementAndGet();
         return mode == null
             ? retrySender.send(request, 30, TimeUnit.SECONDS, shouldContinue)
             : retrySender.send(request, mode, 30, TimeUnit.SECONDS, shouldContinue);

@@ -10,7 +10,7 @@ IDOR compares an authorized identifier with a target identifier, establishes con
 - `idor-playbooks` runs registered path, query, body, and hybrid playbooks appropriate to discovered identifier locations.
 - `idor-options` uses the shared request-header and throttle controls, including User-Agent variation, hard global/per-host concurrency caps, posture, and fixed/smart pause behavior.
 - `idor-diagnostics` opens `Playbooks` and `Debug Info`, then copies or saves diagnostics.
-- `idor-results` pauses/resumes, stops, clears, receives bounded UI batches with temp-file-backed raw evidence, filters and inspects results/baselines, and opens the shared `Retry queue (n)` viewer.
+- `idor-results` pauses/resumes, stops, clears, receives bounded UI batches with temp-file-backed raw evidence, reports physical HTTP sends separately from recorded/shown results, filters and inspects results/baselines, and opens the shared `Retry queue (n)` viewer.
 
 ## How to get to it (user POV)
 
@@ -28,10 +28,11 @@ Preconditions:
 - The original request contains identifier 1 in at least one path, query, or JSON-body location.
 - Identifier 1 is authorized and identifier 2 is a deliberately selected target for an authorized test account and scope.
 
-- **Automated control/engine proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" idor`. The harness proves the context-menu child, mode-specific `Configure Attack`/`Debug Info` surface, per-mode headers, baseline ordering, registered playbook execution, and representative mutation behavior.
+- **Automated control/engine proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" idor`. The harness proves the context-menu child, mode-specific `Configure Attack`/`Debug Info` surface, separate HTTP-send/result accounting, per-mode headers, baseline ordering, registered playbook execution, and representative mutation behavior.
 - **Configure.** Choose `Configure Attack`, enter both identifiers, and confirm the note `Identifiers are replaced as exact literals across the request.` Review options before choosing `Start IDOR Analysis`.
 - **Review shared execution settings.** The IDOR dialog exposes the same `Request Headers...` User-Agent randomizer and complete `Throttle...` dialog used by Bypass, Sweep, and URL Validation. Treat the configured global and per-host concurrency values as hard in-flight upper bounds.
 - **Confirm baselines.** In results, identify the original authorized control and identifier-2 unauthorized baseline before interpreting any playbook result. Capture their request/response viewers.
+- **Confirm accounting.** While running or after completion, require `HTTP request(s) sent` to reflect network attempts independently of `result(s) recorded` and any filtered `showing` count. Retry Queue sends must increase the HTTP total.
 - **Inspect a mutation.** Select a result from a playbook applicable to the identifier location. Require the request to show identifier 2 plus the named mutation and compare its status/body/length with both baselines.
 - **Inspect diagnostics.** Choose `Debug Info`; verify it identifies both values and discovered locations. If testing save, choose `Save to File`, then read the saved file back and retain it with evidence.
 - **Proof.** Retain the automated transcript/XML, baseline viewer screenshots, one named mutation's viewers, and any saved debug file/hash.

@@ -216,7 +216,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         String progress = planned > 0 ? completed + " / " + planned + " main requests"
             : resultsWorkspace.allResultsCount() + " results";
         return new ActivitySnapshot(activityId(), "Sweep", "Coverage Sweep", state,
-            progress, engine.sentRequestCount());
+            progress, totalHttpRequestsSent());
     }
 
     @Override
@@ -1365,7 +1365,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             updateIdleUi((stopRequested ? "Stopped" : "Completed")
                 + " (" + payloadSetLabel(activePayloadSet) + "): "
                 + engine.completedMainRequestCount() + " / " + engine.plannedMainRequestCount()
-                + " generated main request(s) completed; " + engine.sentRequestCount()
+                + " generated main request(s) completed; " + totalHttpRequestsSent()
                 + " actual HTTP request(s) sent; " + resultsWorkspace.throttledRetryCount()
                 + " remain in the retry queue"
                 + (engine.quarantinedRetryRequestCount() > 0
@@ -1438,9 +1438,14 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         }
         return paused + "Main sweep (" + payloadSetLabel(activePayloadSet) + "): "
             + engine.completedMainRequestCount() + " / " + engine.plannedMainRequestCount()
-            + " generated request(s) completed; " + engine.sentRequestCount()
+            + " generated request(s) completed; " + totalHttpRequestsSent()
             + " actual HTTP request(s) sent; " + resultsWorkspace.throttledRetryCount()
             + " unique request(s) currently queued.";
+    }
+
+    private int totalHttpRequestsSent() {
+        long sent = (long) engine.sentRequestCount() + resultsWorkspace.retryRequestCount();
+        return (int) Math.min(Integer.MAX_VALUE, sent);
     }
 
     private void setControlsForLoading() {

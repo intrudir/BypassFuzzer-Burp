@@ -112,6 +112,7 @@ class IdorEngineTest {
         assertSame(targetRequest, results.get(1).getRequest());
         assertSame(playbookRequest, variantRequest.get());
         assertSame(playbookRequest, results.get(2).getRequest());
+        assertEquals(3, engine.httpRequestsSent());
     }
 
     private static IdorRunOptions runOptions() {

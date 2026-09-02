@@ -106,6 +106,11 @@ public class CoverageSweepEngine {
     }
 
     public CoverageSweepPreview collectPreview(CoverageSweepOptions options) {
+        return collectPreview(options, true);
+    }
+
+    public CoverageSweepPreview collectPreview(CoverageSweepOptions options,
+                                                boolean dedupeOnEndpoint) {
         CoverageSweepOptions effectiveOptions = options == null ? CoverageSweepOptions.defaults() : options;
         List<ProxyHttpRequestResponse> history = api.proxy().history();
         history = history == null ? List.of() : history;
@@ -120,6 +125,7 @@ public class CoverageSweepEngine {
             .filter(item -> eligible(item, effectiveOptions))
             .toList();
         Map<String, CoverageSweepCandidate> deduped = new LinkedHashMap<>();
+        List<CoverageSweepCandidate> collected = new ArrayList<>();
         Set<String> discoveredHeaders = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> discoveredCookies = new TreeSet<>();
 
@@ -129,6 +135,7 @@ public class CoverageSweepEngine {
                 continue;
             }
 
+            collected.add(candidate);
             CoverageSweepCandidate existing = deduped.get(candidate.dedupeKey());
             if (existing == null || newer(candidate.time(), existing.time())) {
                 deduped.put(candidate.dedupeKey(), candidate);
@@ -138,7 +145,8 @@ public class CoverageSweepEngine {
             }
         }
 
-        List<CoverageSweepCandidate> candidates = new ArrayList<>(deduped.values());
+        List<CoverageSweepCandidate> candidates = dedupeOnEndpoint
+            ? new ArrayList<>(deduped.values()) : collected;
         candidates.sort(Comparator
             .comparing(CoverageSweepCandidate::time, Comparator.nullsLast(Comparator.reverseOrder()))
             .thenComparing(CoverageSweepCandidate::displayUrl, Comparator.nullsLast(String::compareTo)));
@@ -1069,9 +1077,7 @@ public class CoverageSweepEngine {
     private String dedupeKey(HttpRequest request, String displayUrl) {
         return authorityKey(request, displayUrl)
             + "|" + safe(request.method()).toUpperCase(Locale.ROOT)
-            + "|" + normalizedPathShape(request.path())
-            + "|" + sortedQueryNames(request.path())
-            + "|" + safe(request.headerValue("Content-Type")).toLowerCase(Locale.ROOT);
+            + "|" + normalizedPathShape(request.path());
     }
 
     private String authorityKey(HttpRequest request, String displayUrl) {
@@ -1106,22 +1112,6 @@ public class CoverageSweepEngine {
             }
         }
         return "/" + String.join("/", normalized);
-    }
-
-    private String sortedQueryNames(String pathWithQuery) {
-        String query = RequestPathUtils.queryFromPath(pathWithQuery);
-        if (query.isBlank()) {
-            return "";
-        }
-        Set<String> names = new TreeSet<>();
-        for (String part : query.split("&")) {
-            if (part.isBlank()) {
-                continue;
-            }
-            int equals = part.indexOf('=');
-            names.add(equals >= 0 ? part.substring(0, equals) : part);
-        }
-        return String.join(",", names);
     }
 
     private boolean newer(ZonedDateTime left, ZonedDateTime right) {

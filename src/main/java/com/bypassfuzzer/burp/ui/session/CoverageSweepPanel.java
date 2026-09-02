@@ -48,6 +48,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.AbstractTableModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -75,7 +76,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private JButton loadButton;
     private JButton importButton;
-    private JButton clearImportButton;
+    private JButton clearCandidatesButton;
     private JButton startButton;
     private JButton stopButton;
     private JButton pauseButton;
@@ -98,7 +99,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JCheckBox verifyUnauthenticatedAccessCheckBox;
     private JCheckBox browserUserAgentCheckBox;
     private HostPortsControl hostPortsControl;
-    private JCheckBox dedupeImportedEndpointsCheckBox;
+    private JCheckBox dedupeOnEndpointCheckBox;
     private RequestHeadersControl requestHeadersControl;
     private long userAgentRandomizationSeed =
         java.util.concurrent.ThreadLocalRandom.current().nextLong();
@@ -110,6 +111,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JCheckBox status4xxCheckBox;
     private JTextField openApiBaseUrlField;
     private JLabel openApiBaseUrlLabel;
+    private Component pullResponsesSpacer;
     private JLabel statusLabel;
     private JLabel estimateLabel;
     private JLabel completedHostsLabel;
@@ -260,6 +262,9 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             "Import targets"
         });
         modeComboBox.addActionListener(e -> handleModeChange());
+        clearCandidatesButton = new JButton("Clear Candidates");
+        clearCandidatesButton.setToolTipText("Remove all currently loaded Sweep candidates.");
+        clearCandidatesButton.addActionListener(e -> clearCandidates());
 
         status401CheckBox = new JCheckBox("401", true);
         status403CheckBox = new JCheckBox("403", true);
@@ -281,9 +286,9 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             this, this::currentPayloadSet, this::updateEstimate, hostPortsControl);
         throttleControl = new ThrottleSettingsControl(ThrottleDefaults.forCoverageSweep(defaults));
         requestHeadersControl = new RequestHeadersControl(this);
-        dedupeImportedEndpointsCheckBox = new JCheckBox("Dedupe endpoints", false);
-        dedupeImportedEndpointsCheckBox.setToolTipText(
-            "Collapse imported targets with the same method, path shape, query names, and content type.");
+        dedupeOnEndpointCheckBox = new JCheckBox("Dedupe on endpoint", true);
+        dedupeOnEndpointCheckBox.setToolTipText(
+            "Keep one candidate per scheme, host, port, method, and normalized path; ignore query parameters.");
         openApiBaseUrlField = new JTextField("", 20);
         openApiBaseUrlField.setToolTipText("Optional absolute base URL; overrides servers declared by an OpenAPI spec.");
         openApiBaseUrlField.addActionListener(e -> applyOpenApiBaseUrl());
@@ -295,11 +300,15 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
         modeRow.add(new JLabel("Mode:"));
         modeRow.add(modeComboBox);
+        modeRow.add(clearCandidatesButton);
         configurationToggleButton = new JButton("Hide config");
         configurationToggleButton.setToolTipText("Show or hide sweep configuration options to make more room for results.");
         configurationToggleButton.addActionListener(e -> toggleConfigurationPanel());
         modeRow.add(configurationToggleButton);
         pullResponsesLabel = new JLabel("Pull responses:");
+        modeOptionsRow.add(dedupeOnEndpointCheckBox);
+        pullResponsesSpacer = Box.createHorizontalStrut(16);
+        modeOptionsRow.add(pullResponsesSpacer);
         modeOptionsRow.add(pullResponsesLabel);
         modeOptionsRow.add(status401CheckBox);
         modeOptionsRow.add(status403CheckBox);
@@ -342,8 +351,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         loadButton.addActionListener(e -> loadCandidates());
         importButton = new JButton("Import Targets");
         importButton.addActionListener(e -> importTargetsWithChooser());
-        clearImportButton = new JButton("Clear Import");
-        clearImportButton.addActionListener(e -> clearImport());
         startButton = new JButton("Start Sweep");
         startButton.setEnabled(false);
         startButton.addActionListener(e -> startSweep());
@@ -372,7 +379,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         excludeHostsButton.setToolTipText("Choose unique hosts to exclude from the current sweep candidates.");
         excludeHostsButton.addActionListener(e -> openExcludeHostsDialog());
         modeActionsRow.add(loadButton);
-        modeActionsRow.add(clearImportButton);
         modeActionsRow.add(importMenuButton);
         modeActionsRow.add(exportButton);
         modeActionsRow.add(excludeHostsButton);
@@ -776,16 +782,17 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             return;
         }
 
+        boolean dedupeOnEndpoint = dedupeOnEndpointCheckBox.isSelected();
         setControlsForLoading();
         if (!SwingUtilities.isEventDispatchThread()) {
-            loadCandidatesSynchronously(currentOptions);
+            loadCandidatesSynchronously(currentOptions, dedupeOnEndpoint);
             return;
         }
 
         candidateLoadWorker = new SwingWorker<>() {
             @Override
             protected CoverageSweepPreview doInBackground() {
-                return engine.collectPreview(currentOptions);
+                return engine.collectPreview(currentOptions, dedupeOnEndpoint);
             }
 
             @Override
@@ -811,9 +818,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         candidateLoadWorker.execute();
     }
 
-    private void loadCandidatesSynchronously(CoverageSweepOptions options) {
+    private void loadCandidatesSynchronously(CoverageSweepOptions options,
+                                             boolean dedupeOnEndpoint) {
         try {
-            applyLoadedCandidates(engine.collectPreview(options), options);
+            applyLoadedCandidates(engine.collectPreview(options, dedupeOnEndpoint), options);
         } catch (Exception e) {
             handleCandidateLoadFailure(e);
         } finally {
@@ -839,7 +847,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         updatePreviewButton();
         statusLabel.setText("Found " + preview.blockedHistoryCount()
             + " matching history items; " + preview.dedupedEndpointCount()
-            + " deduped endpoints; showing " + preview.candidates().size() + ".");
+            + " unique endpoints; dedupe " + (dedupeOnEndpointCheckBox.isSelected() ? "on" : "off")
+            + "; showing " + preview.candidates().size() + ".");
         if (options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC) {
             updateAuthenticatedStatus(preview);
         }
@@ -889,7 +898,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         }
         JPanel choicesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         choicesPanel.add(new JLabel("OpenAPI source:"));
-        choicesPanel.add(dedupeImportedEndpointsCheckBox);
         Object[] choices = {"Local file", "URL", "Cancel"};
         int sourceChoice = JOptionPane.showOptionDialog(this, choicesPanel, "Import OpenAPI Specification",
             JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, choices, choices[0]);
@@ -934,7 +942,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         JPanel importChoices = new JPanel();
         importChoices.setLayout(new BoxLayout(importChoices, BoxLayout.Y_AXIS));
         importChoices.add(new JLabel("How would you like to import sweep targets?"));
-        importChoices.add(dedupeImportedEndpointsCheckBox);
         Object[] choices = {"Select a file", "Import via URL", "Cancel"};
         int sourceChoice = JOptionPane.showOptionDialog(
             this,
@@ -1005,7 +1012,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         statusLabel.setText("Downloading OpenAPI document from " + target.host() + "...");
         CoverageSweepOptions options = currentOptions();
         String baseUrl = openApiBaseUrlField.getText().trim();
-        boolean dedupeEndpoints = dedupeImportedEndpointsCheckBox.isSelected();
+        boolean dedupeEndpoints = dedupeOnEndpointCheckBox.isSelected();
         SwingWorker<RemoteOpenApiImport, Void> worker = new SwingWorker<>() {
             @Override
             protected RemoteOpenApiImport doInBackground() throws Exception {
@@ -1061,7 +1068,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 if (retryUrls.isEmpty()) {
                     throw new IllegalArgumentException("Retry package contains no request URLs");
                 }
-                boolean dedupeEndpoints = dedupeImportedEndpointsCheckBox.isSelected();
+                boolean dedupeEndpoints = dedupeOnEndpointCheckBox.isSelected();
                 CoverageSweepPreview preview = engine.collectPreviewFromUrls(
                     retryUrls, currentOptions(), dedupeEndpoints);
                 importedOpenApiDocument = null;
@@ -1076,18 +1083,18 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             String fileName = path.getFileName().toString();
             CoverageSweepPreview preview = postman
                 ? engine.collectPreviewFromPostman(source, openApiBaseUrlField.getText().trim(),
-                    currentOptions(), dedupeImportedEndpointsCheckBox.isSelected())
+                    currentOptions(), dedupeOnEndpointCheckBox.isSelected())
                 : openApi
                 ? engine.collectPreviewFromOpenApi(source, fileName,
                     openApiBaseUrlField.getText().trim(), "", currentOptions(),
-                    dedupeImportedEndpointsCheckBox.isSelected())
+                    dedupeOnEndpointCheckBox.isSelected())
                 : engine.collectPreviewFromUrls(Files.readAllLines(path), currentOptions(),
-                    dedupeImportedEndpointsCheckBox.isSelected());
+                    dedupeOnEndpointCheckBox.isSelected());
             importedOpenApiDocument = openApi || postman
                 ? new ImportedOpenApiDocument(source, fileName, "", postman)
                 : null;
             applyImportedPreview(preview, postman ? "Postman request" : openApi ? "OpenAPI operation" : "valid target URL",
-                dedupeImportedEndpointsCheckBox.isSelected());
+                dedupeOnEndpointCheckBox.isSelected());
             return true;
         } catch (Exception e) {
             handleImportFailure(e);
@@ -1115,21 +1122,21 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         try {
             CoverageSweepPreview preview = document.postman()
                 ? engine.collectPreviewFromPostman(document.source(), baseUrl, currentOptions(),
-                    dedupeImportedEndpointsCheckBox.isSelected())
+                    dedupeOnEndpointCheckBox.isSelected())
                 : document.sourceUrl().isBlank()
                 ? engine.collectPreviewFromOpenApi(
                     document.source(), document.fileName(), baseUrl, "", currentOptions(),
-                    dedupeImportedEndpointsCheckBox.isSelected())
+                    dedupeOnEndpointCheckBox.isSelected())
                 : engine.collectPreviewFromOpenApi(
                     document.source(), document.fileName(), baseUrl, document.sourceUrl(), currentOptions(),
-                    dedupeImportedEndpointsCheckBox.isSelected());
+                    dedupeOnEndpointCheckBox.isSelected());
             applyImportedPreview(preview, document.postman() ? "Postman request" : "OpenAPI operation",
-                dedupeImportedEndpointsCheckBox.isSelected());
+                dedupeOnEndpointCheckBox.isSelected());
             statusLabel.setText((baseUrl.isEmpty()
                 ? (document.postman() ? "Restored Postman request URLs; " : "Restored OpenAPI server URLs; ")
                 : (document.postman() ? "Applied Postman base URL " : "Applied OpenAPI base URL ")
                     + baseUrl + "; ")
-                + importedPreviewCounts(preview, dedupeImportedEndpointsCheckBox.isSelected()));
+                + importedPreviewCounts(preview, dedupeOnEndpointCheckBox.isSelected()));
         } catch (Exception e) {
             String message = e.getMessage() == null ? "unknown error" : e.getMessage();
             statusLabel.setText("Unable to apply OpenAPI base URL: " + message);
@@ -1451,7 +1458,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private void setControlsForLoading() {
         loadButton.setEnabled(false);
         importButton.setEnabled(false);
-        clearImportButton.setEnabled(false);
+        clearCandidatesButton.setEnabled(false);
         setStatusControlsEnabled(false);
         setCandidateActionButtonsEnabled(false);
         candidateTableModel.setSelectionEditingEnabled(false);
@@ -1468,8 +1475,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         stopButton.setText("Stop");
         loadButton.setEnabled(true);
         importButton.setEnabled(true);
-        clearImportButton.setEnabled(currentMode() == CoverageSweepMode.IMPORTED_TARGETS
-            && candidateTableModel.getRowCount() > 0);
+        clearCandidatesButton.setEnabled(candidateTableModel.getRowCount() > 0);
         setStatusControlsEnabled(true);
         startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
         stopButton.setEnabled(false);
@@ -1605,6 +1611,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         status403CheckBox.setEnabled(enabled);
         status3xxCheckBox.setEnabled(enabled);
         status4xxCheckBox.setEnabled(enabled);
+        dedupeOnEndpointCheckBox.setEnabled(enabled);
         throttleControl.setEnabled(enabled);
         payloadSetComboBox.setEnabled(enabled);
         payloadFamilyControl.setEnabled(enabled);
@@ -1669,6 +1676,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             resultsWorkspace.setAuthVerificationTabsVisible(authenticated);
         }
         pullResponsesLabel.setVisible(blocked);
+        pullResponsesSpacer.setVisible(blocked);
         status401CheckBox.setVisible(blocked);
         status403CheckBox.setVisible(blocked);
         status3xxCheckBox.setVisible(blocked);
@@ -1683,8 +1691,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         importButton.setEnabled(idle && imported);
         importMenuButton.setVisible(imported);
         importMenuButton.setEnabled(idle && imported);
-        clearImportButton.setVisible(imported);
-        clearImportButton.setEnabled(idle && imported && candidateTableModel.getRowCount() > 0);
+        clearCandidatesButton.setVisible(true);
+        clearCandidatesButton.setEnabled(idle && candidateTableModel.getRowCount() > 0);
         includeUnsafeMethodsCheckBox.setVisible(authenticated || imported);
         includeUnsafeMethodsCheckBox.setEnabled(idle && (authenticated || imported));
         excludeStaticAssetsCheckBox.setVisible(authenticated);
@@ -1704,20 +1712,29 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         repaint();
     }
 
-    private void clearImport() {
-        if (currentMode() != CoverageSweepMode.IMPORTED_TARGETS || engine.isRunning()) {
+    private void clearCandidates() {
+        if (engine.isRunning()) {
             return;
         }
+        CoverageSweepMode mode = currentMode();
         setCandidateRows(List.of());
         cachedHistoryCandidates = List.of();
         cachedHistoryPreview = null;
+        discoveredAuthHeaders = Set.of();
+        discoveredCookieNames = Set.of();
         importedOpenApiDocument = null;
         openApiBaseUrlField.setText("");
-        dedupeImportedEndpointsCheckBox.setSelected(false);
         startButton.setEnabled(false);
         setCandidateActionButtonsEnabled(false);
-        clearImportButton.setEnabled(false);
-        statusLabel.setText("Imported targets cleared. Import a file or OpenAPI URL to start fresh.");
+        clearCandidatesButton.setEnabled(false);
+        statusLabel.setText(switch (mode) {
+            case BLOCKED_RESPONSES ->
+                "Blocked-response candidates cleared. Load Proxy history to start fresh.";
+            case AUTHENTICATED_TRAFFIC ->
+                "Authenticated-traffic candidates cleared. Load authenticated history to start fresh.";
+            case IMPORTED_TARGETS ->
+                "Imported targets cleared. Import a file or OpenAPI URL to start fresh.";
+        });
         updateEstimate();
         updateModeControls();
     }
@@ -1784,6 +1801,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             + preview.successfulResponseCount() + " had 2xx responses; "
             + preview.inScopeSuccessfulResponseCount() + " were in scope; "
             + preview.blockedHistoryCount() + " remained after static filtering; "
+            + "dedupe " + (dedupeOnEndpointCheckBox.isSelected() ? "on" : "off") + "; "
             + candidateTableModel.getRowCount() + " match the selected auth identifiers.");
     }
 

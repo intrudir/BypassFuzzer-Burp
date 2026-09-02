@@ -675,8 +675,8 @@ class CoverageSweepEngineTest {
     @Test
     void dedupesEndpointShapesPreferringMostRecentAndCapsPreview() {
         List<ProxyHttpRequestResponse> history = new ArrayList<>();
-        history.add(history("/users/1?id=1&debug=true", 403, true, 1));
-        history.add(history("/users/2?debug=false&id=2", 401, true, 300));
+        history.add(history("/users/1?_=first", 403, true, 1));
+        history.add(history("/users/2?cacheBust=second", 401, true, 300));
         history.add(history("/reports/1", 403, true, 2));
 
         for (int i = 0; i < 130; i++) {
@@ -688,16 +688,34 @@ class CoverageSweepEngineTest {
 
         assertEquals(132, preview.dedupedEndpointCount());
         assertEquals(100, preview.candidates().size());
-        assertTrue(preview.candidates().stream().noneMatch(candidate -> candidate.path().equals("/users/1?id=1&debug=true")));
-        assertTrue(preview.candidates().stream().anyMatch(candidate -> candidate.path().equals("/users/2?debug=false&id=2")));
+        assertTrue(preview.candidates().stream().noneMatch(candidate -> candidate.path().equals("/users/1?_=first")));
+        assertTrue(preview.candidates().stream().anyMatch(candidate -> candidate.path().equals("/users/2?cacheBust=second")));
+    }
+
+    @Test
+    void historyCanKeepRepeatedEndpointsWhenDedupeIsOff() {
+        List<ProxyHttpRequestResponse> history = List.of(
+            history("/reports?_=first", 403, true, 1),
+            history("/reports?cacheBust=second", 403, true, 2)
+        );
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(history),
+            new StaticSender(response(403, "text/plain", "blocked")),
+            new CoverageSweepProbeGenerator());
+
+        CoverageSweepPreview deduped = engine.collectPreview(CoverageSweepOptions.defaults(), true);
+        CoverageSweepPreview retained = engine.collectPreview(CoverageSweepOptions.defaults(), false);
+
+        assertEquals(1, deduped.candidates().size());
+        assertEquals("/reports?cacheBust=second", deduped.candidates().get(0).path());
+        assertEquals(2, retained.candidates().size());
     }
 
     @Test
     void importsTargetUrlsFromLinesAndDedupesEndpointShapes() {
         CoverageSweepPreview preview = importedEngine()
             .collectPreviewFromUrls(List.of(
-                "https://victim.example/admin/users/1?debug=true&id=1",
-                "https://victim.example/admin/users/2?id=2&debug=false",
+                "https://victim.example/admin/users/1?_=first",
+                "https://victim.example/admin/users/2?cacheBust=second",
                 "https://victim.example/admin/info",
                 "# comment",
                 "not-a-url"

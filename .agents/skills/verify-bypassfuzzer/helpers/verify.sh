@@ -165,8 +165,11 @@ drive() {
     sweep)
       run_gradle "$evidence_dir" swing-and-engine.log test \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.modeSelectorShowsOnlyTheRelevantSourceControls \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.blockedResponsesCanClearLoadedCandidatesWithoutChangingMode \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.authenticatedModePassivelyFiltersBySelectedIdentifiersAndSafeMethods \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.previewTableUpdatesAfterLoadingProxyHistory \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importsTargetUrlsFromTextFileIntoPreviewTable \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importedTargetsCanClearCandidatesAndBaseUrlForFreshStart \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.probePreviewRendersExactGeneratedRequests \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.payloadSetDefaultsToHighSignalAndCanSelectAllPayloads \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.requestHeadersMenuOffersSyntheticAndBrowserLikeUserAgentRandomization \
@@ -181,6 +184,8 @@ drive() {
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.configuredConcurrencyIsAnActualUpperBound \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.plansOnlyCandidatesThatHaveAnAvailableWorker \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.highSignalPromotesFullCatalogBackslashMutationsAtEverySegment \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.dedupesEndpointShapesPreferringMostRecentAndCapsPreview \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.historyCanKeepRepeatedEndpointsWhenDedupeIsOff \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.executionLabelsLikelyBypassResults
       copy_results "$evidence_dir" test
       ;;

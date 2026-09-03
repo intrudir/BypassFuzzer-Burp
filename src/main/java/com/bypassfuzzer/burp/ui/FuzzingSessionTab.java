@@ -215,8 +215,10 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
 
     private JPanel buildBypassTab() {
         JPanel bypassPanel = new JPanel(new BorderLayout());
+        JSplitPane centerPanel = buildCenterPanel();
+        resultsWorkspace.setInlineRetryControlsVisible(false);
         bypassPanel.add(buildTopPanel(), BorderLayout.NORTH);
-        bypassPanel.add(buildCenterPanel(), BorderLayout.CENTER);
+        bypassPanel.add(centerPanel, BorderLayout.CENTER);
         return bypassPanel;
     }
 
@@ -242,6 +244,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         controlPanel.add(pauseButton);
         controlPanel.add(clearButton);
         controlPanel.add(optionsButton);
+        controlPanel.add(resultsWorkspace.retryQueueButton());
 
         statusLabel = new JLabel("Ready. Target: " + request.method() + " " + request.url());
         warningLabel = new JLabel("");

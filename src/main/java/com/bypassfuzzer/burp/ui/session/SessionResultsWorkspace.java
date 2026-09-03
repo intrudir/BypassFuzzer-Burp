@@ -147,6 +147,19 @@ public class SessionResultsWorkspace {
         resultsPanel.setAuthVerificationTabsVisible(visible);
     }
 
+    /**
+     * Shows or hides the workspace-owned retry row when a mode places the shared queue button in
+     * its primary action bar instead.
+     */
+    public void setInlineRetryControlsVisible(boolean visible) {
+        if (retryRow != null) retryRow.setVisible(visible);
+    }
+
+    /** Returns the single shared retry-queue control for placement by the owning mode. */
+    public JButton retryQueueButton() {
+        return retryQueueButton;
+    }
+
     JButton retryThrottledButton() {
         return retryThrottledButton;
     }

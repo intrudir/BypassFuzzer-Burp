@@ -11,6 +11,7 @@ import com.bypassfuzzer.burp.ui.session.SessionResultsWorkspace;
 import com.bypassfuzzer.burp.ui.session.UrlValidationPanel;
 import org.junit.jupiter.api.Test;
 
+import javax.swing.JButton;
 import javax.swing.JPanel;
 import java.awt.Component;
 import java.awt.Container;
@@ -19,6 +20,7 @@ import java.lang.reflect.Field;
 import static com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -46,6 +48,20 @@ class FuzzingSessionTabTest {
         assertTrue(uiText.contains("Check All"));
         assertFalse(uiText.contains("Throttle..."));
         assertFalse(uiText.contains("Requests/second"));
+    }
+
+    @Test
+    void bypassExposesTheSharedRetryQueueInItsActionBar() throws Exception {
+        FuzzingSessionTab tab = session(TargetedMode.BYPASS);
+        SessionResultsWorkspace workspace = field(
+            tab, "resultsWorkspace", SessionResultsWorkspace.class);
+        JButton start = field(tab, "startButton", JButton.class);
+        JButton retryQueue = field(workspace, "retryQueueButton", JButton.class);
+        JPanel retryRow = field(workspace, "retryRow", JPanel.class);
+
+        assertEquals("Retry queue (0)", retryQueue.getText());
+        assertSame(start.getParent(), retryQueue.getParent());
+        assertFalse(retryRow.isVisible());
     }
 
     @Test

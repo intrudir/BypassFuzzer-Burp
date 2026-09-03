@@ -15,7 +15,7 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 
 - In Burp Proxy, Sitemap, or Repeater, select a request and choose `Send to BypassFuzzer` -> `Bypass`.
 - Choose top-level `Bypass`, then the nested tab titled `<METHOD> <path>`.
-- Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Start Fuzzing`, `Pause`, `Stop`, or `Clear Results`.
+- Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Start Fuzzing`, `Pause`, `Stop`, `Clear Results`, or the shared `Retry queue (n)` button in the primary action bar.
 - Use `Hide Filters`/`Show Filters`, `Enable (auto-detect patterns)`, `Enable Manual Filter`, and `Apply Manual Filters` beside the results table.
 - Select a result to inspect its `Request` and `Response`; use the table context menu for highlights or `Copy selected rows (TSV)`.
 

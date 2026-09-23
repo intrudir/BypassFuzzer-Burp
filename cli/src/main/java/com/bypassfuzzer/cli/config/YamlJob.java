@@ -23,7 +23,7 @@ public final class YamlJob {
         "evidence", Set.of("output", "redact"),
         "sweep", Set.of("payloadSet", "families"),
         "bypass", Set.of("families", "fuzzExistingCookies"),
-        "idor", Set.of("authorizedId", "targetId"),
+        "idor", Set.of("authorizedId", "targetId", "location", "families", "includeMethodChanges", "uniqueJsonField", "baselineResponse"),
         "urlValidation", Set.of("marker", "allowedHost", "attackerHost", "scheme", "contexts", "attacks", "encodings")
     );
     private final Path file;

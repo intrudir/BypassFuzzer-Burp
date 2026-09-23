@@ -2,14 +2,25 @@ package com.bypassfuzzer.burp.ui.session;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
+import burp.api.montoya.ui.editor.EditorOptions;
+import burp.api.montoya.ui.editor.HttpRequestEditor;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
-import com.bypassfuzzer.burp.core.idor.IdorDebugInfoBuilder;
 import com.bypassfuzzer.burp.core.idor.IdorEngine;
 import com.bypassfuzzer.burp.core.idor.IdorOptions;
-import com.bypassfuzzer.burp.core.idor.IdorRequestMutator;
 import com.bypassfuzzer.burp.core.idor.IdorRunOptions;
-import com.bypassfuzzer.burp.core.idor.playbooks.IdorPlaybook;
-import com.bypassfuzzer.burp.core.idor.playbooks.IdorPlaybookRegistry;
+import com.bypassfuzzer.burp.http.CoreRequestAdapter;
+import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
+import com.bypassfuzzer.core.scan.IdentifierLocation;
+import com.bypassfuzzer.core.scan.IdentifierLocationSpan;
+import com.bypassfuzzer.core.scan.IdorPlanOptions;
+import com.bypassfuzzer.core.scan.IdorPlanner;
+import com.bypassfuzzer.core.scan.PairedControlSeparatorPlanner;
+import com.bypassfuzzer.core.scan.PlannedRequest;
+import com.bypassfuzzer.core.scan.ResponseGuidedIdorPlanner;
+import com.bypassfuzzer.core.http.HttpHeader;
+import com.bypassfuzzer.core.http.HttpRequestData;
+import com.bypassfuzzer.core.http.HttpResponseData;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
@@ -25,8 +36,12 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.JTextArea;
+import javax.swing.JComboBox;
+import javax.swing.JCheckBox;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -36,9 +51,7 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Dedicated session tab for IDOR/BOLA analysis.
@@ -51,10 +64,8 @@ public class IdorPanel extends JPanel {
 
     private final MontoyaApi api;
     private final HttpRequest originalRequest;
+    private final HttpResponse capturedResponse;
     private final IdorEngine engine;
-    private final IdorPlaybookRegistry playbookRegistry = new IdorPlaybookRegistry();
-    private final IdorRequestMutator requestMutator = new IdorRequestMutator();
-    private final IdorDebugInfoBuilder debugInfoBuilder = new IdorDebugInfoBuilder();
     private final GlobalTrafficGovernor globalGovernor;
 
     private JButton startButton;
@@ -65,23 +76,39 @@ public class IdorPanel extends JPanel {
     private JLabel warningLabel;
     private JTextField authorizedIdentifierField;
     private JTextField targetIdentifierField;
+    private JComboBox<String> locationField;
+    private JLabel mutationCoverageNote;
+    private JTextField uniqueJsonPointerField;
+    private final String uniqueToken = java.util.UUID.randomUUID().toString().substring(0, 8);
+    private JCheckBox includeMethodChanges;
+    private java.util.Set<String> selectedFamilies =
+        new java.util.LinkedHashSet<>(new IdorPlanner().defaultFamilies());
+    private JLabel responseFieldsLabel;
     private IdorRunOptionsPanel runOptionsPanel;
     private SessionResultsWorkspace resultsWorkspace;
     private JDialog configDialog;
     private JLabel configWarningLabel;
+    private HttpRequestEditor configRequestEditor;
+    private List<IdentifierLocation> discoveredLocations = List.of();
 
     private volatile boolean shuttingDown = false;
     private volatile boolean stopRequested = false;
     private volatile boolean hasStarted = false;
 
     public IdorPanel(MontoyaApi api, HttpRequest request) {
-        this(api, request, new GlobalTrafficGovernor());
+        this(api, request, null, new GlobalTrafficGovernor());
     }
 
     public IdorPanel(MontoyaApi api, HttpRequest request, GlobalTrafficGovernor globalGovernor) {
+        this(api, request, null, globalGovernor);
+    }
+
+    public IdorPanel(MontoyaApi api, HttpRequest request, HttpResponse capturedResponse,
+                     GlobalTrafficGovernor globalGovernor) {
         super(new BorderLayout());
         this.api = api;
         this.originalRequest = request;
+        this.capturedResponse = capturedResponse;
         this.globalGovernor = globalGovernor == null ? new GlobalTrafficGovernor() : globalGovernor;
         this.engine = new IdorEngine(api, this.globalGovernor);
         initializeUi();
@@ -138,6 +165,13 @@ public class IdorPanel extends JPanel {
     private void initializeUi() {
         authorizedIdentifierField = new JTextField(18);
         targetIdentifierField = new JTextField(18);
+        locationField = new JComboBox<>();
+        mutationCoverageNote = new JLabel("All applicable mutations from selected playbooks are planned; preview the request count before running."
+            + ("GET".equalsIgnoreCase(originalRequest.method())
+                || "HEAD".equalsIgnoreCase(originalRequest.method())
+                ? "" : " This request may change data."));
+        uniqueJsonPointerField = new JTextField(18);
+        includeMethodChanges = new JCheckBox("Include method changes and overrides");
         runOptionsPanel = new IdorRunOptionsPanel(DEFAULT_RUN_OPTIONS);
         add(buildTopPanel(), BorderLayout.NORTH);
         add(buildCenterPanel(), BorderLayout.CENTER);
@@ -197,35 +231,87 @@ public class IdorPanel extends JPanel {
             configDialog.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
             configDialog.setContentPane(buildConfigDialogContent());
             configDialog.pack();
-            configDialog.setMinimumSize(new Dimension(720, 360));
+            configDialog.setMinimumSize(new Dimension(950, 700));
         }
         configDialog.setLocationRelativeTo(api.userInterface().swingUtils().suiteFrame());
         configDialog.setVisible(true);
     }
 
     private JPanel buildConfigDialogContent() {
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        JPanel content = new JPanel(new BorderLayout(0, 6));
         content.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        JPanel controls = new JPanel();
+        controls.setLayout(new BoxLayout(controls, BoxLayout.Y_AXIS));
 
         JPanel identifierRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
         identifierRow.add(new JLabel("Identifier 1 (authorized):"));
         identifierRow.add(authorizedIdentifierField);
         identifierRow.add(new JLabel("Identifier 2 (target):"));
         identifierRow.add(targetIdentifierField);
-        content.add(identifierRow);
+        controls.add(identifierRow);
 
-        JPanel replacementNote = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
-        replacementNote.add(new JLabel("Identifiers are replaced as exact literals across the request."));
-        content.add(replacementNote);
-        content.add(runOptionsPanel);
+        JPanel locationRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        locationRow.add(new JLabel("Identifier location:"));
+        locationField.setPrototypeDisplayValue("json:/long/nested/identifier/path");
+        locationField.addActionListener(e -> updateRequestHighlights());
+        locationRow.add(locationField);
+        JButton findLocations = new JButton("Find Locations");
+        findLocations.addActionListener(e -> refreshLocations());
+        locationRow.add(findLocations);
+        controls.add(locationRow);
+
+        JPanel limitRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        limitRow.add(includeMethodChanges);
+        JButton families = new JButton("Select Playbooks...");
+        families.addActionListener(e -> chooseFamilies());
+        limitRow.add(families);
+        JButton preview = new JButton("Preview Requests");
+        preview.addActionListener(e -> previewRequests());
+        limitRow.add(preview);
+        controls.add(limitRow);
+        JPanel coverageNoteRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        coverageNoteRow.add(mutationCoverageNote);
+        controls.add(coverageNoteRow);
+        JPanel uniqueRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        uniqueRow.add(new JLabel("Unique JSON string field (optional):"));
+        uniqueJsonPointerField.setToolTipText("JSON pointer such as /name; adds a distinct run value to each request.");
+        uniqueRow.add(uniqueJsonPointerField);
+        controls.add(uniqueRow);
+        JPanel responseRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        responseFieldsLabel = new JLabel("Response fields: enter identifiers to inspect captured JSON.");
+        responseRow.add(responseFieldsLabel);
+        JButton inspectFields = new JButton("Inspect Response Fields");
+        inspectFields.addActionListener(e -> showResponseFields());
+        responseRow.add(inspectFields);
+        controls.add(responseRow);
+        controls.add(runOptionsPanel);
 
         configWarningLabel = new JLabel("");
         configWarningLabel.setForeground(new Color(204, 102, 0));
         configWarningLabel.setVisible(false);
         JPanel warningRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
         warningRow.add(configWarningLabel);
-        content.add(warningRow);
+        controls.add(warningRow);
+        content.add(controls, BorderLayout.NORTH);
+
+        configRequestEditor = api.userInterface().createHttpRequestEditor(EditorOptions.READ_ONLY);
+        configRequestEditor.setRequest(originalRequest);
+        JPanel editorPanel = new JPanel(new BorderLayout());
+        editorPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Original request"));
+        editorPanel.add(configRequestEditor.uiComponent(), BorderLayout.CENTER);
+        editorPanel.setPreferredSize(new Dimension(950, 390));
+        content.add(editorPanel, BorderLayout.CENTER);
+        authorizedIdentifierField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent event) { identifierChanged(); }
+            @Override public void removeUpdate(DocumentEvent event) { identifierChanged(); }
+            @Override public void changedUpdate(DocumentEvent event) { identifierChanged(); }
+        });
+        targetIdentifierField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent event) { updateResponseFieldsLabel(); }
+            @Override public void removeUpdate(DocumentEvent event) { updateResponseFieldsLabel(); }
+            @Override public void changedUpdate(DocumentEvent event) { updateResponseFieldsLabel(); }
+        });
+        updateResponseFieldsLabel();
 
         startButton = new JButton("Start IDOR Analysis");
         startButton.addActionListener(e -> startAnalysis());
@@ -234,7 +320,7 @@ public class IdorPanel extends JPanel {
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttons.add(startButton);
         buttons.add(closeButton);
-        content.add(buttons);
+        content.add(buttons, BorderLayout.SOUTH);
         return content;
     }
 
@@ -264,16 +350,15 @@ public class IdorPanel extends JPanel {
     }
 
     private void showDebugInfoDialog() {
+        IdorOptions options = collectOptions();
+        if (options == null) return;
         try {
-            String authorizedIdentifier = authorizedIdentifierField.getText() == null ? "" : authorizedIdentifierField.getText().trim();
-            String targetIdentifier = targetIdentifierField.getText() == null ? "" : targetIdentifierField.getText().trim();
-            IdorOptions options = new IdorOptions(authorizedIdentifier, targetIdentifier, runOptionsPanel.collect());
-            String debugInfo = debugInfoBuilder.build(originalRequest, options);
-            openDebugInfoDialog(debugInfo, authorizedIdentifier, targetIdentifier);
+            String debugInfo = formatPlan(options);
+            openDebugInfoDialog(debugInfo, options.normalizedAuthorizedIdentifier(),
+                options.normalizedTargetIdentifier());
             hideWarning();
-        } catch (Exception e) {
-            showWarning("Unable to build debug info: " + e.getMessage());
-            e.printStackTrace();
+        } catch (RuntimeException error) {
+            showWarning("Unable to build debug info: " + error.getMessage());
         }
     }
 
@@ -363,76 +448,16 @@ public class IdorPanel extends JPanel {
     }
 
     private String formatPlaybookSummary() {
-        Map<String, List<IdorPlaybook>> grouped = new LinkedHashMap<>();
-        grouped.put("Path playbooks", playbookRegistry.all().stream()
-            .filter(playbook -> playbook.id().startsWith("idor.path."))
-            .toList());
-        grouped.put("Query playbooks", playbookRegistry.all().stream()
-            .filter(playbook -> playbook.id().startsWith("idor.query."))
-            .toList());
-        grouped.put("Body playbooks", playbookRegistry.all().stream()
-            .filter(playbook -> playbook.id().startsWith("idor.body."))
-            .toList());
-        grouped.put("Hybrid playbooks", playbookRegistry.all().stream()
-            .filter(playbook -> playbook.id().startsWith("idor.hybrid."))
-            .toList());
-
-        StringBuilder summary = new StringBuilder("Current playbooks:\n\n");
-        for (Map.Entry<String, List<IdorPlaybook>> entry : grouped.entrySet()) {
-            if (entry.getValue().isEmpty()) {
-                continue;
-            }
-
-            summary.append(entry.getKey()).append('\n');
-            for (IdorPlaybook playbook : entry.getValue()) {
-                summary.append(" - ")
-                    .append(playbook.displayName())
-                    .append(": ")
-                    .append(compactSummary(playbook.id()))
-                    .append('\n');
-            }
+        StringBuilder summary = new StringBuilder("Current IDOR families from the shared core:\n\n");
+        IdorPlanner planner = new IdorPlanner();
+        for (String id : planner.availableFamilies()) {
+            summary.append(" - ").append(id);
+            if (planner.dangerousFamilyRisks().containsKey(id))
+                summary.append(" (DANGEROUS; off by default)");
             summary.append('\n');
         }
-        summary.append("Add new technique families in core/idor/playbooks/ and register them in IdorPlaybookRegistry.");
+        summary.append("\nUse Preview Requests to inspect the requests selected for this run.");
         return summary.toString();
-    }
-
-    private String compactSummary(String playbookId) {
-        return switch (playbookId) {
-            case "idor.path.suffix_formats" -> ".json/.html and similar suffix variants";
-            case "idor.path.trailing_slash" -> "add or remove the final slash";
-            case "idor.path.special_identifier_values" -> "sentinel values like 0, 1, -1, and odd characters";
-            case "idor.path.dot_segments" -> "authorized-id/../target-id style dot-segment tricks";
-            case "idor.query.conflicting_identifiers" -> "mix target path IDs with conflicting query IDs";
-            case "idor.query.parameter_pollution" -> "duplicate identifier params in different orders";
-            case "idor.query.comma_separated_identifiers" -> "comma-separated lists like target,authorized";
-            case "idor.query.json_wrap" -> "query values wrapped as small JSON objects";
-            case "idor.query.identifier_aliases" -> "common alternate param names like id, userId, accountId";
-            case "idor.query.numeric_pivots" -> "numeric pivots such as 0, 1, 2, 3, and -1";
-            case "idor.body.content_type_tampering" -> "move the ID across urlencoded, JSON, XML, and multipart bodies";
-            case "idor.body.json_wrap" -> "wrap JSON IDs as nested objects";
-            case "idor.body.deserialization_hints" -> "type-hinted and prototype-like JSON object wrappers";
-            case "idor.body.json_batch_identifiers" -> "JSON arrays mixing target and authorized IDs";
-            case "idor.body.json_parameter_pollution" -> "repeat JSON identifier keys in both orders";
-            case "idor.body.wildcard_identifiers" -> "wildcards such as *, %, _, and .";
-            case "idor.body.unexpected_data_types" -> "booleans, nulls, numbers, arrays, and operator-like objects";
-            case "idor.hybrid.trailing_control_characters" -> "control bytes, null bytes, and encoded whitespace";
-            case "idor.hybrid.empty_identifier_values" -> "empty, blank, null, and undefined values";
-            case "idor.hybrid.case_variants" -> "uppercase, lowercase, and alternating-case IDs";
-            case "idor.hybrid.canonical_identifier_formats" -> "compact, braced, and canonical UUID forms";
-            case "idor.hybrid.uuid_neighbor_edits" -> "small last-byte and last-quartet UUID/hex edits";
-            case "idor.hybrid.truncated_identifier_variants" -> "shortened, zero-padded, and all-zero variants";
-            case "idor.hybrid.uuid_version_variants" -> "UUID v1/v3/v4/v5-style version swaps";
-            case "idor.hybrid.accept_negotiation" -> "representation-specific Accept header variants";
-            case "idor.hybrid.cross_source_conflicts" -> "path/query combinations where different sources disagree";
-            case "idor.hybrid.identifier_encoding" -> "URL, double-URL, braced, and base64-style encodings";
-            case "idor.hybrid.method_override" -> "CRUD methods plus curated method-override headers";
-            default -> playbookRegistry.all().stream()
-                .filter(playbook -> playbook.id().equals(playbookId))
-                .map(IdorPlaybook::description)
-                .findFirst()
-                .orElse("");
-        };
     }
 
     private JSplitPane buildCenterPanel() {
@@ -458,11 +483,6 @@ public class IdorPanel extends JPanel {
         }
         IdorOptions options = collectOptions();
         if (options == null) {
-            return;
-        }
-
-        if (requestMutator.countOccurrences(originalRequest, options.normalizedAuthorizedIdentifier()) == 0) {
-            showWarning("Identifier 1 was not found in the current request.");
             return;
         }
 
@@ -532,7 +552,242 @@ public class IdorPanel extends JPanel {
             return null;
         }
 
-        return new IdorOptions(authorizedIdentifier, targetIdentifier, runOptions);
+        java.util.List<IdentifierLocation> matches = IdentifierLocation.discover(
+            new CoreRequestAdapter().fromMontoya(originalRequest), authorizedIdentifier);
+        if (matches.isEmpty()) {
+            showWarning("Identifier 1 was not found in a selectable request location.");
+            return null;
+        }
+        if (matches.size() > 1 && locationField.getSelectedItem() == null) {
+            refreshLocations();
+            showWarning("Choose the exact identifier location before starting.");
+            return null;
+        }
+        String key = matches.size() == 1 ? matches.get(0).key() : (String) locationField.getSelectedItem();
+        if (matches.stream().noneMatch(item -> item.key().equals(key))) {
+            refreshLocations();
+            showWarning("Selected location no longer matches identifier 1.");
+            return null;
+        }
+        IdorOptions options = new IdorOptions(authorizedIdentifier, targetIdentifier, runOptions, key,
+            selectedFamilies, IdorPlanOptions.UNLIMITED, includeMethodChanges.isSelected(),
+            uniqueJsonPointerField.getText().trim(), uniqueToken);
+        try {
+            new IdorPlanner().plan(new CoreRequestAdapter().fromMontoya(originalRequest),
+                new IdorPlanOptions(authorizedIdentifier, targetIdentifier, key, selectedFamilies,
+                    options.maxMutations(), options.includeMethodChanges(), options.uniqueJsonPointer(),
+                    options.uniqueToken()));
+        } catch (RuntimeException error) {
+            showWarning("Unable to plan IDOR requests: " + error.getMessage());
+            return null;
+        }
+        return options;
+    }
+
+    private void refreshLocations() {
+        String value = authorizedIdentifierField.getText().trim();
+        discoveredLocations = List.of();
+        locationField.removeAllItems();
+        if (value.isEmpty()) {
+            updateRequestHighlights();
+            return;
+        }
+        discoveredLocations = IdentifierLocation.discover(
+            new CoreRequestAdapter().fromMontoya(originalRequest), value);
+        for (IdentifierLocation location : discoveredLocations) locationField.addItem(location.key());
+        if (locationField.getItemCount() > 1) locationField.setSelectedIndex(-1);
+        updateRequestHighlights();
+    }
+
+    private void updateRequestHighlights() {
+        if (configRequestEditor == null) return;
+        String value = authorizedIdentifierField.getText().trim();
+        configRequestEditor.setSearchExpression(value);
+        IdentifierLocation selected = discoveredLocations.stream()
+            .filter(location -> location.key().equals(locationField.getSelectedItem()))
+            .findFirst().orElse(discoveredLocations.isEmpty() ? null : discoveredLocations.get(0));
+        if (selected == null) return;
+        HttpRequestData request = new CoreRequestAdapter().fromMontoya(originalRequest);
+        IdentifierLocationSpan.find(request, selected).ifPresent(span -> focusRequestOffset(span.start()));
+    }
+
+    private void identifierChanged() {
+        discoveredLocations = List.of();
+        locationField.removeAllItems();
+        updateRequestHighlights();
+        updateResponseFieldsLabel();
+    }
+
+    private void focusRequestOffset(int offset) {
+        try {
+            HttpRequestEditor.class.getMethod("setCaretPosition", int.class).invoke(configRequestEditor, offset);
+        } catch (ReflectiveOperationException ignored) {
+            // Older Montoya versions still support the native editor's search highlighting.
+        }
+    }
+
+    private void chooseFamilies() {
+        IdorPlanner planner = new IdorPlanner();
+        java.util.List<String> ids = planner.availableFamilies();
+        JPanel choices = new JPanel();
+        choices.setLayout(new BoxLayout(choices, BoxLayout.Y_AXIS));
+        java.util.List<JCheckBox> boxes = new java.util.ArrayList<>();
+        for (String id : ids) {
+            String risk = planner.dangerousFamilyRisks().get(id);
+            JCheckBox box = new JCheckBox(risk != null
+                ? id + " — DANGEROUS: may probe other identifiers" : id,
+                selectedFamilies.contains(id));
+            box.setActionCommand(id);
+            if (risk != null) {
+                box.setName(id.equals(IdorPlanner.NUMERIC_PIVOTS_FAMILY)
+                    ? "idorNumericPivotsCheckbox" : "idorDangerousFamilyCheckbox:" + id);
+                box.setToolTipText(risk);
+                box.setForeground(new Color(180, 40, 30));
+            }
+            boxes.add(box);
+            choices.add(box);
+        }
+        JScrollPane scroller = new JScrollPane(choices);
+        scroller.setPreferredSize(new Dimension(480, 400));
+        if (JOptionPane.showConfirmDialog(configDialog, scroller, "Select IDOR Playbooks",
+            JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+        java.util.Set<String> next = new java.util.LinkedHashSet<>();
+        for (JCheckBox box : boxes) if (box.isSelected()) next.add(box.getActionCommand());
+        if (next.isEmpty()) { showWarning("Select at least one playbook."); return; }
+        java.util.List<String> newlyEnabled = newlyEnabledDangerousFamilies(selectedFamilies, next);
+        if (!newlyEnabled.isEmpty()) {
+            String risks = newlyEnabled.stream().map(id -> id + ": " + planner.dangerousFamilyRisks().get(id))
+                .collect(java.util.stream.Collectors.joining("\n\n"));
+            int confirmed = JOptionPane.showConfirmDialog(configDialog,
+                risks + "\n\nEnable these DANGEROUS playbooks?",
+                "DANGEROUS: IDOR identifier probes", JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+            if (confirmed != JOptionPane.YES_OPTION) return;
+        }
+        selectedFamilies = next;
+        hideWarning();
+    }
+
+    static java.util.List<String> newlyEnabledDangerousFamilies(java.util.Set<String> current,
+                                                                java.util.Set<String> next) {
+        IdorPlanner planner = new IdorPlanner();
+        return planner.availableFamilies().stream().filter(id -> planner.dangerousFamilyRisks().containsKey(id)
+            && !current.contains(id) && next.contains(id)).toList();
+    }
+
+    private void previewRequests() {
+        IdorOptions options = collectOptions();
+        if (options == null) return;
+        try {
+            List<PlannedRequest> planned = plannedRequests(options);
+            List<RequestPreviewPanel.Row> rows = buildPreviewRows(options, planned);
+            boolean awaitingResponse = (options.selectedFamilies().isEmpty()
+                || options.selectedFamilies().contains(ResponseGuidedIdorPlanner.FAMILY))
+                && capturedResponse == null;
+            var coverage = new IdorPlanner().separatorCoverage(
+                new CoreRequestAdapter().fromMontoya(originalRequest),
+                new IdorPlanOptions(options.normalizedAuthorizedIdentifier(),
+                    options.normalizedTargetIdentifier(), options.locationKey(), options.selectedFamilies(),
+                    options.maxMutations(), options.includeMethodChanges()), planned);
+            String separatorSummary = coverage == null ? "" : "\nPaired control separators: "
+                + coverage.planned() + "/" + coverage.eligible() + " planned"
+                + (coverage.notes().isEmpty() ? "" : "\n" + String.join("\n", coverage.notes()));
+            RequestPreviewPanel.open(api, configDialog, "IDOR Request Preview",
+                rows.size() + " planned requests, including authorized and target baselines; "
+                    + "all applicable mutations from selected playbooks"
+                    + (awaitingResponse ? "; response-guided probes require live baselines" : "")
+                    + separatorSummary, rows);
+        } catch (RuntimeException error) { showWarning("Unable to preview requests: " + error.getMessage()); }
+    }
+
+    List<RequestPreviewPanel.Row> buildPreviewRows(IdorOptions options) {
+        return buildPreviewRows(options, plannedRequests(options));
+    }
+
+    private List<RequestPreviewPanel.Row> buildPreviewRows(IdorOptions options,
+                                                            List<PlannedRequest> planned) {
+        CoreRequestAdapter adapter = new CoreRequestAdapter();
+        ConfiguredHeaderPolicy headers = new ConfiguredHeaderPolicy(options.runOptions().requestHeaders(),
+            options.runOptions().userAgentMode(), options.runOptions().userAgentRandomizationSeed());
+        IdentifierLocation location = IdentifierLocation.discover(adapter.fromMontoya(originalRequest),
+            options.normalizedAuthorizedIdentifier()).stream()
+            .filter(item -> item.key().equals(options.locationKey())).findFirst().orElseThrow();
+        return planned.stream().map(item -> {
+            HttpRequestData request = item.request();
+            String raw = request.toRaw();
+            String payload = item.family().equals(ResponseGuidedIdorPlanner.FAMILY)
+                || item.family().equals(PairedControlSeparatorPlanner.FAMILY)
+                ? item.payload() : location.byteOffset() >= 0
+                ? item.baseline() ? (item.payload().equals("idor.baseline.control")
+                    ? options.normalizedAuthorizedIdentifier() : options.normalizedTargetIdentifier())
+                    : item.payload() : IdentifierLocationSpan.find(request, location)
+                    .map(span -> raw.substring(span.start(), span.end())).orElse(item.payload());
+            HttpRequest wire = headers.reconcileMutation(originalRequest,
+                adapter.toMontoya(originalRequest, request));
+            String stage = item.baseline()
+                ? (item.payload().equals("idor.baseline.control") ? "Control" : "Target baseline")
+                : "Mutation";
+            return new RequestPreviewPanel.Row(stage, item.family(), payload,
+                item.payload(), item.encoding(), wire);
+        }).toList();
+    }
+
+    private List<PlannedRequest> plannedRequests(IdorOptions options) {
+        var input = new CoreRequestAdapter().fromMontoya(originalRequest);
+        IdorPlanOptions planOptions = new IdorPlanOptions(
+            options.normalizedAuthorizedIdentifier(), options.normalizedTargetIdentifier(),
+            options.locationKey(), options.selectedFamilies(), options.maxMutations(),
+            options.includeMethodChanges(), options.uniqueJsonPointer(), options.uniqueToken());
+        ResponseGuidedIdorPlanner guided = new ResponseGuidedIdorPlanner();
+        return guided.enabled(planOptions)
+            ? guided.plan(input, planOptions, capturedResponseData(), null)
+            : new IdorPlanner().plan(input, planOptions);
+    }
+
+    private HttpResponseData capturedResponseData() {
+        if (capturedResponse == null) return null;
+        return new HttpResponseData(com.bypassfuzzer.core.http.HttpProtocol.AUTO,
+            capturedResponse.statusCode(), capturedResponse.headers().stream()
+                .map(header -> new HttpHeader(header.name(), header.value())).toList(),
+            capturedResponse.body() == null ? new byte[0] : capturedResponse.body().getBytes(), 0);
+    }
+
+    private void updateResponseFieldsLabel() {
+        if (responseFieldsLabel == null) return;
+        if (capturedResponse == null) {
+            responseFieldsLabel.setText("Response fields: no response was attached to this request.");
+            return;
+        }
+        var fields = new ResponseGuidedIdorPlanner().discover(capturedResponseData(), null,
+            authorizedIdentifierField.getText().trim(), targetIdentifierField.getText().trim());
+        boolean targetOnly = !fields.isEmpty() && fields.stream().noneMatch(field ->
+            authorizedIdentifierField.getText().trim().equals(field.value()));
+        responseFieldsLabel.setText("Response fields matching either identifier: " + fields.size()
+            + (targetOnly ? " (captured response matches only identifier 2; live baselines decide)" : ""));
+    }
+
+    private void showResponseFields() {
+        updateResponseFieldsLabel();
+        if (capturedResponse == null) {
+            JOptionPane.showMessageDialog(configDialog, "Send a request with its response to IDOR to preview response-guided probes.");
+            return;
+        }
+        var fields = new ResponseGuidedIdorPlanner().discover(capturedResponseData(), null,
+            authorizedIdentifierField.getText().trim(), targetIdentifierField.getText().trim());
+        String detail = fields.isEmpty() ? "No exact JSON identifier values found."
+            : fields.stream().map(field -> field.pointer() + " (" + (field.numeric() ? "number" : "string")
+                + ", identifier " + (authorizedIdentifierField.getText().trim().equals(field.value()) ? "1" : "2") + ")")
+                .collect(java.util.stream.Collectors.joining("\n"));
+        JOptionPane.showMessageDialog(configDialog, detail, "Response identifier fields",
+            JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private String formatPlan(IdorOptions options) {
+        var plan = plannedRequests(options);
+        StringBuilder detail = new StringBuilder(plan.size() + " requests, including two controls\n\n");
+        for (var item : plan) detail.append(item.payload()).append("\n")
+            .append(item.request().toRaw()).append("\n\n");
+        return detail.toString();
     }
 
     private void clearResults() {
@@ -576,6 +831,9 @@ public class IdorPanel extends JPanel {
             int showing = resultsWorkspace.shownResultsCount();
             updateIdleUi((stopRequested ? "Stopped: " : "Completed: ")
                 + metrics(totalSent, recorded, showing));
+            if (!stopRequested && engine.lastDiagnostic() != null) {
+                showWarning(engine.lastDiagnostic());
+            }
         });
     }
 
@@ -606,6 +864,8 @@ public class IdorPanel extends JPanel {
 
         authorizedIdentifierField.setEnabled(enabled);
         targetIdentifierField.setEnabled(enabled);
+        locationField.setEnabled(enabled);
+        includeMethodChanges.setEnabled(enabled);
         runOptionsPanel.setControlsEnabled(enabled);
         configureButton.setEnabled(enabled);
     }

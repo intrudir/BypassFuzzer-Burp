@@ -5,7 +5,9 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 ## Sub-features
 
 - `bypass-route` sends the selected Proxy, Sitemap, or Repeater request through `Send to BypassFuzzer` -> `Bypass`.
+- `bypass-tab-name` renames a request session from its tab header by double-click or `Rename tab...` in the right-click menu.
 - `bypass-selection` enables individual attack families or uses `Check All`/`Uncheck All`.
+- `bypass-preview` opens a sortable table of up to 1,000 planned requests and displays the selected request in a Burp message editor.
 - `bypass-options` uses the shared execution controls to configure fixed headers, per-request User-Agent variation, hard global/per-host concurrency caps, throttle response codes, posture, and fixed/smart pause behavior through `Options...`.
 - `bypass-run` starts, pauses/resumes, stops, clears, and reports planned payloads, actual HTTP sends, recorded results, and deferred retries separately.
 - `bypass-filter` applies Smart Filter and manual filters for status, length, content type, host, payload, signal, response content, and highlight.
@@ -15,7 +17,8 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 
 - In Burp Proxy, Sitemap, or Repeater, select a request and choose `Send to BypassFuzzer` -> `Bypass`.
 - Choose top-level `Bypass`, then the nested tab titled `<METHOD> <path>`.
-- Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Start Fuzzing`, `Pause`, `Stop`, `Clear Results`, or the shared `Retry queue (n)` button in the primary action bar.
+- Double-click the nested tab name or right-click it and choose `Rename tab...`; the renamed title stays with that session.
+- Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Preview Requests`, `Start Fuzzing`, `Pause`, `Stop`, `Clear Results`, or the shared `Retry queue (n)` button in the primary action bar.
 - Use `Hide Filters`/`Show Filters`, `Enable (auto-detect patterns)`, `Enable Manual Filter`, and `Apply Manual Filters` beside the results table.
 - Select a result to inspect its `Request` and `Response`; use the table context menu for highlights or `Copy selected rows (TSV)`.
 
@@ -29,7 +32,9 @@ Preconditions:
 
 - **Full automated proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" bypass`. The first layer clicks each `Send to BypassFuzzer` child and verifies nested mode routing. The second requires the Bypass controls and proves a `429` plus three automatic retry attempts remain visible, numbered, and deferred after exhaustion without overflowing silently. The third runs the production Header attack against an isolated lab and requires the `trusted X-Forwarded-For` bypass marker. A black-box lab transcript records baseline and mutated outcomes.
 - **Open the session manually.** Send `GET /edge/private/reports/quarterly` with `Cookie: session=lab-user` to `Bypass`. The selected top-level mode is `Bypass`, the nested title starts `GET /edge/private/reports/quarterly`, and the status identifies the same target.
+- **Rename the session.** Double-click its nested tab name, enter `Quarterly report`, and require the visible title to change. Right-click the name to find `Rename tab...`; cancelling or entering only spaces must keep the current title.
 - **Choose scope.** Use `Uncheck All`, select `Header`, and review `Options...`. Keep Collaborator off unless Professional Collaborator is configured and explicitly in scope.
+- **Preview.** Choose `Preview Requests`, sort or select a payload row, and require the Burp request editor below the table to display that row's planned request.
 - **Review shared execution settings.** `Request Headers...` includes the same synthetic/browser-like User-Agent randomizer as Sweep. `Throttle...` includes hard global and per-host in-flight caps, throttle codes, posture, and fixed/smart run-wide pause choices.
 - **Run and inspect.** Choose `Start Fuzzing`. Require at least one result whose request contains a trusted proxy header and whose response is `200` with `X-Smoke-Bypass: trusted X-Forwarded-For`; select the row and capture both Request and Response viewers.
 - **Pause and filter.** During a sufficiently large run, choose `Pause`, verify the control changes to `Resume`, then resume. Enable a manual `Show only` status filter for `200`, apply it, and ensure the known result remains while nonmatching rows hide without being deleted.

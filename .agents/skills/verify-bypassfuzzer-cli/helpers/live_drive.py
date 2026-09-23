@@ -76,7 +76,8 @@ def run():
             source = temporary / "request.raw"
             source.write_bytes(raw_request("/objects/alice?id=alice", port).encode("iso-8859-1"))
             args = ["idor", "--request", str(source), "--target-origin", origin,
-                    "--authorized-id", "alice", "--target-id", "bob", "--max-probes", "10"] + common
+                    "--authorized-id", "alice", "--target-id", "bob",
+                    "--id-location", "path:2", "--families", "idor.path.suffix_formats"] + common
         else:
             source = temporary / "request.raw"
             source.write_bytes(raw_request("/redirect?next={INJECT}", port).encode("iso-8859-1"))

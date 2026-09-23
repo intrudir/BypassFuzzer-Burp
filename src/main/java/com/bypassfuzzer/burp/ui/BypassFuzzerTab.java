@@ -2,6 +2,8 @@ package com.bypassfuzzer.burp.ui;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.HttpRequestResponse;
+import burp.api.montoya.http.message.responses.HttpResponse;
 import com.bypassfuzzer.burp.session.FuzzingSessionController;
 import com.bypassfuzzer.burp.session.SessionRegistry;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
@@ -12,6 +14,8 @@ import com.bypassfuzzer.burp.update.VersionCheckResult;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -129,8 +133,16 @@ public class BypassFuzzerTab extends JPanel {
      * @param mode The destination mode
      */
     public void loadRequest(HttpRequest request, TargetedMode mode) {
+        loadRequest(request, null, mode);
+    }
+
+    public void loadRequest(HttpRequestResponse exchange, TargetedMode mode) {
+        loadRequest(exchange.request(), exchange.response(), mode);
+    }
+
+    private void loadRequest(HttpRequest request, HttpResponse response, TargetedMode mode) {
         FuzzingSessionController sessionController = sessionRegistry.createSession(request);
-        FuzzingSessionTab sessionTab = new FuzzingSessionTab(api, sessionController, mode);
+        FuzzingSessionTab sessionTab = new FuzzingSessionTab(api, sessionController, mode, response);
         JTabbedPane sessionTabs = modeSessionTabs.get(mode);
 
         int tabIndex = sessionTabs.getTabCount();
@@ -186,14 +198,44 @@ public class BypassFuzzerTab extends JPanel {
         }
     }
 
-    /**
-     * Create a tab component with a close button.
-     */
+    /** Create the shared, renameable session header used by every targeted mode. */
     private JPanel createSessionTabComponent(String title, JTabbedPane sessionTabs, FuzzingSessionTab sessionTab) {
         JPanel tabPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         tabPanel.setOpaque(false);
 
         JLabel tabLabel = new JLabel(title);
+        tabLabel.setToolTipText("Double-click or right-click to rename this tab");
+        Runnable rename = () -> renameSessionTab(sessionTabs, tabPanel, tabLabel);
+        JPopupMenu tabMenu = new JPopupMenu();
+        JMenuItem renameItem = new JMenuItem("Rename tab...");
+        renameItem.addActionListener(e -> rename.run());
+        tabMenu.add(renameItem);
+        tabLabel.setComponentPopupMenu(tabMenu);
+        tabPanel.setComponentPopupMenu(tabMenu);
+        Runnable select = () -> {
+            int currentIndex = sessionTabs.indexOfTabComponent(tabPanel);
+            if (currentIndex != -1) sessionTabs.setSelectedIndex(currentIndex);
+        };
+        MouseAdapter tabClicks = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                if (!SwingUtilities.isLeftMouseButton(event)) return;
+                select.run();
+                if (event.getClickCount() == 2) rename.run();
+            }
+
+            @Override
+            public void mousePressed(MouseEvent event) {
+                if (event.isPopupTrigger()) select.run();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent event) {
+                if (event.isPopupTrigger()) select.run();
+            }
+        };
+        tabLabel.addMouseListener(tabClicks);
+        tabPanel.addMouseListener(tabClicks);
         tabPanel.add(tabLabel);
 
         JButton closeButton = new JButton("×");
@@ -226,5 +268,25 @@ public class BypassFuzzerTab extends JPanel {
         tabPanel.add(closeButton);
 
         return tabPanel;
+    }
+
+    private void renameSessionTab(JTabbedPane sessionTabs, JPanel tabPanel, JLabel tabLabel) {
+        int currentIndex = sessionTabs.indexOfTabComponent(tabPanel);
+        if (currentIndex == -1) {
+            return;
+        }
+
+        String name = JOptionPane.showInputDialog(
+            api.userInterface().swingUtils().suiteFrame(),
+            "Tab name:",
+            tabLabel.getText()
+        );
+        if (name == null || name.isBlank()) {
+            return;
+        }
+
+        String newTitle = name.trim();
+        sessionTabs.setTitleAt(currentIndex, newTitle);
+        tabLabel.setText(newTitle);
     }
 }

@@ -79,6 +79,8 @@ public final class EvidenceWriter implements AutoCloseable {
         record.put("target", targetKey);
         record.put("protocol", response == null ? planned.request().protocol().id() : response.protocol().id());
         record.put("family", planned.family());
+        record.put("probeIntent", planned.intent().name());
+        record.put("responseField", planned.sourcePointer());
         record.put("payload", planned.payload());
         record.put("encoding", planned.encoding());
         record.put("baseline", planned.baseline());

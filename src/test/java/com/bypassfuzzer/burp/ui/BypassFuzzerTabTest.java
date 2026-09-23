@@ -9,18 +9,26 @@ import org.junit.jupiter.api.Test;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
 import java.awt.Component;
 import java.awt.Container;
+import java.awt.event.MouseEvent;
+
+import org.mockito.MockedStatic;
 
 import static com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 class BypassFuzzerTabTest {
 
@@ -52,6 +60,77 @@ class BypassFuzzerTabTest {
 
         assertEquals(0, ((JTabbedPane) topLevelTabs.getComponentAt(2)).getTabCount());
         assertEquals(0, ((JTabbedPane) topLevelTabs.getComponentAt(4)).getTabCount());
+    }
+
+    @Test
+    void requestTabsCanBeRenamedInEveryTargetedMode() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            BypassFuzzerTab tab = new BypassFuzzerTab(api());
+            JTabbedPane topLevelTabs = findTabbedPane(tab);
+            try (MockedStatic<JOptionPane> dialogs = mockStatic(JOptionPane.class)) {
+                for (TargetedMode mode : TargetedMode.values()) {
+                    tab.loadRequest(request("/long/path/123", "", "GET", null, ""), mode);
+                    JTabbedPane sessions = (JTabbedPane) topLevelTabs.getSelectedComponent();
+                    JPanel header = (JPanel) sessions.getTabComponentAt(0);
+                    JLabel label = (JLabel) header.getComponent(0);
+                    String newTitle = mode.title() + " account 123";
+                    dialogs.when(() -> JOptionPane.showInputDialog(any(), eq("Tab name:"),
+                        eq("GET /long/path/123"))).thenReturn("  " + newTitle + "  ");
+
+                    JMenuItem rename = (JMenuItem) label.getComponentPopupMenu().getComponent(0);
+                    assertEquals("Rename tab...", rename.getText());
+                    rename.doClick();
+
+                    assertEquals(newTitle, sessions.getTitleAt(0));
+                    assertEquals(newTitle, label.getText());
+                    assertEquals(newTitle, ((JLabel) header.getComponent(0)).getText());
+                }
+            }
+        });
+    }
+
+    @Test
+    void doubleClickRenameKeepsCurrentNameOnCancelOrBlankInput() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            BypassFuzzerTab tab = new BypassFuzzerTab(api());
+            tab.loadRequest(request("/users/123", "", "GET", null, ""), TargetedMode.IDOR);
+            JTabbedPane sessions = (JTabbedPane) findTabbedPane(tab).getSelectedComponent();
+            JLabel label = (JLabel) ((JPanel) sessions.getTabComponentAt(0)).getComponent(0);
+            try (MockedStatic<JOptionPane> dialogs = mockStatic(JOptionPane.class)) {
+                dialogs.when(() -> JOptionPane.showInputDialog(any(), eq("Tab name:"),
+                    eq("GET /users/123"))).thenReturn(null, "  ", "Authorized account");
+                for (int attempt = 0; attempt < 3; attempt++) {
+                    label.dispatchEvent(new MouseEvent(label, MouseEvent.MOUSE_CLICKED,
+                        System.currentTimeMillis(), 0, 2, 2, 2, false, MouseEvent.BUTTON1));
+                    assertEquals(attempt == 2 ? "Authorized account" : "GET /users/123",
+                        sessions.getTitleAt(0));
+                    assertEquals(sessions.getTitleAt(0), label.getText());
+                }
+            }
+        });
+    }
+
+    @Test
+    void clickingSessionHeadersSelectsTabsInEveryMode() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            BypassFuzzerTab tab = new BypassFuzzerTab(api());
+            for (TargetedMode mode : TargetedMode.values()) {
+                tab.loadRequest(request("/users/123", "", "GET", null, ""), mode);
+                tab.loadRequest(request("/users/456", "", "GET", null, ""), mode);
+                JTabbedPane sessions = (JTabbedPane) findTabbedPane(tab).getSelectedComponent();
+                assertEquals(1, sessions.getSelectedIndex());
+
+                JLabel firstTitle = (JLabel) ((JPanel) sessions.getTabComponentAt(0)).getComponent(0);
+                firstTitle.dispatchEvent(new MouseEvent(firstTitle, MouseEvent.MOUSE_CLICKED,
+                    System.currentTimeMillis(), 0, 2, 2, 1, false, MouseEvent.BUTTON1));
+                assertEquals(0, sessions.getSelectedIndex());
+
+                JPanel secondHeader = (JPanel) sessions.getTabComponentAt(1);
+                secondHeader.dispatchEvent(new MouseEvent(secondHeader, MouseEvent.MOUSE_CLICKED,
+                    System.currentTimeMillis(), 0, 2, 2, 1, false, MouseEvent.BUTTON1));
+                assertEquals(1, sessions.getSelectedIndex());
+            }
+        });
     }
 
     @Test

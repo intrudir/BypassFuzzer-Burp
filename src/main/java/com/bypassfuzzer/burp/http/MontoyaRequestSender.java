@@ -8,6 +8,7 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -160,16 +161,24 @@ public class MontoyaRequestSender implements RequestSender {
         try {
             future = timeoutExecutor.submit(
                 () -> globalGovernor.execute(request, requestCall, shouldContinue));
-            return future.get(timeout, timeUnit);
+            HttpResponse response = future.get(timeout, timeUnit);
+            if (response == null) safeLogError("Timed HTTP request returned no response.");
+            return response;
         } catch (TimeoutException e) {
             if (future != null) {
                 future.cancel(true);
             }
+            safeLogError("Timed HTTP request exceeded " + timeout + " " + timeUnit.toString().toLowerCase() + ".");
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            safeLogError("Timed HTTP request failed: " + cause.getClass().getSimpleName(), cause);
+            return null;
         } catch (Exception e) {
+            safeLogError("Timed HTTP request failed: " + e.getClass().getSimpleName(), e);
             return null;
         }
     }
@@ -233,6 +242,13 @@ public class MontoyaRequestSender implements RequestSender {
     private void safeLogError(String message) {
         try {
             api.logging().logToError(message);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void safeLogError(String message, Throwable cause) {
+        try {
+            api.logging().logToError(message, cause);
         } catch (Exception ignored) {
         }
     }

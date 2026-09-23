@@ -41,7 +41,6 @@ import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.SwingWorker;
 import javax.swing.SwingUtilities;
-import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.WindowConstants;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -2032,60 +2031,15 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void showProbePreview(CoverageSweepCandidate candidate, List<CoverageSweepProbe> probes) {
-        JTextArea previewText = new JTextArea(renderProbePreview(candidate, probes));
-        previewText.setEditable(false);
-        previewText.setLineWrap(false);
-        previewText.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        previewText.setCaretPosition(0);
-
-        JScrollPane scrollPane = new JScrollPane(previewText);
-        scrollPane.setPreferredSize(new Dimension(920, 620));
-
-        JDialog dialog = new JDialog(api.userInterface().swingUtils().suiteFrame(), "Sweep Probe Preview", false);
-        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        dialog.setLayout(new BorderLayout(0, 8));
-
-        JLabel header = new JLabel(candidate.method() + " " + candidate.displayUrl() + " - " + probes.size() + " probe(s)");
-        header.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
-        dialog.add(header, BorderLayout.NORTH);
-        dialog.add(scrollPane, BorderLayout.CENTER);
-        dialog.pack();
-        dialog.setLocationRelativeTo(api.userInterface().swingUtils().suiteFrame());
-        dialog.setVisible(true);
+        RequestPreviewPanel.open(api, this, "Sweep Probe Preview",
+            candidate.method() + " " + candidate.displayUrl() + " - " + probes.size() + " probe(s)",
+            buildProbePreviewRows(probes));
     }
 
-    String renderProbePreview(CoverageSweepCandidate candidate, List<CoverageSweepProbe> probes) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("Candidate: ")
-            .append(candidate.method())
-            .append(" ")
-            .append(candidate.displayUrl())
-            .append(System.lineSeparator())
-            .append("Status: ")
-            .append(candidate.statusCode())
-            .append(System.lineSeparator())
-            .append("Probe count: ")
-            .append(probes.size())
-            .append(System.lineSeparator())
-            .append(System.lineSeparator());
-
-        for (int index = 0; index < probes.size(); index++) {
-            CoverageSweepProbe probe = probes.get(index);
-            builder.append("===")
-                .append(" ")
-                .append(index + 1)
-                .append(". ")
-                .append(probe.family())
-                .append(" - ")
-                .append(probe.label())
-                .append(" ")
-                .append("===")
-                .append(System.lineSeparator())
-                .append(probe.request())
-                .append(System.lineSeparator())
-                .append(System.lineSeparator());
-        }
-        return builder.toString();
+    List<RequestPreviewPanel.Row> buildProbePreviewRows(List<CoverageSweepProbe> probes) {
+        return probes.stream().map(probe -> new RequestPreviewPanel.Row("Probe", probe.family(),
+            probe.label(), "", probe.httpMode() == null ? "" : probe.httpMode().name(),
+            probe.request())).toList();
     }
 
     private static final class CandidateTableModel extends AbstractTableModel {

@@ -50,7 +50,7 @@ public class ContextMenuFactory implements ContextMenuItemsProvider {
     }
 
     private void sendToFuzzer(HttpRequestResponse requestResponse, TargetedMode mode) {
-        mainTab.loadRequest(requestResponse.request(), mode);
+        mainTab.loadRequest(requestResponse, mode);
         api.logging().logToOutput(
             "Request sent to BypassFuzzer " + mode.title() + ": " + requestResponse.request().url()
         );

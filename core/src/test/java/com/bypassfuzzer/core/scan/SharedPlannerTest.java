@@ -33,13 +33,15 @@ class SharedPlannerTest {
     }
 
     @Test
-    void idorEmitsBaselinesFirstAndEveryStablePlaybook() {
+    void idorTargetsOnlyTheSelectedLocationAfterBaselines() {
         List<PlannedRequest> planned = new IdorPlanner().plan(
-            request("GET /users/100?id=100 HTTP/1.1\r\nHost: example.com\r\n\r\n"), "100", "200", 500);
+            request("GET /users/100?id=100 HTTP/1.1\r\nHost: example.com\r\n\r\n"),
+            new IdorPlanOptions("100", "200", "path:2", Set.of(), 100, false));
 
         assertEquals("idor.baseline.control", planned.get(0).payload());
         assertEquals("idor.baseline.target", planned.get(1).payload());
-        assertTrue(planned.subList(2, planned.size()).stream().map(PlannedRequest::family).distinct().count() >= 25);
+        assertEquals("/users/200?id=100", planned.get(1).request().rawTarget());
+        assertTrue(planned.subList(2, planned.size()).stream().map(PlannedRequest::family).distinct().count() >= 10);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.bypassfuzzer.core.scan;
 
 import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
+import com.bypassfuzzer.core.payloads.StandalonePathMarkerVariants;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -13,12 +14,24 @@ import java.util.Set;
 public final class HighSignalPlanner {
     public static final Set<String> FAMILIES = Set.of("Matrix / Extension", "Extension / Negotiation",
         "Path Normalization", "Encoding", "Debug Params", "Content-Type", "Header", "Host Parsing");
+    private final List<String> templates;
+
+    public HighSignalPlanner() { this(ResourcePayloads.load("sweep_probes.txt")); }
+    public HighSignalPlanner(List<String> templates) { this.templates = List.copyOf(templates); }
 
     public List<PlannedRequest> plan(HttpRequestData request, Set<String> enabledFamilies, int maximum) {
-        Set<String> selected = enabledFamilies == null || enabledFamilies.isEmpty() ? FAMILIES : enabledFamilies;
+        return plan(request, enabledFamilies, maximum, true, List.of(0));
+    }
+
+    public List<PlannedRequest> plan(HttpRequestData request, Set<String> enabledFamilies, int maximum,
+                                     boolean hostPortEnabled, List<Integer> hostPorts) {
+        Set<String> selected = enabledFamilies == null ? FAMILIES : enabledFamilies;
         List<PlannedRequest> output = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        for (String line : ResourcePayloads.load("sweep_probes.txt")) {
+        if (hostPortEnabled && selected.contains("Host Parsing"))
+            addHostParsing(request, output, seen, maximum, hostPorts);
+        if (selected.contains("Path Normalization")) addBackslashes(request, output, seen, maximum);
+        for (String line : templates) {
             if (output.size() >= maximum) break;
             String[] parts = line.split("\\|", 4);
             if (parts.length != 4 || !selected.contains(parts[1].trim())) continue;
@@ -33,8 +46,7 @@ public final class HighSignalPlanner {
             };
             add(output, seen, maximum, family, label, mutation);
         }
-        if (selected.contains("Path Normalization")) addBackslashes(request, output, seen, maximum);
-        if (selected.contains("Host Parsing")) addHostParsing(request, output, seen, maximum);
+        if (selected.contains("Path Normalization")) addStandaloneMarkers(request, output, seen, maximum);
         return List.copyOf(output);
     }
 
@@ -58,26 +70,67 @@ public final class HighSignalPlanner {
         String query = querySuffix(request.rawTarget());
         List<int[]> segments = segments(path);
         for (String marker : List.of("\\", "%5c", "%5C")) {
+            String label = marker.equals("\\") ? "raw" : marker.equals("%5c") ? "encoded lowercase" : "encoded uppercase";
             for (int index = 0; index < segments.size() && output.size() < maximum; index++) {
                 int start = segments.get(index)[0];
                 int end = segments.get(index)[1];
-                add(output, seen, maximum, "Path Normalization", "Backslash prefix segment " + (index + 1),
+                add(output, seen, maximum, "Path Normalization", "Backslash " + label + " prefix on segment " + (index + 1),
                     request.withRawTarget(path.substring(0, start) + marker + path.substring(start) + query));
-                add(output, seen, maximum, "Path Normalization", "Backslash suffix segment " + (index + 1),
+                add(output, seen, maximum, "Path Normalization", "Backslash " + label + " suffix on segment " + (index + 1),
                     request.withRawTarget(path.substring(0, end) + marker + path.substring(end) + query));
-                add(output, seen, maximum, "Path Normalization", "Backslash sandwich segment " + (index + 1),
+                add(output, seen, maximum, "Path Normalization", "Backslash " + label + " sandwich on segment " + (index + 1),
                     request.withRawTarget(path.substring(0, start) + marker + path.substring(start, end) + marker
                         + path.substring(end) + query));
             }
         }
     }
 
-    private void addHostParsing(HttpRequestData request, List<PlannedRequest> output, Set<String> seen, int maximum) {
+    private void addHostParsing(HttpRequestData request, List<PlannedRequest> output, Set<String> seen,
+                                int maximum, List<Integer> ports) {
         String host = request.firstHeader("Host").orElse(request.origin().authority());
-        String hostname = host.startsWith("[") ? host : host.split(":", 2)[0];
-        for (String value : List.of(hostname + ":80:443", hostname + ":443:80")) {
+        String hostname = host.startsWith("[") ? host.substring(0, host.indexOf(']') + 1) : host.split(":", 2)[0];
+        if (ports != null) for (Integer port : ports) {
+            if (port == null || port < 1 || port > 65535) continue;
+            for (String value : List.of(hostname + ":" + port, hostname + ":" + port + ":80",
+                    hostname + ":" + port + ":443"))
+                add(output, seen, maximum, "Host Parsing", "Host: " + value + " (custom port)",
+                    request.upsertHeader("Host", value).withProtocol(HttpProtocol.HTTP_1));
+        }
+        String base = host.contains(":") && !host.endsWith("]") ? host : host + ":" + request.origin().port();
+        for (String value : List.of(base + ":80", base + ":443")) {
             add(output, seen, maximum, "Host Parsing", "Host double-port " + value,
                 request.upsertHeader("Host", value).withProtocol(HttpProtocol.HTTP_1));
+        }
+    }
+
+    private void addStandaloneMarkers(HttpRequestData request, List<PlannedRequest> output,
+                                       Set<String> seen, int maximum) {
+        String path = pathOnly(request.rawTarget());
+        String query = querySuffix(request.rawTarget());
+        List<int[]> parts = segments(path);
+        List<Integer> boundaries = new ArrayList<>();
+        for (int i = 1; i < path.length() - 1; i++)
+            if (path.charAt(i) == '/' && path.charAt(i - 1) != '/' && path.charAt(i + 1) != '/')
+                boundaries.add(i);
+        for (String marker : StandalonePathMarkerVariants.all()) {
+            for (int boundary : boundaries)
+                add(output, seen, maximum, "Path Normalization", "Standalone " + marker + " segment at boundary",
+                    request.withRawTarget(path.substring(0, boundary) + "/" + marker + "/" + path.substring(boundary + 1) + query));
+            if (!boundaries.isEmpty()) {
+                StringBuilder all = new StringBuilder();
+                for (int i = 0; i < path.length(); i++)
+                    if (boundaries.contains(i)) all.append('/').append(marker).append('/');
+                    else all.append(path.charAt(i));
+                add(output, seen, maximum, "Path Normalization", "Standalone " + marker + " segment at all boundaries",
+                    request.withRawTarget(all + query));
+            }
+            for (int i = 0; i < parts.size(); i++) {
+                int start = parts.get(i)[0], end = parts.get(i)[1];
+                add(output, seen, maximum, "Path Normalization",
+                    "Surround path segment " + (i + 1) + " with standalone " + marker + " segments",
+                    request.withRawTarget(path.substring(0, start) + marker + "/" + path.substring(start, end)
+                        + "/" + marker + path.substring(end) + query));
+            }
         }
     }
 

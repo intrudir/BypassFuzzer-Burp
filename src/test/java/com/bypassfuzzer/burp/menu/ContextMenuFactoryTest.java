@@ -50,7 +50,7 @@ class ContextMenuFactoryTest {
             JMenuItem modeItem = sendMenu.getItem(index);
             assertEquals(mode.title(), modeItem.getText());
             modeItem.doClick();
-            verify(mainTab).loadRequest(targetRequest, mode);
+            verify(mainTab).loadRequest(requestResponse, mode);
         }
     }
 }

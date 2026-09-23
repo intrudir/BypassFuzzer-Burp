@@ -19,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 
 class MontoyaRequestSenderTest {
 
@@ -110,9 +112,21 @@ class MontoyaRequestSenderTest {
 
             assertNull(sender.send(request, 10, TimeUnit.MILLISECONDS));
             assertFalse(executor.isShutdown());
+            verify(api.logging()).logToError(contains("Timed HTTP request exceeded"));
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void timedSendReportsTransportExceptionToBurpErrors() {
+        MontoyaApi api = mock(MontoyaApi.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        HttpRequest request = mock(HttpRequest.class);
+        when(api.http().sendRequest(request)).thenThrow(new IllegalStateException("connection failed"));
+
+        assertNull(new MontoyaRequestSender(api).send(request, 1, TimeUnit.SECONDS));
+
+        verify(api.logging()).logToError(contains("Timed HTTP request failed"), any(Throwable.class));
     }
 
     @Test

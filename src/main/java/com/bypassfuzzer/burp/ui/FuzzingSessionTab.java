@@ -2,10 +2,13 @@ package com.bypassfuzzer.burp.ui;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.core.FuzzerProgress;
 import com.bypassfuzzer.burp.core.collaborator.CollaboratorSupport;
+import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
+import com.bypassfuzzer.burp.http.CoreRequestAdapter;
 import com.bypassfuzzer.burp.http.RequestPathUtils;
 import com.bypassfuzzer.burp.session.FuzzingSessionController;
 import com.bypassfuzzer.burp.session.SessionPreflightAnalyzer;
@@ -14,6 +17,7 @@ import com.bypassfuzzer.burp.session.SessionState;
 import com.bypassfuzzer.burp.ui.session.AttackSelectionPanel;
 import com.bypassfuzzer.burp.ui.session.IdorPanel;
 import com.bypassfuzzer.burp.ui.session.RunOptionsPanel;
+import com.bypassfuzzer.burp.ui.session.RequestPreviewPanel;
 import com.bypassfuzzer.burp.ui.session.SessionResultsPanel;
 import com.bypassfuzzer.burp.ui.session.SessionResultsWorkspace;
 import com.bypassfuzzer.burp.ui.session.SessionRunOptionsSupport;
@@ -21,6 +25,8 @@ import com.bypassfuzzer.burp.ui.session.UrlValidationPanel;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
 import com.bypassfuzzer.burp.ui.dashboard.ManagedActivity;
+import com.bypassfuzzer.core.scan.AttackFamily;
+import com.bypassfuzzer.core.scan.BypassPlanner;
 
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -31,16 +37,20 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Individual fuzzing session tab.
  */
 public class FuzzingSessionTab extends JPanel implements ManagedActivity {
+
+    private static final int BYPASS_PREVIEW_LIMIT = 1_000;
 
     private final MontoyaApi api;
     private final FuzzingSessionController sessionController;
@@ -48,6 +58,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     private final HttpRequest request;
     private final String tabTitle;
     private final TargetedMode mode;
+    private final HttpResponse capturedResponse;
     private final SessionPreflightAnalyzer preflightAnalyzer = new SessionPreflightAnalyzer();
 
     private JButton startButton;
@@ -58,6 +69,8 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     private AttackSelectionPanel attackSelectionPanel;
     private RunOptionsPanel runOptionsPanel;
     private JButton optionsButton;
+    private JButton previewButton;
+    private SwingWorker<List<RequestPreviewPanel.Row>, Void> previewWorker;
     private JDialog optionsDialog;
     private SessionResultsWorkspace resultsWorkspace;
     private UrlValidationPanel urlValidationPanel;
@@ -70,11 +83,17 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     }
 
     public FuzzingSessionTab(MontoyaApi api, FuzzingSessionController sessionController, TargetedMode mode) {
+        this(api, sessionController, mode, null);
+    }
+
+    public FuzzingSessionTab(MontoyaApi api, FuzzingSessionController sessionController,
+                             TargetedMode mode, HttpResponse capturedResponse) {
         this.api = api;
         this.sessionController = sessionController;
         this.request = sessionController.request();
         this.config = sessionController.config();
         this.mode = mode;
+        this.capturedResponse = capturedResponse;
         this.tabTitle = request.method() + " " + truncate(RequestPathUtils.extractPath(request.url()), 30);
 
         if (mode == TargetedMode.BYPASS) {
@@ -175,6 +194,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
 
     public void cleanup() {
         shuttingDown = true;
+        if (previewWorker != null) previewWorker.cancel(true);
         sessionController.dispose();
         if (resultsWorkspace != null) {
             resultsWorkspace.cleanup();
@@ -203,7 +223,8 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         return switch (mode) {
             case BYPASS -> buildBypassTab();
             case IDOR -> {
-                idorPanel = new IdorPanel(api, request, sessionController.globalGovernor());
+                idorPanel = new IdorPanel(api, request, capturedResponse,
+                    sessionController.globalGovernor());
                 yield idorPanel;
             }
             case URL_VALIDATION -> {
@@ -239,11 +260,14 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         optionsButton = new JButton("Options...");
         optionsButton.setToolTipText("Configure execution, throttling, headers, and Collaborator payloads.");
         optionsButton.addActionListener(e -> openOptionsDialog());
+        previewButton = new JButton("Preview Requests");
+        previewButton.addActionListener(e -> previewRequests());
         controlPanel.add(startButton);
         controlPanel.add(stopButton);
         controlPanel.add(pauseButton);
         controlPanel.add(clearButton);
         controlPanel.add(optionsButton);
+        controlPanel.add(previewButton);
         controlPanel.add(resultsWorkspace.retryQueueButton());
 
         statusLabel = new JLabel("Ready. Target: " + request.method() + " " + request.url());
@@ -386,6 +410,58 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         return SessionRunOptionsSupport.collect(attackSelectionPanel, runOptionsPanel);
     }
 
+    private void previewRequests() {
+        if (previewWorker != null) return;
+        SessionRunOptions options = collectRunOptions();
+        if (!options.hasEnabledAttacks()) {
+            warningLabel.setText("Select at least one attack type before previewing requests.");
+            warningLabel.setVisible(true);
+            return;
+        }
+        boolean collaboratorPreview = options.collaboratorPayloads() && isCollaboratorAvailable();
+        previewButton.setEnabled(false);
+        statusLabel.setText("Building Bypass request preview...");
+        previewWorker = new SwingWorker<>() {
+            @Override protected List<RequestPreviewPanel.Row> doInBackground() {
+                return buildBypassPreviewRows(options, collaboratorPreview);
+            }
+
+            @Override protected void done() {
+                previewWorker = null;
+                if (shuttingDown) return;
+                previewButton.setEnabled(!sessionController.isRunning());
+                try {
+                    List<RequestPreviewPanel.Row> rows = get();
+                    String note = collaboratorPreview
+                        ? " (collaborator-preview.invalid is a placeholder)" : "";
+                    RequestPreviewPanel.open(api, FuzzingSessionTab.this, "Bypass Request Preview",
+                        "Up to " + BYPASS_PREVIEW_LIMIT + " planned requests; showing " + rows.size() + note,
+                        rows);
+                    statusLabel.setText("Bypass request preview ready.");
+                } catch (Exception error) {
+                    warningLabel.setText("Unable to preview requests: " + error.getMessage());
+                    warningLabel.setVisible(true);
+                }
+            }
+        };
+        previewWorker.execute();
+    }
+
+    List<RequestPreviewPanel.Row> buildBypassPreviewRows(SessionRunOptions options,
+                                                          boolean collaboratorPreview) {
+        CoreRequestAdapter adapter = new CoreRequestAdapter();
+        ConfiguredHeaderPolicy headers = new ConfiguredHeaderPolicy(options.requestHeaders(),
+            options.userAgentMode(), options.userAgentRandomizationSeed());
+        var selected = options.enabledAttackTypes().stream().map(type -> AttackFamily.parse(type.id()))
+            .collect(Collectors.toSet());
+        var planned = new BypassPlanner(() -> collaboratorPreview
+            ? "collaborator-preview.invalid" : "").plan(adapter.fromMontoya(request), selected,
+            options.fuzzExistingCookies(), BYPASS_PREVIEW_LIMIT);
+        return planned.stream().map(item -> new RequestPreviewPanel.Row("Attack", item.family(),
+            item.payload(), "", item.encoding(), headers.reconcileMutation(request,
+                adapter.toMontoya(request, item.request())))).toList();
+    }
+
     private void clearResults() {
         resultsWorkspace.clear();
         statusLabel.setText("Results cleared");
@@ -484,6 +560,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         attackSelectionPanel.setControlsEnabled(enabled);
         runOptionsPanel.setControlsEnabled(enabled, isCollaboratorAvailable());
         optionsButton.setEnabled(enabled);
+        previewButton.setEnabled(enabled && previewWorker == null);
     }
 
     private boolean isCollaboratorAvailable() {

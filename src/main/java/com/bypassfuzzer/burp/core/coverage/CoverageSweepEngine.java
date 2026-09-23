@@ -18,6 +18,11 @@ import com.bypassfuzzer.burp.http.RequestSender;
 import com.bypassfuzzer.burp.http.TargetUrlResolver;
 import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
 import com.bypassfuzzer.burp.http.CookieHeaderUtils;
+import com.bypassfuzzer.burp.http.CoreRequestAdapter;
+import com.bypassfuzzer.core.http.HttpProtocol;
+import com.bypassfuzzer.core.scan.ScanEngine;
+import com.bypassfuzzer.core.scan.ScanOptions;
+import java.time.Duration;
 
 import java.net.URI;
 import java.time.ZonedDateTime;
@@ -62,6 +67,8 @@ public class CoverageSweepEngine {
     private Thread runnerThread;
     private ExecutorService executor;
     private volatile HostThrottleCoordinator coordinator;
+    private volatile ScanEngine coreScan;
+    private final CoreRequestAdapter coreRequests = new CoreRequestAdapter();
     private volatile ConcurrentLinkedQueue<RetryTask> deferredRetryQueue = new ConcurrentLinkedQueue<>();
     private final Set<String> sweepHosts = ConcurrentHashMap.newKeySet();
     private final Set<String> completedSweepHosts = ConcurrentHashMap.newKeySet();
@@ -316,6 +323,8 @@ public class CoverageSweepEngine {
     public void stop() {
         running = false;
         phase = SweepPhase.STOPPED;
+        ScanEngine currentScan = coreScan;
+        if (currentScan != null) currentScan.stop();
         HostThrottleCoordinator currentCoordinator = coordinator;
         if (currentCoordinator != null) currentCoordinator.manualResume();
         pauseController.resume();
@@ -345,12 +354,16 @@ public class CoverageSweepEngine {
 
     public void pause() {
         if (!running) return;
+        ScanEngine currentScan = coreScan;
+        if (currentScan != null) currentScan.pause();
         pauseController.pause();
         HostThrottleCoordinator currentCoordinator = coordinator;
         if (currentCoordinator != null) currentCoordinator.manualPause();
     }
 
     public void resume() {
+        ScanEngine currentScan = coreScan;
+        if (currentScan != null) currentScan.resume();
         HostThrottleCoordinator currentCoordinator = coordinator;
         if (currentCoordinator != null) currentCoordinator.manualResume();
         pauseController.resume();
@@ -417,6 +430,10 @@ public class CoverageSweepEngine {
                          Consumer<AttackResult> resultCallback) {
         ThrottleSettings throttleSettings = options.throttleSettings();
         coordinator = new HostThrottleCoordinator(throttleSettings, api);
+        coreScan = new ScanEngine(new ScanOptions(HttpProtocol.AUTO, Duration.ofSeconds(15),
+            throttleSettings.globalConcurrency(), throttleSettings.perHostConcurrency(),
+            options.throttleStatusCodes(), 0, false, options.posture().name().toLowerCase(),
+            options.pauseMode().name().toLowerCase(), options.fixedPauseMillis(), false));
         phase = SweepPhase.MAIN_SWEEP;
         int concurrency = throttleSettings.globalConcurrency();
         safeLog("Coverage sweep starting: " + candidates.size() + " candidate(s); adaptive rate control, "
@@ -1179,10 +1196,12 @@ public class CoverageSweepEngine {
             return sender.get();
         };
         HostThrottleCoordinator currentCoordinator = coordinator;
-        return currentCoordinator == null
+        ScanEngine currentScan = coreScan;
+        if (currentScan == null) return null;
+        return currentScan.exchange(coreRequests.fromMontoya(request), () -> currentCoordinator == null
             ? (pauseController.awaitIfPaused(this::canContinue) ? countedSender.get() : null)
             : currentCoordinator.send(request, countedSender,
-                () -> pauseController.awaitIfPaused(this::canContinue));
+                () -> pauseController.awaitIfPaused(this::canContinue)), response -> response.statusCode()).response();
     }
 
     private void safeLog(String message) {

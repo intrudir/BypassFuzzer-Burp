@@ -950,7 +950,7 @@ class CoverageSweepPanelTest {
     }
 
     @Test
-    void probePreviewRendersExactGeneratedRequests() {
+    void probePreviewRowsRetainExactGeneratedRequests() {
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
         HttpRequest request = request("/admin/users", "", "GET", null, "");
         HttpResponse response = response(403, "text/plain", "blocked");
@@ -969,9 +969,12 @@ class CoverageSweepPanelTest {
         );
         List<CoverageSweepProbe> probes = new CoverageSweepProbeGenerator().buildProbes(candidate.request(), CoverageSweepOptions.defaults());
 
-        String preview = panel.renderProbePreview(candidate, probes);
+        List<RequestPreviewPanel.Row> rows = panel.buildProbePreviewRows(probes);
+        String preview = rows.stream().map(row -> row.family() + " - " + row.payload() + "\n"
+            + row.request()).collect(java.util.stream.Collectors.joining("\n"));
 
-        assertTrue(preview.contains("Probe count: 182"));
+        assertEquals(182, rows.size());
+        assertSame(probes.get(0).request(), rows.get(0).request());
         assertTrue(preview.contains("Matrix / Extension - Path suffix ;.json"));
         assertTrue(preview.contains("GET /admin/users;.json HTTP/1.1"));
         assertTrue(preview.contains("GET /admin/users?format=json HTTP/1.1"));

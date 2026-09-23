@@ -1,6 +1,6 @@
 # BypassFuzzer — Burp Suite and CLI
 
-An authorization-bypass fuzzer available as both a Burp Suite extension and a standalone Java/Docker CLI. Both surfaces use the same payload resources and transport-neutral Bypass planner.
+An authorization-bypass fuzzer available as both a Burp Suite extension and a standalone Java/Docker CLI. Both surfaces use the scan planners and request-admission engine in `core`; Burp adds Proxy history, Collaborator, and its UI, while the CLI adds file inputs and evidence output.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ All four modes are available from the CLI. Sweep accepts URL lists, raw-request 
 - **Standalone CLI:**
   - Runs as a Java fat JAR or a locally built non-root Docker image
   - Provides `sweep`, `bypass`, `idor`, and `url-validation` commands
-  - Uses the same Bypass planner and bundled payload resources as the Burp extension
+  - Uses the same Bypass, Sweep, IDOR, and URL Validation planners as the Burp extension
   - Preserves raw request targets, ordered duplicate headers, and request bodies
   - Keeps the network destination separate from the fuzzable `Host` header
   - Supports HTTP/1.0, HTTP/1.1, native HTTP/2, cleartext h2c, and ALPN negotiation
@@ -65,11 +65,12 @@ All four modes are available from the CLI. Sweep accepts URL lists, raw-request 
   - Optional one-click browser User-Agent preset on sweep probes
   - Shared request-header controls in every mode, including optional per-request User-Agent variation with synthetic non-browser tokens or browser-like variants
   - Shared full throttle controls and a common deferred retry queue across Bypass, Sweep, IDOR, and URL Validation
-  - Includes a preview table and exact probe preview before sending requests
+  - Includes a probe table and a Burp request editor for each selected preview row
   - Uses an explicit build-time wordlist at `src/main/resources/payloads/sweep_probes.txt`
   - Shows concrete signals such as `403 -> 200` and suppresses noisy `4xx` probe signals
 
 - **AuthZ Bypass Attack Types:**
+  - `Preview Requests` shows up to 1,000 planned payloads in the shared table and request editor
   - Header-based attacks (283+ bypass headers)
   - Path manipulation (367+ URL encodings)
   - HTTP verb/method attacks (11 methods + overrides + case variations + X-prefix/suffix)
@@ -85,7 +86,7 @@ All four modes are available from the CLI. Sweep accepts URL lists, raw-request 
 - **Dedicated URL Validation Tab:**
   - URL Validation playbooks based on the [Portswigger Cheatsheet](https://portswigger.net/web-security/ssrf/url-validation-bypass-cheat-sheet)
   - Mark your injection points with `{INJECT}`
-  - Includes a `View Payloads` preview for the exact generated list before execution
+  - Includes a `Preview Requests` table with a Burp request editor for the selected generated request
 - **Smart Filtering:** Automatically reduces noise by hiding repeated responses with pattern tracking
 - **Adaptive Rate Control:**
   - One controller per host discovers that host's rate-limit ceiling and rides just under it, maximizing throughput while keeping throttles rare
@@ -308,7 +309,7 @@ java -jar cli/build/libs/bypassfuzzer-cli.jar bypass \
 
 ### IDOR / BOLA
 
-The authorized identifier must appear as an exact literal in the request. The CLI sends the authorized control and target-identifier baseline before its path, query, body, and hybrid playbooks:
+The authorized identifier must occur in a selectable path, query, form, JSON, plain-text, XML, multipart text-field, header, or cookie location. When it occurs more than once, choose the slot with `--id-location`. Credential-bearing and structural headers and cookies are excluded from location discovery. The CLI sends the authorized control and target-identifier baseline before its path, query, body, and hybrid playbooks:
 
 ```http
 GET /api/users/100/orders?userId=100 HTTP/1.1
@@ -323,12 +324,18 @@ java -jar cli/build/libs/bypassfuzzer-cli.jar idor \
   --target-origin https://api.example \
   --authorized-id 100 \
   --target-id 200 \
-  --max-probes 500 \
+  --id-location path:3 \
   --redact \
   --output output/idor
 ```
 
-Always compare a possible finding with both baseline records before treating it as an authorization issue.
+Use `--preview` to inspect the exact requests without sending them. IDOR has no numeric mutation cap: Burp and CLI plan every applicable probe from the enabled playbooks. The CLI rejects `--max-probes` and `execution.maxProbes` for IDOR so a shared setting cannot silently truncate coverage. IDOR defaults to one concurrent request and no state-changing automatic retries. For create requests, `--unique-json-field /name` appends a distinct value to that JSON string field for each control and mutation. Two baseline requests run first, and retries may add sends, so preview the count before running a write request. A failed authorized control stops mutation traffic. A 2xx target baseline is marked for review and does not stop IDOR mutations, because the response may contain diminished access. Compare candidates with both baselines and read back created objects before concluding a write persisted.
+
+The `idor.body.response_guided_mass_assignment` family is enabled by default. It finds exact occurrences of either configured identifier anywhere in baseline JSON, then derives body-field variants from the observed paths. It does not assume a particular resource name or JSON key. On create requests it automatically uses a string `/name` field for distinct values unless another unique field is configured; it leaves identifier values intact. In Burp, send a request together with its response to preview these probes and use **Inspect Response Fields** to review the discovered paths. The CLI accepts `--baseline-response baseline.raw` for offline preview; live scans discover fields from the baselines they send. Uncheck the family in **Select Playbooks...** or select an explicit CLI family list to exclude it.
+
+The `idor.hybrid.paired_control_separators` family is also enabled by default. It joins only your two IDs in both orders, starting with LF, CRLF, CR, NUL, and tab, then other Unicode controls and selected invisible format characters. URL values are percent-encoded; JSON and XML use valid string or character-reference syntax. Explicit HTTP/1 header scans get only an inline tab; HTTP/2 or auto-negotiated headers and cookie values get no control-character probes. Previews report eligible separator counts and why a context skipped others.
+
+Several IDOR playbooks that can guess other standalone identifiers are DANGEROUS and off by default. This includes `idor.query.numeric_pivots`, `idor.path.special_identifier_values` (values such as `0`, `1`, `-1`), `idor.body.json_edge_cases` (including numeric JSON values), and the canonical and truncated identifier variants that can collapse an ID into a different one. Burp requires a warning confirmation before enabling any of them in **Select Playbooks...**. In the CLI, select their IDs explicitly with `--families` or an explicit YAML family list; the CLI prints a warning. Review the preview and your test scope before sending. Bypass payload defaults are unchanged.
 
 ### URL validation
 
@@ -493,6 +500,7 @@ Raw evidence can contain credentials. Use `--redact` to mask common credential h
 2. **Open the Request Session:**
    - `Sweep` for broad coverage of blocked endpoints found in Proxy history
    - The request opens as a closeable tab beneath the mode you selected
+   - Double-click the request tab name, or right-click it and choose `Rename tab...`, to give that session a useful name
    - `Bypass` runs the core AuthZ bypass playbooks
    - `IDOR` runs object identifier and BOLA-style mutations
    - `URL Validation` runs marker-driven URL validation testing
@@ -635,6 +643,7 @@ If Burp receives no response, Sweep retries safe `GET`/`HEAD` probes over HTTP/1
 Wiki-style project documentation lives under [`wiki/`](wiki/), including:
 
 - [`docs/CLI.md`](docs/CLI.md) for the complete standalone CLI reference
+- [`docs/SCAN-ENGINE.md`](docs/SCAN-ENGINE.md) for the shared planner and execution boundaries
 - [`wiki/Home.md`](wiki/Home.md)
 - [`wiki/Playbooks-Overview.md`](wiki/Playbooks-Overview.md)
 - [`wiki/Coverage-Sweep-Mode.md`](wiki/Coverage-Sweep-Mode.md)

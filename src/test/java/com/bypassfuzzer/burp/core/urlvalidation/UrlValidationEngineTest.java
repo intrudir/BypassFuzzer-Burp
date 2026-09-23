@@ -29,16 +29,7 @@ class UrlValidationEngineTest {
         UrlValidationEngine engine = new UrlValidationEngine(
             mock(MontoyaApi.class, RETURNS_DEEP_STUBS),
             new GlobalTrafficGovernor(),
-            new NullResponseRequestSender(),
-            new UrlValidationCandidateFinder() {
-                @Override
-                public List<UrlValidationCandidate> find(
-                    burp.api.montoya.http.message.requests.HttpRequest request,
-                    UrlValidationOptions options) {
-                    return List.of(new UrlValidationCandidate(
-                        "marker", "trusted.example", "marker", (base, payload) -> base));
-                }
-            });
+            new NullResponseRequestSender());
         UrlValidationOptions options = new UrlValidationOptions(
             "{INJECT}",
             "trusted.example",

@@ -43,13 +43,21 @@ Targeted examples:
 
 ```bash
 bypassfuzzer bypass --request blocked.raw --target-origin https://app.example --families header,path,verb
-bypassfuzzer idor --request object.raw --target-origin https://app.example --authorized-id 100 --target-id 200
+bypassfuzzer idor --request object.raw --target-origin https://app.example --authorized-id 100 --target-id 200 --id-location path:3 --preview
 bypassfuzzer url-validation --request redirect.raw --target-origin https://app.example \
   --marker '{INJECT}' --allowed-host trusted.example --attacker-host attacker.example \
   --contexts absolute-url,host-header,cors --encodings raw,intruders
 ```
 
 Collaborator is intentionally unavailable. No CLI option or YAML key enables it.
+
+IDOR discovers exact identifier slots in path segments, query/form values, JSON fields, plain text, XML text/attributes, multipart text fields, selected header values, and selected cookie values. Select a slot with `--id-location` when the authorized value appears more than once. Credential-bearing and structural headers/cookies are excluded. `--preview` sends no traffic. Every applicable mutation from enabled IDOR playbooks is planned, with no numeric cap; `--max-probes` and YAML `execution.maxProbes` are rejected for IDOR. Execution is serial by default. For create requests, `--unique-json-field /name` gives each planned request a distinct JSON string value.
+
+The `idor.body.response_guided_mass_assignment` family is enabled by default. It searches both live baseline JSON responses for exact values matching either configured identifier, derives JSON body fields from those paths, and tests both an authorized path with the target ID in the body and a target path with the authorized ID in the body. To preview those requests offline, save a raw HTTP response and add `--baseline-response baseline.raw`; without it, the family is planned only after live baselines return. Select a different `idor.families` list in YAML or `--families` on the command line to exclude it. Results are candidates for manual readback, not proof that a write persisted or granted access.
+
+`idor.hybrid.paired_control_separators` is enabled by default. It combines only the two selected IDs in both directions, with LF, CRLF, CR, NUL, and tab first. It covers Unicode Cc controls and a bounded set of invisible format characters, encoded for the selected slot. The preview reports planned/eligible counts and unsupported-context notes. Header values use only inline tab with `--protocol http1`; cookie values and HTTP/2 or auto-negotiated headers receive no control probes.
+
+The DANGEROUS IDOR families `idor.query.numeric_pivots`, `idor.path.special_identifier_values`, `idor.body.json_edge_cases`, `idor.hybrid.canonical_identifier_formats`, and `idor.hybrid.truncated_identifier_variants` are disabled by default. They can probe numeric values such as `0`, `1`, and `-1`, nearby IDs, or shortened IDs beyond the two you entered. Select a family explicitly with `--families` or an explicit `idor.families` YAML list to opt in; the CLI warns on stderr. Use `--preview` first to inspect the generated requests. Bypass defaults are unaffected.
 
 ## Protocols and execution
 

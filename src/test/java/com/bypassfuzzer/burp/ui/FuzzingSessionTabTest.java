@@ -5,6 +5,7 @@ import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.session.FuzzingSessionController;
+import com.bypassfuzzer.burp.session.SessionRunOptions;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.session.IdorPanel;
 import com.bypassfuzzer.burp.ui.session.SessionResultsWorkspace;
@@ -16,6 +17,7 @@ import javax.swing.JPanel;
 import java.awt.Component;
 import java.awt.Container;
 import java.lang.reflect.Field;
+import java.util.Set;
 
 import static com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,6 +50,24 @@ class FuzzingSessionTabTest {
         assertTrue(uiText.contains("Check All"));
         assertFalse(uiText.contains("Throttle..."));
         assertFalse(uiText.contains("Requests/second"));
+        assertTrue(uiText.contains("Preview Requests"));
+    }
+
+    @Test
+    void bypassPreviewRowsUseTheSelectedAttackFamily() {
+        FuzzingSessionTab tab = session(TargetedMode.BYPASS);
+        try {
+            SessionRunOptions options = new SessionRunOptions(
+                true, false, false, false, false, false, false,
+                false, false, false, false, false, false, false, 1, Set.of(429));
+            var rows = tab.buildBypassPreviewRows(options, false);
+            assertFalse(rows.isEmpty());
+            assertTrue(rows.size() <= 1_000);
+            assertTrue(rows.stream().allMatch(row -> row.family().equals("Header")));
+            assertTrue(rows.stream().allMatch(row -> !row.payload().isBlank()));
+        } finally {
+            tab.cleanup();
+        }
     }
 
     @Test

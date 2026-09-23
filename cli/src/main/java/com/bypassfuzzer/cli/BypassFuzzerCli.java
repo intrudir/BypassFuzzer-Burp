@@ -8,12 +8,17 @@ import com.bypassfuzzer.cli.run.ScanExecutor;
 import com.bypassfuzzer.cli.transport.NettyRequestTransport;
 import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
+import com.bypassfuzzer.core.http.HttpResponseData;
+import com.bypassfuzzer.core.http.RawHttpResponseParser;
 import com.bypassfuzzer.core.scan.AttackFamily;
 import com.bypassfuzzer.core.scan.BypassPlanner;
 import com.bypassfuzzer.core.scan.HighSignalPlanner;
 import com.bypassfuzzer.core.scan.IdorPlanner;
+import com.bypassfuzzer.core.scan.IdorPlanOptions;
 import com.bypassfuzzer.core.scan.PayloadSet;
 import com.bypassfuzzer.core.scan.PlannedRequest;
+import com.bypassfuzzer.core.scan.ResponseGuidedIdorPlanner;
+import com.bypassfuzzer.core.scan.ScanEngine;
 import com.bypassfuzzer.core.scan.UrlValidationPlanner;
 import com.bypassfuzzer.core.urlvalidation.UrlValidationAttackSetting;
 import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
@@ -27,6 +32,7 @@ import picocli.CommandLine.Spec;
 import picocli.CommandLine.Model.CommandSpec;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -74,7 +80,7 @@ public final class BypassFuzzerCli implements Runnable {
         @Option(names = "--per-host-concurrency", description = "Maximum in-flight requests per host.") Integer perHostConcurrency;
         @Option(names = "--throttle-codes", split = ",", description = "HTTP status codes treated as throttling.") List<Integer> throttleCodes;
         @Option(names = "--retry-attempts", description = "Retries for no-response or throttled requests.") Integer retryAttempts;
-        @Option(names = "--max-probes", description = "Maximum mutations generated per input.") Integer maxProbes;
+        @Option(names = "--max-probes", description = "Maximum mutations per input (not supported by IDOR).") Integer maxProbes;
         @Option(names = "--redact", description = "Redact common credential headers in stored evidence.") Boolean redact;
         @Option(names = "--header", description = "Upsert a header on every base request; repeatable.") List<String> headers;
         @Option(names = "--user-agent-mode", description = "disabled, synthetic, or browser-like.") String userAgentMode;
@@ -101,10 +107,13 @@ public final class BypassFuzzerCli implements Runnable {
             boolean insecure = first(common.insecure, job.bool("transport", "insecure"), false);
             int timeout = first(common.requestTimeout, job.integer("transport", "requestTimeoutSeconds"), 15);
             int connectTimeout = first(common.connectTimeout, job.integer("transport", "connectTimeoutSeconds"), 10);
-            int global = first(common.globalConcurrency, job.integer("execution", "globalConcurrency"), 10);
-            int perHost = first(common.perHostConcurrency, job.integer("execution", "perHostConcurrency"), Math.min(10, global));
+            int global = first(common.globalConcurrency, job.integer("execution", "globalConcurrency"),
+                mode.equals("idor") ? 1 : 10);
+            int perHost = first(common.perHostConcurrency, job.integer("execution", "perHostConcurrency"),
+                mode.equals("idor") ? 1 : Math.min(10, global));
             int retries = first(common.retryAttempts, job.integer("execution", "retryAttempts"), 1);
-            int max = first(common.maxProbes, job.integer("execution", "maxProbes"), mode.equals("sweep") ? 80 : 2_000);
+            int max = first(common.maxProbes, job.integer("execution", "maxProbes"),
+                mode.equals("sweep") ? 80 : mode.equals("idor") ? IdorPlanOptions.UNLIMITED : 2_000);
             boolean redact = first(common.redact, job.bool("evidence", "redact"), false);
             List<Integer> throttle = common.throttleCodes != null ? common.throttleCodes : integers(job.strings("execution", "throttleStatusCodes"), List.of(429, 503));
             List<String> headers = common.headers != null ? common.headers : first(job.strings("execution", "headers"), List.of());
@@ -120,6 +129,13 @@ public final class BypassFuzzerCli implements Runnable {
 
         protected int execute(String mode, List<HttpRequestData> requests,
                               Function<HttpRequestData, List<PlannedRequest>> planner,
+                              CommonResolved resolved, YamlJob job) {
+            return execute(mode, requests, planner, null, resolved, job);
+        }
+
+        protected int execute(String mode, List<HttpRequestData> requests,
+                              Function<HttpRequestData, List<PlannedRequest>> planner,
+                              ScanEngine.PostBaselinePlanner postBaselinePlanner,
                               CommonResolved resolved, YamlJob job) {
             List<HttpRequestData> prepared;
             try { prepared = prepare(requests, resolved); }
@@ -139,7 +155,7 @@ public final class BypassFuzzerCli implements Runnable {
                 Map.entry("perHostConcurrency", resolved.options.perHostConcurrency()),
                 Map.entry("throttleStatusCodes", resolved.options.throttleStatusCodes()),
                 Map.entry("retryAttempts", resolved.options.retryAttempts()),
-                Map.entry("maxProbes", resolved.maxProbes),
+                Map.entry("maxProbes", mode.equals("idor") ? "unlimited" : resolved.maxProbes),
                 Map.entry("headers", resolved.headers),
                 Map.entry("userAgentMode", resolved.userAgentMode),
                 Map.entry("userAgentSeed", resolved.userAgentSeed),
@@ -152,7 +168,8 @@ public final class BypassFuzzerCli implements Runnable {
             try (EvidenceWriter evidence = new EvidenceWriter(resolved.options.outputDirectory(), runId, resolved.options.redact(), effective);
                  NettyRequestTransport transport = new NettyRequestTransport(resolved.insecure, resolved.proxy, Duration.ofSeconds(resolved.connectTimeout))) {
                 try {
-                    new ScanExecutor().run(mode, prepared, planner, transport, resolved.options, evidence);
+                    new ScanExecutor().run(mode, prepared, planner, postBaselinePlanner,
+                        transport, resolved.options, evidence);
                 } catch (Throwable error) {
                     Map<String, Object> failed = new LinkedHashMap<>();
                     failed.put("schemaVersion", 1); failed.put("state", "failed"); failed.put("mode", mode);
@@ -167,7 +184,7 @@ public final class BypassFuzzerCli implements Runnable {
             }
         }
 
-        private List<HttpRequestData> prepare(List<HttpRequestData> requests, CommonResolved resolved) {
+        protected List<HttpRequestData> prepare(List<HttpRequestData> requests, CommonResolved resolved) {
             List<HttpRequestData> output = new ArrayList<>();
             int sequence = 0;
             for (HttpRequestData original : requests) {
@@ -275,13 +292,60 @@ public final class BypassFuzzerCli implements Runnable {
         @Option(names = "--target-origin") String targetOrigin;
         @Option(names = "--authorized-id") String authorizedId;
         @Option(names = "--target-id") String targetId;
+        @Option(names = "--id-location", description = "Exact discovered ID slot, e.g. path:5, json:/account/id, header:x-object-id#0, or multipart:id#0.") String location;
+        @Option(names = "--families", split = ",", description = "Selected IDOR playbook IDs.") List<String> families;
+        @Option(names = "--include-method-changes", description = "Include method and override variants.") Boolean includeMethodChanges;
+        @Option(names = "--unique-json-field", description = "JSON pointer to a string field given a unique value per request, e.g. /name.") String uniqueJsonField;
+        @Option(names = "--baseline-response", description = "Saved raw HTTP response for offline response-guided preview.") Path baselineResponse;
+        @Option(names = "--preview", description = "Print every planned request without sending traffic.") boolean preview;
         @Override public Integer call() {
             YamlJob job = job(); CommonResolved common = common(job, "idor");
             try {
+                if (this.common.maxProbes != null || job.integer("execution", "maxProbes") != null)
+                    throw new IllegalArgumentException("IDOR no longer supports --max-probes or execution.maxProbes; all enabled playbook probes are planned.");
                 List<HttpRequestData> input = loader().raw(first(request, job.path("input", "request")), first(targetOrigin, job.string("input", "targetOrigin")));
                 String authorized = first(authorizedId, job.string("idor", "authorizedId"));
                 String target = first(targetId, job.string("idor", "targetId"));
-                return execute("idor", input, value -> new IdorPlanner().plan(value, authorized, target, common.maxProbes), common, job);
+                String selectedLocation = first(location, job.string("idor", "location"));
+                List<String> selectedFamilies = first(families, job.strings("idor", "families"), List.of());
+                boolean methods = first(includeMethodChanges, job.bool("idor", "includeMethodChanges"), false);
+                IdorPlanOptions idor = new IdorPlanOptions(authorized, target, selectedLocation,
+                    new LinkedHashSet<>(selectedFamilies), IdorPlanOptions.UNLIMITED, methods,
+                    first(uniqueJsonField, job.string("idor", "uniqueJsonField")),
+                    UUID.randomUUID().toString().substring(0, 8));
+                IdorPlanner idorPlanner = new IdorPlanner();
+                for (String family : idorPlanner.availableFamilies())
+                    if (idor.families().contains(family)
+                        && idorPlanner.dangerousFamilyRisks().containsKey(family))
+                        System.err.println("DANGEROUS: " + family + ": "
+                            + idorPlanner.dangerousFamilyRisks().get(family));
+                List<HttpRequestData> prepared = prepare(input, common);
+                ResponseGuidedIdorPlanner guided = new ResponseGuidedIdorPlanner();
+                HttpResponseData sample = null;
+                Path responseFile = first(baselineResponse, job.path("idor", "baselineResponse"));
+                if (responseFile != null) sample = new RawHttpResponseParser().parse(Files.readAllBytes(responseFile));
+                HttpRequestData previewRequest = prepared.get(0).withProtocol(common.options.protocol());
+                List<PlannedRequest> firstPlan = guided.enabled(idor)
+                    ? guided.plan(previewRequest, idor, sample, null)
+                    : new IdorPlanner().plan(previewRequest, idor);
+                if (preview) {
+                    for (PlannedRequest planned : firstPlan)
+                        System.out.printf("=== %s ===%n%s%n", planned.payload(), planned.request().toRaw());
+                    var coverage = idorPlanner.separatorCoverage(previewRequest, idor, firstPlan);
+                    if (coverage != null) {
+                        System.err.println("Paired control separators: " + coverage.planned()
+                            + "/" + coverage.eligible() + " planned");
+                        coverage.notes().forEach(System.err::println);
+                    }
+                    if (guided.enabled(idor) && sample == null)
+                        System.err.println("Response-guided probes require live baselines or --baseline-response for offline preview.");
+                    return 0;
+                }
+                if (guided.enabled(idor)) return execute("idor", input,
+                    value -> guided.initialPlan(value, idor),
+                    (value, authorizedResponse, targetResponse) -> guided.plan(value, idor,
+                        authorizedResponse, targetResponse), common, job);
+                return execute("idor", input, value -> new IdorPlanner().plan(value, idor), common, job);
             } catch (Exception exception) { throw inputError(exception); }
         }
     }

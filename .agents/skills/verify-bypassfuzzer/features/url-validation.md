@@ -5,10 +5,11 @@ URL Validation edits a selected request around one or more `{INJECT}` markers, p
 ## Sub-features
 
 - `urlval-route` sends a selected request through `Send to BypassFuzzer` -> `URL Validation`.
+- `urlval-tab-name` renames a request session from its tab header by double-click or `Rename tab...` in the right-click menu.
 - `urlval-workbench` edits the exact request, places `{INJECT}` markers, and resets to the original request.
 - `urlval-context` configures Absolute URL, Host header, or CORS contexts plus allowed and attacker-controlled hosts.
 - `urlval-families` selects attack settings and encodings, then uses the shared request-header/User-Agent controls and hard global/per-host concurrency caps.
-- `urlval-preview` uses `View Payloads` or `Copy Payloads` to inspect the exact generated set before execution.
+- `urlval-preview` uses `Preview Requests` for a payload table and selected Burp request editor, or `Copy Payloads` for the generated values.
 - `urlval-run` starts, pauses/resumes, stops, clears, identifies the active marker, and reports physical HTTP sends separately from recorded/shown result counts while requests run.
 - `urlval-results` receives bounded UI batches, retains raw request/response evidence in Burp's temp-file-backed messages, inspects and filters rows, and opens the shared `Retry queue (n)` viewer.
 
@@ -16,9 +17,10 @@ URL Validation edits a selected request around one or more `{INJECT}` markers, p
 
 - Select a request in Burp and choose `Send to BypassFuzzer` -> `URL Validation`.
 - Choose top-level `URL Validation`, then its nested `<METHOD> <path>` session.
+- Double-click the nested tab name or right-click it and choose `Rename tab...` to label the session.
 - Choose `Configure Attack`; edit the `Request Workbench` to insert `{INJECT}` in a query value, header, or body.
 - Select the relevant context/settings and enter the allow-listed host plus attacker host, or enable Burp Collaborator when available and authorized.
-- Choose `View Payloads`, `Copy Payloads`, `Start URL Validation`, or `Reset Request`.
+- Choose `Preview Requests`, `Copy Payloads`, `Start URL Validation`, or `Reset Request`.
 - Use `Pause`, `Stop`, `Clear Results`, filters, viewers, and retry controls after the run begins.
 
 ## Driving it with verify-bypassfuzzer
@@ -31,7 +33,8 @@ Preconditions:
 
 - **Automated user-path/live proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" url-validation`. The harness proves mode routing, mode-specific controls and headers, separate HTTP-send/result accounting, payload generation, then runs marker mode through the production URL Validation engine against an isolated lab and requires the URL allow-list bypass marker.
 - **Set marker.** Send `GET /redirect/next?next={INJECT}` to URL Validation, choose `Configure Attack`, and confirm the Request Workbench still contains the marker in the exact request that will be sent.
-- **Configure and preview.** Select the Absolute URL context, enter the trusted and attacker hosts used by the lab recipe, and choose `View Payloads`. Capture at least one generated `trusted@attacker`-style payload and confirm the preview count matches the enabled settings/encodings.
+- **Rename the session.** Double-click its nested tab name, enter `Redirect host test`, and require the visible title to change while the same request session remains selected. Right-click the name to find `Rename tab...`.
+- **Configure and preview.** Select the Absolute URL context, enter the trusted and attacker hosts used by the lab recipe, and choose `Preview Requests`. Select a `trusted@attacker`-style payload row and require the Burp editor to show it in the generated request. Confirm the preview count matches the enabled settings/encodings.
 - **Review shared execution settings.** `Request Headers...` includes synthetic/browser-like per-request User-Agent variation. `Throttle...` includes hard global/per-host in-flight caps, throttle codes, posture, and fixed/smart run-wide pauses.
 - **Run and inspect.** Choose `Start URL Validation`; the dialog hides, status becomes `URL validation fuzzing in progress...`, and results appear. Require a request in which `{INJECT}` was replaced and a response carrying the lab's `url-allowlist-bypass` marker.
 - **Confirm accounting.** Require `HTTP request(s) sent` to reflect network attempts independently of `result(s) recorded` and any filtered `showing` count. Retry Queue sends must increase the HTTP total.

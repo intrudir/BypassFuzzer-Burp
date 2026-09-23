@@ -11,10 +11,12 @@ import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationOptions;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayload;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayloadGenerator;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationCandidate;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationEncoding;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
+import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
+import com.bypassfuzzer.burp.http.CoreRequestAdapter;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
+import com.bypassfuzzer.core.scan.UrlValidationPlanner;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -31,7 +33,6 @@ import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.Font;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -54,7 +55,7 @@ public class UrlValidationPanel extends JPanel {
     private JButton pauseButton;
     private JButton configButton;
     private JButton resetRequestButton;
-    private JButton viewPayloadsButton;
+    private JButton previewRequestsButton;
     private JLabel statusLabel;
     private JLabel warningLabel;
     private JLabel configWarningLabel;
@@ -211,13 +212,13 @@ public class UrlValidationPanel extends JPanel {
         JPanel actionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 10));
         actionsPanel.setAlignmentX(LEFT_ALIGNMENT);
 
-        viewPayloadsButton = new JButton("View Payloads");
-        viewPayloadsButton.addActionListener(e -> openPayloadPreviewDialog());
+        previewRequestsButton = new JButton("Preview Requests");
+        previewRequestsButton.addActionListener(e -> openRequestPreviewDialog());
 
         JButton copyPayloadsButton = new JButton("Copy Payloads");
         copyPayloadsButton.addActionListener(e -> copyPayloadsToClipboard());
 
-        actionsPanel.add(viewPayloadsButton);
+        actionsPanel.add(previewRequestsButton);
         actionsPanel.add(javax.swing.Box.createHorizontalStrut(6));
         actionsPanel.add(copyPayloadsButton);
         return actionsPanel;
@@ -419,7 +420,7 @@ public class UrlValidationPanel extends JPanel {
         startButton.setEnabled(enabled);
         configButton.setEnabled(enabled);
         resetRequestButton.setEnabled(enabled);
-        viewPayloadsButton.setEnabled(enabled);
+        previewRequestsButton.setEnabled(enabled);
     }
 
     private UrlValidationOptions collectOptions() {
@@ -480,7 +481,7 @@ public class UrlValidationPanel extends JPanel {
         configDialog.requestFocus();
     }
 
-    private void openPayloadPreviewDialog() {
+    private void openRequestPreviewDialog() {
         UrlValidationOptions options = collectOptions();
         if (options == null) {
             return;
@@ -498,40 +499,38 @@ public class UrlValidationPanel extends JPanel {
             return;
         }
 
-        UrlValidationCandidate previewCandidate = new UrlValidationCandidate(
-            options.normalizedMarkerText(),
-            options.normalizedMarkerText(),
-            "marker",
-            (request, newValue) -> request
-        );
-        java.util.List<UrlValidationPayload> payloads = payloadGenerator.generate(previewCandidate, options);
+        try {
+            java.util.List<RequestPreviewPanel.Row> rows = buildPreviewRows(currentRequest(), options);
+            String note = options.useCollaboratorPayloads()
+                ? " (collaborator-preview.invalid is a placeholder)" : "";
+            RequestPreviewPanel.open(api, configDialog, "URL Validation Request Preview",
+                rows.size() + " planned requests" + note, rows);
+        } catch (RuntimeException error) {
+            showWarning("Unable to preview requests: " + error.getMessage());
+        }
+    }
 
-        JTextArea payloadText = new JTextArea(renderPayloadPreview(payloads));
-        payloadText.setEditable(false);
-        payloadText.setLineWrap(false);
-        payloadText.setWrapStyleWord(false);
-        payloadText.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        payloadText.setCaretPosition(0);
-
-        JScrollPane scrollPane = new JScrollPane(payloadText);
-        scrollPane.setPreferredSize(new Dimension(860, 520));
-
-        JDialog previewDialog = new JDialog(configDialog, "Payload Preview (" + payloads.size() + ")", false);
-        previewDialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        previewDialog.setLayout(new BorderLayout(0, 8));
-
-        JLabel header = new JLabel(
-            "Previewing " + payloads.size() + " payloads for "
-                + options.normalizedPayloadFamilies().stream().map(Object::toString).collect(Collectors.joining(", "))
-                + " with " + options.effectiveEncodings().stream().map(UrlValidationEncoding::label).collect(Collectors.joining(", "))
-        );
-        header.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
-
-        previewDialog.add(header, BorderLayout.NORTH);
-        previewDialog.add(scrollPane, BorderLayout.CENTER);
-        previewDialog.pack();
-        previewDialog.setLocationRelativeTo(configDialog);
-        previewDialog.setVisible(true);
+    java.util.List<RequestPreviewPanel.Row> buildPreviewRows(HttpRequest activeRequest,
+                                                              UrlValidationOptions options) {
+        String attackerHost = options.useCollaboratorPayloads()
+            ? "collaborator-preview.invalid" : options.normalizedAttackerHost();
+        CoreRequestAdapter adapter = new CoreRequestAdapter();
+        ConfiguredHeaderPolicy headers = new ConfiguredHeaderPolicy(options.requestHeaders(),
+            options.userAgentMode(), options.userAgentRandomizationSeed());
+        var planned = new UrlValidationPlanner().plan(adapter.fromMontoya(activeRequest),
+            UrlValidationPayloadGenerator.toCoreOptions(options, attackerHost), Integer.MAX_VALUE);
+        return planned.stream().map(item -> {
+            String description = item.payload();
+            int separator = description.indexOf("]: ");
+            String payload = item.baseline() ? options.normalizedMarkerText()
+                : separator < 0 ? description : description.substring(separator + 3);
+            String variant = item.baseline() ? description
+                : separator < 0 ? "" : description.substring(0, separator + 1);
+            HttpRequest wire = headers.reconcileMutation(activeRequest,
+                adapter.toMontoya(activeRequest, item.request()));
+            return new RequestPreviewPanel.Row(item.baseline() ? "Baseline" : "Mutation",
+                item.family(), payload, variant, item.encoding(), wire);
+        }).toList();
     }
 
     private void copyPayloadsToClipboard() {
@@ -558,26 +557,6 @@ public class UrlValidationPanel extends JPanel {
         );
     }
 
-    private String renderPayloadPreview(java.util.List<UrlValidationPayload> payloads) {
-        StringBuilder builder = new StringBuilder();
-        builder.append(String.format("%-14s %-16s %-15s %s%n", "Family", "Category", "Encoding", "Payload"));
-        builder.append(String.format("%-14s %-16s %-15s %s%n", "------", "--------", "--------", "-------"));
-        for (UrlValidationPayload payload : payloads) {
-            // Sanitize control chars so they don't break the fixed-width display.
-            // The actual payload sent on the wire is unaffected — this is display-only.
-            String displayValue = payload.value()
-                .replace("\r\n", "\\r\\n").replace("\n", "\\n")
-                .replace("\r", "\\r").replace("\t", "\\t");
-            builder.append(String.format(
-                "%-14s %-16s %-15s %s%n",
-                payload.family().displayName(),
-                payload.category(),
-                payload.encoding().label(),
-                displayValue
-            ));
-        }
-        return builder.toString();
-    }
 
     private boolean hasRunnableTargets(HttpRequest request, UrlValidationOptions options) {
         int markerCount = candidateFinder.countMarkerOccurrences(request, options.normalizedMarkerText());

@@ -125,12 +125,12 @@ java -jar bypassfuzzer-cli.jar --help
 Build the CLI image locally from the repository:
 
 ```bash
-docker build -t bypassfuzzer:1.4.2 .
+docker build -t bypassfuzzer:1.4.3 .
 
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -v "$PWD:/work" \
-  bypassfuzzer:1.4.2 \
+  bypassfuzzer:1.4.3 \
   sweep --urls /work/targets.txt --output /work/output/sweep
 ```
 
@@ -152,7 +152,7 @@ sh build.sh clean shadowJar
 
 On Windows PowerShell, run `.\build.ps1 clean shadowJar`. On systems where the shell does not preserve executable bits, run `sh build.sh clean shadowJar`. These helpers use an existing Java 17+ installation when available. Otherwise they download Temurin 17 into `.gradle/jdks` and reuse it on later builds. You can still invoke `./gradlew` or `gradlew.bat` directly when Java is already configured.
 
-Builds embed the public S3 version manifest URL by default so BypassFuzzer can notify users when a newer release is available. Override it for custom release channels with `-PupdateManifestUrl=...`. To preview the update banner locally without changing S3, build with `-PdevLatestVersion=1.4.2`.
+Builds embed the public S3 version manifest URL by default so BypassFuzzer can notify users when a newer release is available. Override it for custom release channels with `-PupdateManifestUrl=...`. To preview the update banner locally without changing S3, build with `-PdevLatestVersion=1.4.4`.
 
 ## CLI usage
 

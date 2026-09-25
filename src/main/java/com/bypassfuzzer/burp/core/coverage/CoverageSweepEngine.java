@@ -74,6 +74,7 @@ public class CoverageSweepEngine {
     private final Set<String> completedSweepHosts = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String, AtomicInteger> pendingHostCandidates = new ConcurrentHashMap<>();
     private final AtomicInteger plannedMainRequests = new AtomicInteger();
+    private final AtomicInteger skippedPublicEndpoints = new AtomicInteger();
     private final AtomicInteger completedMainRequests = new AtomicInteger();
     private final AtomicInteger sentRequests = new AtomicInteger();
     private final AtomicInteger automaticRetryRequests = new AtomicInteger();
@@ -297,6 +298,7 @@ public class CoverageSweepEngine {
         CoverageSweepOptions effectiveOptions = options == null ? CoverageSweepOptions.defaults() : options;
         pauseController.reset();
         plannedMainRequests.set(0);
+        skippedPublicEndpoints.set(0);
         completedMainRequests.set(0);
         sentRequests.set(0);
         automaticRetryRequests.set(0);
@@ -391,6 +393,10 @@ public class CoverageSweepEngine {
         return plannedMainRequests.get();
     }
 
+    public int skippedPublicEndpointCount() {
+        return skippedPublicEndpoints.get();
+    }
+
     public int completedMainRequestCount() {
         return completedMainRequests.get();
     }
@@ -472,11 +478,7 @@ public class CoverageSweepEngine {
                     }
                     CoverageSweepCandidate candidate = interleaved.get(candidateIndex);
                     try {
-                        List<CoverageSweepProbe> probes = buildProbes(candidate, options);
-                        plannedMainRequests.addAndGet(probes.size()
-                            + (options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
-                                && options.verifyUnauthenticatedAccess() ? 1 : 0));
-                        executeCandidate(candidate, probes, options, resultCallback, retryQueue);
+                        executeCandidate(candidate, options, resultCallback, retryQueue);
                     } catch (Exception e) {
                         safeLogError("Coverage sweep candidate failed for " + candidate.displayUrl() + ": "
                             + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
@@ -512,7 +514,6 @@ public class CoverageSweepEngine {
     }
 
     private void executeCandidate(CoverageSweepCandidate candidate,
-                                  List<CoverageSweepProbe> probes,
                                   CoverageSweepOptions options,
                                   Consumer<AttackResult> resultCallback,
                                   ConcurrentLinkedQueue<RetryTask> retryQueue) {
@@ -528,13 +529,19 @@ public class CoverageSweepEngine {
             HttpRequest anonymousBase = stripAuthentication(candidate.request(), options.authSelection());
             verificationRequest = anonymousPolicy.reconcileMutation(anonymousBase, anonymousBase);
             HttpRequest scheduledVerificationRequest = verificationRequest;
+            plannedMainRequests.incrementAndGet();
             anonymousControlResponse = sendScheduled(scheduledVerificationRequest,
                 () -> requestSender.send(scheduledVerificationRequest, this::awaitSendAdmission));
             completedMainRequests.incrementAndGet();
+            String signal = anonymousControlResponse == null
+                ? "No response"
+                : CoverageSweepClassifier.unauthenticatedControlSignal(candidate, anonymousControlResponse);
+            boolean skipProbes = options.skipLikelyPublicEndpoints()
+                && signal.startsWith(CoverageSweepClassifier.LIKELY_PUBLIC_PREFIX);
+            if (skipProbes) {
+                skippedPublicEndpoints.incrementAndGet();
+            }
             if (resultCallback != null) {
-                String signal = anonymousControlResponse == null
-                    ? "No response"
-                    : CoverageSweepClassifier.unauthenticatedControlSignal(candidate, anonymousControlResponse);
                 AttackResult result = new AttackResult(
                     "Authenticated Coverage Sweep",
                     "Original request without authentication",
@@ -550,8 +557,16 @@ public class CoverageSweepEngine {
                 ).copyEvidenceToTempFile();
                 resultCallback.accept(result);
             }
+            if (skipProbes) {
+                return;
+            }
         }
 
+        if (!canContinue()) {
+            return;
+        }
+        List<CoverageSweepProbe> probes = buildProbes(candidate, options);
+        plannedMainRequests.addAndGet(probes.size());
         for (CoverageSweepProbe probe : probes) {
             if (!canContinue()) {
                 return;

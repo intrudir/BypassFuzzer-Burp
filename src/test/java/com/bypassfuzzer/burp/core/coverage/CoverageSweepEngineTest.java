@@ -492,12 +492,115 @@ class CoverageSweepEngineTest {
         assertTrue(engine.start(List.of(candidate), options, results::add, () -> { }));
         for (int i = 0; i < 50 && engine.isRunning(); i++) Thread.sleep(20);
 
-        assertEquals(2, results.size());
+        assertEquals(1, results.size());
         assertEquals("Unauthenticated Control", results.get(0).getPayloadFamily());
         assertEquals("LIKELY PUBLIC: authenticated 200 -> unauthenticated 200",
             results.get(0).getPayloadEncoding());
         assertFalse(results.get(0).getRequest().hasHeader("Authorization"));
-        assertEquals("", results.get(1).getPayloadEncoding());
+        assertEquals(1, engine.skippedPublicEndpointCount());
+        assertEquals(1, engine.plannedMainRequestCount());
+        assertEquals(1, engine.completedMainRequestCount());
+        assertEquals(1, engine.sentRequestCount());
+    }
+
+    @Test
+    void likelyPublicSkipAppliesToBothPayloadSetsAndCanBeDisabled() throws Exception {
+        HttpRequest request = requestWithHeaders("/account", "", "GET",
+            Map.of("Authorization", "Bearer secret"), "");
+        CoverageSweepCandidate candidate = new CoverageSweepCandidate(request,
+            response(200, "application/json", "authenticated"), "key", request.url(), "GET",
+            "example.com", "/account", 200, 13, "application/json", ZonedDateTime.now());
+
+        for (CoverageSweepPayloadSet payloadSet : CoverageSweepPayloadSet.values()) {
+            CoverageSweepOptions options = authenticatedOptions(true, true, payloadSet);
+            SequenceSender sender = new SequenceSender(List.of(response(200, "application/json", "public")));
+            List<AttackResult> results = new ArrayList<>();
+            CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,
+                new CoverageSweepProbeGenerator());
+
+            assertTrue(engine.start(List.of(candidate), options, results::add, () -> { }));
+            for (int i = 0; i < 50 && engine.isRunning(); i++) Thread.sleep(20);
+
+            assertEquals(1, sender.index);
+            assertEquals(1, results.size());
+            assertEquals(1, engine.skippedPublicEndpointCount());
+            assertEquals(1, engine.plannedMainRequestCount());
+            assertEquals(1, engine.completedMainRequestCount());
+        }
+
+        CoverageSweepOptions probingOptions = authenticatedOptions(true, false, CoverageSweepPayloadSet.HIGH_SIGNAL);
+        SequenceSender sender = new SequenceSender(List.of(
+            response(200, "application/json", "public"), response(403, "application/json", "blocked")));
+        List<AttackResult> results = new ArrayList<>();
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,
+            new CoverageSweepProbeGenerator());
+        assertTrue(engine.start(List.of(candidate), probingOptions, results::add, () -> { }));
+        for (int i = 0; i < 50 && engine.isRunning(); i++) Thread.sleep(20);
+        assertEquals(2, sender.index);
+        assertEquals(2, results.size());
+        assertEquals(0, engine.skippedPublicEndpointCount());
+        assertEquals(2, engine.plannedMainRequestCount());
+        assertEquals(2, engine.completedMainRequestCount());
+    }
+
+    @Test
+    void inconclusiveAnonymousControlsStillRunProbes() throws Exception {
+        HttpRequest request = requestWithHeaders("/account", "", "GET",
+            Map.of("Authorization", "Bearer secret"), "");
+        CoverageSweepCandidate candidate = new CoverageSweepCandidate(request,
+            response(200, "application/json", "authenticated"), "key", request.url(), "GET",
+            "example.com", "/account", 200, 13, "application/json", ZonedDateTime.now());
+        for (HttpResponse anonymous : java.util.Arrays.asList(
+            response(403, "application/json", "blocked"),
+            response(200, "text/html", "login"), null)) {
+            SequenceSender sender = new SequenceSender(java.util.Arrays.asList(
+                anonymous, response(403, "application/json", "blocked")));
+            CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,
+                new CoverageSweepProbeGenerator());
+            assertTrue(engine.start(List.of(candidate),
+                authenticatedOptions(true, true, CoverageSweepPayloadSet.HIGH_SIGNAL), null, () -> { }));
+            for (int i = 0; i < 50 && engine.isRunning(); i++) Thread.sleep(20);
+            assertEquals(2, sender.index);
+            assertEquals(0, engine.skippedPublicEndpointCount());
+            assertEquals(2, engine.completedMainRequestCount());
+        }
+    }
+
+    @Test
+    void skippedPublicCountResetsForEachSweepRun() throws Exception {
+        HttpRequest request = requestWithHeaders("/account", "", "GET",
+            Map.of("Authorization", "Bearer secret"), "");
+        CoverageSweepCandidate candidate = new CoverageSweepCandidate(request,
+            response(200, "application/json", "authenticated"), "key", request.url(), "GET",
+            "example.com", "/account", 200, 13, "application/json", ZonedDateTime.now());
+        SequenceSender sender = new SequenceSender(List.of(
+            response(200, "application/json", "public"),
+            response(403, "application/json", "blocked"),
+            response(403, "application/json", "blocked")));
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,
+            new CoverageSweepProbeGenerator());
+        CoverageSweepOptions options = authenticatedOptions(true, true, CoverageSweepPayloadSet.HIGH_SIGNAL);
+
+        assertTrue(engine.start(List.of(candidate), options, null, () -> { }));
+        for (int i = 0; i < 50 && engine.isRunning(); i++) Thread.sleep(20);
+        assertEquals(1, engine.skippedPublicEndpointCount());
+
+        assertTrue(engine.start(List.of(candidate), options, null, () -> { }));
+        for (int i = 0; i < 50 && engine.isRunning(); i++) Thread.sleep(20);
+        assertEquals(0, engine.skippedPublicEndpointCount());
+        assertEquals(2, engine.plannedMainRequestCount());
+        assertEquals(2, engine.completedMainRequestCount());
+    }
+
+    private static CoverageSweepOptions authenticatedOptions(boolean verify, boolean skip,
+                                                               CoverageSweepPayloadSet payloadSet) {
+        CoverageSweepOptions defaults = CoverageSweepOptions.defaults();
+        return new CoverageSweepOptions(Set.of(), true, 100, 1, 1, 1, Set.of(429),
+            CoverageSweepMode.AUTHENTICATED_TRAFFIC,
+            new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of(), false),
+            true, verify, skip, List.of(), List.of(), payloadSet, defaults.posture(),
+            defaults.familySelection(), defaults.pauseMode(), defaults.fixedPauseMillis(),
+            defaults.userAgentMode(), defaults.userAgentRandomizationSeed());
     }
 
     @Test

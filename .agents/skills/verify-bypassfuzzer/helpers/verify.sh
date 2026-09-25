@@ -167,6 +167,7 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.modeSelectorShowsOnlyTheRelevantSourceControls \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.blockedResponsesCanClearLoadedCandidatesWithoutChangingMode \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.authenticatedModePassivelyFiltersBySelectedIdentifiersAndSafeMethods \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.authenticatedModeOffersAnonymousVerification \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.previewTableUpdatesAfterLoadingProxyHistory \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importsTargetUrlsFromTextFileIntoPreviewTable \
         --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importedTargetsCanClearCandidatesAndBaseUrlForFreshStart \
@@ -186,7 +187,11 @@ drive() {
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.highSignalPromotesFullCatalogBackslashMutationsAtEverySegment \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.dedupesEndpointShapesPreferringMostRecentAndCapsPreview \
         --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.historyCanKeepRepeatedEndpointsWhenDedupeIsOff \
-        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.executionLabelsLikelyBypassResults
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.executionLabelsLikelyBypassResults \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.authenticatedExecutionVerifiesAnonymousControlAndLabelsLikelyPublic \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.likelyPublicSkipAppliesToBothPayloadSetsAndCanBeDisabled \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.inconclusiveAnonymousControlsStillRunProbes \
+        --tests com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest.skippedPublicCountResetsForEachSweepRun
       copy_results "$evidence_dir" test
       ;;
     bypass)

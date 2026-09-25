@@ -464,19 +464,34 @@ class CoverageSweepPanelTest {
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
         JComboBox<?> mode = field(panel, "modeComboBox", JComboBox.class);
         JCheckBox verify = checkbox(panel, "verifyUnauthenticatedAccessCheckBox");
+        JCheckBox skip = checkbox(panel, "skipLikelyPublicEndpointsCheckBox");
         SessionResultsWorkspace workspace = field(panel, "resultsWorkspace", SessionResultsWorkspace.class);
         SessionResultsPanel resultsPanel = field(workspace, "resultsPanel", SessionResultsPanel.class);
         javax.swing.JTabbedPane viewerTabs = field(resultsPanel, "viewerTabs", javax.swing.JTabbedPane.class);
 
         assertTrue(verify.isSelected());
         assertFalse(verify.isVisible());
+        assertTrue(skip.isSelected());
+        assertFalse(skip.isVisible());
         assertEquals(4, viewerTabs.getTabCount());
 
         mode.setSelectedIndex(1);
         assertTrue(verify.isVisible());
+        assertTrue(skip.isVisible());
+        assertTrue(skip.isEnabled());
+        assertTrue(currentOptions(panel).skipLikelyPublicEndpoints());
         assertEquals(6, viewerTabs.getTabCount());
 
+        verify.doClick();
+        assertFalse(skip.isEnabled());
+        assertTrue(skip.isSelected());
+        assertFalse(currentOptions(panel).skipLikelyPublicEndpoints());
+        verify.doClick();
+        assertTrue(skip.isEnabled());
+        assertTrue(currentOptions(panel).skipLikelyPublicEndpoints());
+
         mode.setSelectedIndex(0);
+        assertFalse(skip.isVisible());
         assertEquals(4, viewerTabs.getTabCount());
     }
 

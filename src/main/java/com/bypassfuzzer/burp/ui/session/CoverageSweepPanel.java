@@ -96,6 +96,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JCheckBox includeUnsafeMethodsCheckBox;
     private JCheckBox excludeStaticAssetsCheckBox;
     private JCheckBox verifyUnauthenticatedAccessCheckBox;
+    private JCheckBox skipLikelyPublicEndpointsCheckBox;
     private JCheckBox browserUserAgentCheckBox;
     private HostPortsControl hostPortsControl;
     private JCheckBox dedupeOnEndpointCheckBox;
@@ -136,6 +137,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private ImportedOpenApiDocument importedOpenApiDocument;
     private boolean authDefaultsInitialized;
     private CoverageSweepPayloadSet activePayloadSet = CoverageSweepPayloadSet.HIGH_SIGNAL;
+    private boolean activeSkipLikelyPublicEndpoints;
     private volatile boolean shuttingDown;
     private volatile boolean hasStarted;
 
@@ -324,6 +326,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         verifyUnauthenticatedAccessCheckBox = new JCheckBox("Verify unauthenticated access", true);
         verifyUnauthenticatedAccessCheckBox.setToolTipText(
             "Replay each authenticated candidate without credentials and mark successful 2xx responses as LIKELY PUBLIC.");
+        verifyUnauthenticatedAccessCheckBox.addActionListener(e -> updateModeControls());
+        skipLikelyPublicEndpointsCheckBox = new JCheckBox("Skip probes for likely public endpoints", true);
+        skipLikelyPublicEndpointsCheckBox.setToolTipText(
+            "Keep the LIKELY PUBLIC control result, but skip all further probes for that endpoint.");
         authIdentifiersButton = new JButton("Auth Identifiers...");
         authIdentifiersButton.addActionListener(e -> openAuthIdentifiersDialog());
 
@@ -341,6 +347,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         methodOptionsRow.add(browserUserAgentCheckBox);
         modeOptionsRow.add(excludeStaticAssetsCheckBox);
         modeOptionsRow.add(verifyUnauthenticatedAccessCheckBox);
+        modeOptionsRow.add(skipLikelyPublicEndpointsCheckBox);
         modeOptionsRow.add(openApiBaseUrlLabel);
         modeOptionsRow.add(openApiBaseUrlField);
         modeOptionsRow.add(applyOpenApiBaseUrlButton);
@@ -1221,6 +1228,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
         CoverageSweepOptions options = currentOptions();
         activePayloadSet = options.payloadSet();
+        activeSkipLikelyPublicEndpoints = options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
+            && options.verifyUnauthenticatedAccess() && options.skipLikelyPublicEndpoints();
         resultsWorkspace.configureThrottleRetries(options.throttleSettings());
         resultsWorkspace.setPrimaryRunActive(true);
         sweepPreparationWorker = new SwingWorker<>() {
@@ -1374,6 +1383,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 + " generated main request(s) completed; " + totalHttpRequestsSent()
                 + " actual HTTP request(s) sent; " + resultsWorkspace.throttledRetryCount()
                 + " remain in the retry queue"
+                + skippedPublicStatus()
                 + (engine.quarantinedRetryRequestCount() > 0
                     ? " (" + engine.quarantinedRetryRequestCount() + " pattern-throttled)" : "")
                 + ".");
@@ -1438,6 +1448,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 + engine.completedMainRequestCount() + " / " + engine.plannedMainRequestCount()
                 + " complete; " + engine.automaticRetryRequestCount() + " retry/control request(s) sent; "
                 + resultsWorkspace.throttledRetryCount() + " unique request(s) currently queued"
+                + skippedPublicStatus()
                 + (engine.quarantinedRetryRequestCount() > 0
                     ? "; " + engine.quarantinedRetryRequestCount() + " pattern-throttled" : "")
                 + ".";
@@ -1446,7 +1457,12 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             + engine.completedMainRequestCount() + " / " + engine.plannedMainRequestCount()
             + " generated request(s) completed; " + totalHttpRequestsSent()
             + " actual HTTP request(s) sent; " + resultsWorkspace.throttledRetryCount()
-            + " unique request(s) currently queued.";
+            + " unique request(s) currently queued" + skippedPublicStatus() + ".";
+    }
+
+    private String skippedPublicStatus() {
+        return activeSkipLikelyPublicEndpoints
+            ? "; " + engine.skippedPublicEndpointCount() + " public endpoints skipped" : "";
     }
 
     private int totalHttpRequestsSent() {
@@ -1528,6 +1544,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             currentAuthSelection(),
             excludeStaticAssetsCheckBox == null || excludeStaticAssetsCheckBox.isSelected(),
             verifyUnauthenticatedAccessCheckBox != null && verifyUnauthenticatedAccessCheckBox.isSelected(),
+            verifyUnauthenticatedAccessCheckBox != null && verifyUnauthenticatedAccessCheckBox.isSelected()
+                && skipLikelyPublicEndpointsCheckBox != null && skipLikelyPublicEndpointsCheckBox.isSelected(),
             hostPortsControl != null ? hostPortsControl.ports() : java.util.List.of(),
             effectiveRequestHeaders(),
             currentPayloadSet(),
@@ -1698,6 +1716,9 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         excludeStaticAssetsCheckBox.setEnabled(idle && authenticated);
         verifyUnauthenticatedAccessCheckBox.setVisible(authenticated);
         verifyUnauthenticatedAccessCheckBox.setEnabled(idle && authenticated);
+        skipLikelyPublicEndpointsCheckBox.setVisible(authenticated);
+        skipLikelyPublicEndpointsCheckBox.setEnabled(
+            idle && authenticated && verifyUnauthenticatedAccessCheckBox.isSelected());
         requestHeadersControl.button().setVisible(true);
         authIdentifiersButton.setVisible(authenticated);
         authIdentifiersButton.setEnabled(idle && authenticated);

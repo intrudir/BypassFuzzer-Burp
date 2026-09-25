@@ -19,6 +19,7 @@ public record CoverageSweepOptions(
     CoverageSweepAuthSelection authSelection,
     boolean excludeStaticAssets,
     boolean verifyUnauthenticatedAccess,
+    boolean skipLikelyPublicEndpoints,
     List<Integer> hostPortProbePorts,
     List<ConfiguredHeader> requestHeaders,
     CoverageSweepPayloadSet payloadSet,
@@ -44,6 +45,22 @@ public record CoverageSweepOptions(
         userAgentMode = userAgentMode == null ? UserAgentMode.DISABLED : userAgentMode;
         userAgentRandomizationSeed = userAgentMode == UserAgentMode.DISABLED
             ? 0L : userAgentRandomizationSeed;
+    }
+
+    /** Existing full signature defaults to skipping public endpoints after verification. */
+    public CoverageSweepOptions(Set<Integer> statuses, boolean inScopeOnly, int maxCandidates,
+                                int maxProbesPerCandidate, int concurrency, int perHostConcurrency,
+                                Set<Integer> throttleStatusCodes, CoverageSweepMode mode,
+                                CoverageSweepAuthSelection authSelection, boolean excludeStaticAssets,
+                                boolean verifyUnauthenticatedAccess, List<Integer> hostPortProbePorts,
+                                List<ConfiguredHeader> requestHeaders, CoverageSweepPayloadSet payloadSet,
+                                ThrottleSettings.Posture posture, CoverageSweepFamilySelection familySelection,
+                                ThrottleSettings.PauseMode pauseMode, long fixedPauseMillis,
+                                UserAgentMode userAgentMode, long userAgentRandomizationSeed) {
+        this(statuses, inScopeOnly, maxCandidates, maxProbesPerCandidate, concurrency,
+            perHostConcurrency, throttleStatusCodes, mode, authSelection, excludeStaticAssets,
+            verifyUnauthenticatedAccess, true, hostPortProbePorts, requestHeaders, payloadSet, posture,
+            familySelection, pauseMode, fixedPauseMillis, userAgentMode, userAgentRandomizationSeed);
     }
 
     /** Full constructor retained for callers that do not use User-Agent randomization. */
@@ -176,14 +193,14 @@ public record CoverageSweepOptions(
         return new CoverageSweepOptions(Set.of(), inScopeOnly, maxCandidates, maxProbesPerCandidate,
             concurrency, perHostConcurrency, throttleStatusCodes,
             CoverageSweepMode.AUTHENTICATED_TRAFFIC, selection, excludeStaticAssets,
-            verifyUnauthenticatedAccess, hostPortProbePorts, requestHeaders, payloadSet, posture,
+            verifyUnauthenticatedAccess, skipLikelyPublicEndpoints, hostPortProbePorts, requestHeaders, payloadSet, posture,
             familySelection, pauseMode, fixedPauseMillis, userAgentMode, userAgentRandomizationSeed);
     }
 
     public CoverageSweepOptions withHostPortProbePorts(List<Integer> ports) {
         return new CoverageSweepOptions(statuses, inScopeOnly, maxCandidates, maxProbesPerCandidate,
             concurrency, perHostConcurrency, throttleStatusCodes, mode, authSelection,
-            excludeStaticAssets, verifyUnauthenticatedAccess, ports, requestHeaders, payloadSet, posture,
+            excludeStaticAssets, verifyUnauthenticatedAccess, skipLikelyPublicEndpoints, ports, requestHeaders, payloadSet, posture,
             familySelection, pauseMode, fixedPauseMillis, userAgentMode, userAgentRandomizationSeed);
     }
 }

@@ -60,7 +60,7 @@ manifest_value() {
 }
 
 expected_version() {
-  awk -F"'" '/^version = / { print $2; exit }' "$REPO_ROOT/build.gradle"
+  sh "$REPO_ROOT/build.sh" --quiet printVersion
 }
 
 copy_results() {

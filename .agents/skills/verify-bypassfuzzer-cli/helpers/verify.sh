@@ -17,7 +17,7 @@ manifest_value() {
 }
 
 expected_version() {
-  sed -n "s/^version = '\([^']*\)'/\1/p" "$ROOT/build.gradle" | head -n 1
+  (cd "$ROOT" && sh build.sh --quiet printVersion)
 }
 
 doctor() {

@@ -116,9 +116,9 @@ public final class IdorEngine {
         if (targetStatus >= 200 && targetStatus < 300)
             return "IDOR sent only the two baselines despite a target HTTP " + targetStatus
                 + "; no mutation requests were applicable to the selected playbooks.";
-        if (targetStatus != 401 && targetStatus != 403 && targetStatus != 404)
+        if (!ScanEngine.isComparableIdorTargetStatus(targetStatus))
             return "IDOR mutations skipped: target baseline returned HTTP " + targetStatus
-                + "; ordinary mutations require a 401, 403, or 404 target baseline.";
+                + "; ordinary mutations require a 2xx, 401, 403, 404, or 500 target baseline.";
         return "IDOR sent only the two baselines: no mutation requests were applicable to the selected playbooks.";
     }
 

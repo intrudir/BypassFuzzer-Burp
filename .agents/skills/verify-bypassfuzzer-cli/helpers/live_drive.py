@@ -30,8 +30,10 @@ class Lab(BaseHTTPRequestHandler):
             status, marker = 200, "trusted-proxy-ip"
         elif self.path.startswith("/objects/alice"):
             status, marker = 200, "authorized-control"
+        elif self.path == "/objects/bob?id=alice":
+            status, marker = 500, "target-denied"
         elif self.path.startswith("/objects/bob"):
-            status, marker = 403, "target-denied"
+            status, marker = 200, "idor-bypass"
         elif self.path.startswith("/redirect") and "trusted.example" in decoded and "127.0.0.1" in decoded:
             status, marker = 200, "url-parser-bypass"
         body = marker.encode("ascii")
@@ -132,7 +134,11 @@ def run():
         assert any(item["signal"] == "LIKELY_BYPASS" and item["status"] == 200 for item in lines)
     elif feature == "idor":
         assert [item["payload"] for item in lines[:2]] == ["idor.baseline.control", "idor.baseline.target"]
-        assert any(not item["baseline"] for item in lines[2:])
+        assert lines[1]["status"] == 500 and lines[1]["signal"] == "TARGET_BASELINE_500_REVIEW"
+        assert any(not item["baseline"] and item["status"] == 200
+                   and item["signal"] == "IDOR_CANDIDATE" for item in lines[2:])
+        assert any("idor-bypass" in (scan / item["responseRef"]).read_text(encoding="iso-8859-1")
+                   for item in lines[2:] if item["responseRef"])
     elif feature == "url-validation":
         mutation_refs = [scan / item["requestRef"] for item in lines if not item["baseline"]]
         assert mutation_refs and all("{INJECT}" not in path.read_text(encoding="iso-8859-1") for path in mutation_refs)

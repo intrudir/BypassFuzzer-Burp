@@ -7,6 +7,8 @@ import com.bypassfuzzer.core.http.HttpResponseData;
 import com.bypassfuzzer.core.http.RawHttpRequestParser;
 import com.bypassfuzzer.core.http.TargetOrigin;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -142,8 +144,9 @@ class IdorLocationAndEngineTest {
             plan.get(3).request().rawTarget());
     }
 
-    @Test
-    void mutationUsesTargetBaselineAndRecordsCandidate() throws Exception {
+    @ParameterizedTest
+    @ValueSource(ints = {403, 500})
+    void mutationUsesTargetBaselineAndRecordsCandidate(int targetStatus) throws Exception {
         HttpRequestData input = request();
         ScanOptions options = new ScanOptions(HttpProtocol.HTTP_1, Duration.ofSeconds(1), 1, 1,
             Set.of(429, 503), 0, false, "conservative", "off", 1_000);
@@ -152,14 +155,49 @@ class IdorLocationAndEngineTest {
             value -> new IdorPlanner().plan(value, new IdorPlanOptions("619", "620", "path:5",
                 Set.of("idor.path.suffix_formats"), 1, false)),
             (value, timeout) -> new HttpResponseData(HttpProtocol.HTTP_1,
-                value.rawTarget().equals("/v3/api/v3/namespaces/620/projects") ? 403 : 201,
+                value.rawTarget().equals("/v3/api/v3/namespaces/620/projects") ? targetStatus : 201,
                 List.<HttpHeader>of(), new byte[0], 1), events::add);
 
         assertEquals(3, events.size());
         assertEquals("idor.baseline.control", events.get(0).planned().payload());
         assertEquals("idor.baseline.target", events.get(1).planned().payload());
+        assertEquals(targetStatus == 500 ? "TARGET_BASELINE_500_REVIEW" : "BASELINE",
+            events.get(1).signal());
         assertEquals("IDOR_CANDIDATE", events.get(2).signal());
         assertEquals(1, summary.findings());
+    }
+
+    @Test
+    void target500StillRunsMutationsAfterResponseGuidedPlanning() throws Exception {
+        HttpRequestData input = request();
+        IdorPlanOptions plan = new IdorPlanOptions("619", "620", "path:5",
+            Set.of("idor.path.suffix_formats", ResponseGuidedIdorPlanner.FAMILY), 1, false);
+        ResponseGuidedIdorPlanner guided = new ResponseGuidedIdorPlanner();
+        var events = new ArrayList<ScanEvent>();
+        new ScanEngine(new ScanOptions(HttpProtocol.HTTP_1, Duration.ofSeconds(1), 1, 1,
+            Set.of(429, 503), 0, false, "conservative", "off", 1_000)).run("idor", List.of(input),
+            value -> guided.initialPlan(value, plan),
+            (value, authorized, target) -> guided.plan(value, plan, authorized, target),
+            (value, timeout) -> new HttpResponseData(HttpProtocol.HTTP_1,
+                value.rawTarget().equals("/v3/api/v3/namespaces/620/projects") ? 500 : 201,
+                List.of(), new byte[0], 1), events::add);
+        assertEquals(3, events.size());
+        assertEquals("TARGET_BASELINE_500_REVIEW", events.get(1).signal());
+        assertEquals("IDOR_CANDIDATE", events.get(2).signal());
+    }
+
+    @Test
+    void failedAuthorizedControlStillStopsWithTarget500() throws Exception {
+        var events = new ArrayList<ScanEvent>();
+        new ScanEngine(new ScanOptions(HttpProtocol.HTTP_1, Duration.ofSeconds(1), 1, 1,
+            Set.of(429, 503), 0, false, "conservative", "off", 1_000)).run("idor", List.of(request()),
+            value -> new IdorPlanner().plan(value, new IdorPlanOptions("619", "620", "path:5",
+                Set.of("idor.path.suffix_formats"), 1, false)),
+            (value, timeout) -> new HttpResponseData(HttpProtocol.HTTP_1, 500,
+                List.of(), new byte[0], 1), events::add);
+        assertEquals(2, events.size());
+        assertEquals("CONTROL_FAILED", events.get(0).signal());
+        assertEquals("TARGET_BASELINE_500_REVIEW", events.get(1).signal());
     }
 
     @Test

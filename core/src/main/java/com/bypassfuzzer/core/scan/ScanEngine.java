@@ -81,8 +81,9 @@ public final class ScanEngine {
                         if (idor && outcome.response != null) {
                             int status = outcome.response.statusCode();
                             if (targetControl && status >= 200 && status < 300) signal = "TARGET_BASELINE_2XX_REVIEW";
+                            else if (targetControl && status == 500) signal = "TARGET_BASELINE_500_REVIEW";
                             else if (!targetControl && (status < 200 || status >= 300)) signal = "CONTROL_FAILED";
-                            else if (targetControl && status != 401 && status != 403 && status != 404) signal = "TARGET_BASELINE_INCONCLUSIVE";
+                            else if (targetControl && !isComparableIdorTargetStatus(status)) signal = "TARGET_BASELINE_INCONCLUSIVE";
                         }
                         publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, 0), records, findings, throttled, errors);
                         if (targetControl) target = outcome.response;
@@ -91,9 +92,7 @@ public final class ScanEngine {
                     boolean idor = "idor".equals(mode);
                     boolean authorizedValid = authorized != null && authorized.statusCode() >= 200
                         && authorized.statusCode() < 300;
-                    boolean targetComparable = target != null && ((target.statusCode() >= 200
-                        && target.statusCode() < 300) || target.statusCode() == 401
-                        || target.statusCode() == 403 || target.statusCode() == 404);
+                    boolean targetComparable = target != null && isComparableIdorTargetStatus(target.statusCode());
                     if (idor && !authorizedValid) continue;
                     if (postBaselinePlanner != null) {
                         List<PlannedRequest> afterBaselines = postBaselinePlanner.plan(base, authorized, target);
@@ -178,6 +177,15 @@ public final class ScanEngine {
         return options.retryStateChanging() || Set.of("GET", "HEAD", "OPTIONS").contains(method.toUpperCase());
     }
 
+    public static boolean isComparableIdorTargetStatus(int status) {
+        return (status >= 200 && status < 300) || isIdorDeniedTargetStatus(status);
+    }
+
+    private static boolean isIdorDeniedTargetStatus(int status) {
+        // Some applications report permission failures as internal server errors.
+        return status == 401 || status == 403 || status == 404 || status == 500;
+    }
+
     private String classify(String mode, PlannedRequest item, HttpResponseData authorized,
                             HttpResponseData target, Outcome outcome) {
         if (outcome.error != null || outcome.response == null) return "NO_RESPONSE";
@@ -200,7 +208,7 @@ public final class ScanEngine {
         if (baseline == null) return "UNCLASSIFIED";
         boolean blocked = baseline.statusCode() == 401 || baseline.statusCode() == 403;
         boolean success = response.statusCode() >= 200 && response.statusCode() < 400;
-        if ("idor".equals(mode) && (blocked || baseline.statusCode() == 404) && success)
+        if ("idor".equals(mode) && isIdorDeniedTargetStatus(baseline.statusCode()) && success)
             return "IDOR_CANDIDATE";
         if ("idor".equals(mode) && baseline.statusCode() >= 200 && baseline.statusCode() < 300
             && !Arrays.equals(response.body(), baseline.body())) return "RESPONSE_CHANGED";

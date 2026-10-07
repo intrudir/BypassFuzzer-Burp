@@ -4,6 +4,7 @@
 
 - Exact authorized and target identifiers are required; repeated authorized values need `--id-location`.
 - The authorized control and target baseline run before context-aware playbooks. A 2xx target baseline is marked `TARGET_BASELINE_2XX_REVIEW` and still allows mutations; status alone does not prove direct access.
+- A target HTTP 500 permission error is marked `TARGET_BASELINE_500_REVIEW` and allows mutations after a successful authorized control; successful mutations are `IDOR_CANDIDATE` signals for review.
 - Path, query, body, and hybrid playbook IDs remain stable in evidence.
 - The response-guided family is enabled by default and discovers exact identifier values in baseline JSON, then tests authorized-path body assignment and target-path/body conflicts through the shared planner.
 - The paired-control separator family is enabled by default, sends `id1%0Aid2` and its reverse first for URL IDs, and reports planned/eligible counts in offline preview.
@@ -16,7 +17,7 @@ Run `java -jar cli/build/libs/bypassfuzzer-cli.jar idor --request request.raw --
 
 ## Driving it with the CLI helper
 
-Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> idor`. Proof requires `idor.baseline.control` and `idor.baseline.target` as the first two records, followed by at least one playbook request, with all referenced raw evidence present.
+Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> idor`. Proof requires `idor.baseline.control` and `idor.baseline.target` as the first two records, a target baseline with HTTP 500 and `TARGET_BASELINE_500_REVIEW`, followed by a successful `IDOR_CANDIDATE` playbook response containing the lab bypass marker, with all referenced raw evidence present.
 
 ## Gotchas
 

@@ -8,6 +8,8 @@ import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.http.RequestSender;
 import com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Set;
@@ -90,14 +92,15 @@ class IdorEngineTest {
         assertEquals(2, engine.httpRequestsSent());
     }
 
-    @Test
-    void mutationResultCarriesBothControlResponses() throws InterruptedException {
+    @ParameterizedTest
+    @ValueSource(ints = {403, 500})
+    void mutationResultCarriesBothControlResponses(int targetStatus) throws InterruptedException {
         HttpRequest original = HttpRequestTestFactory.request("/users/1", null, "GET", null, "");
         CountDownLatch done = new CountDownLatch(1);
         List<AttackResult> results = new CopyOnWriteArrayList<>();
         IdorEngine engine = new IdorEngine(new RequestSender() {
             @Override public HttpResponse send(HttpRequest request) {
-                return response(request.path().equals("/users/2") ? 403 : 200);
+                return response(request.path().equals("/users/2") ? targetStatus : 200);
             }
             @Override public HttpResponse send(HttpRequest request, long timeout, TimeUnit unit) {
                 return send(request);
@@ -112,9 +115,11 @@ class IdorEngineTest {
                 + result.getPayloadEncoding() + " " + result.getStatusCode()).toList().toString());
         AttackResult mutation = results.get(2);
         assertEquals(200, mutation.getOriginalResponse().statusCode());
-        assertEquals(403, mutation.getVerificationResponse().statusCode());
+        assertEquals(targetStatus, mutation.getVerificationResponse().statusCode());
         assertEquals("/users/1", mutation.getOriginalRequest().path());
         assertEquals("/users/2", mutation.getVerificationRequest().path());
+        assertEquals("IDOR_CANDIDATE", mutation.getSignal());
+        assertNull(engine.lastDiagnostic());
     }
 
     private HttpResponse response(int status) {

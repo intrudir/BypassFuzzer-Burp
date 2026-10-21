@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.urlvalidation;
+import com.bypassfuzzer.core.urlvalidation.UnicodeCompatibilityVariants;
 
 import org.junit.jupiter.api.Test;
 

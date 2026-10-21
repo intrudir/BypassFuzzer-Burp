@@ -48,7 +48,7 @@ public final class BurpScanAdapter {
         this.sender = sender;
         this.coordinator = coordinator;
         this.requestPolicy = requestPolicy;
-        this.engine = new ScanEngine(options);
+        this.engine = new ScanEngine(options, false);
     }
 
     public ScanEngine.Summary run(String mode, Function<HttpRequestData, List<PlannedRequest>> planner,

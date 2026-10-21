@@ -15,4 +15,10 @@ public record HttpResponseData(HttpProtocol protocol, int statusCode, List<HttpH
     public byte[] body() {
         return body.clone();
     }
+
+    public int bodyLength() { return body.length; }
+
+    public java.util.Optional<String> firstHeader(String name) {
+        return headers.stream().filter(h -> h.name().equalsIgnoreCase(name)).map(HttpHeader::value).findFirst();
+    }
 }

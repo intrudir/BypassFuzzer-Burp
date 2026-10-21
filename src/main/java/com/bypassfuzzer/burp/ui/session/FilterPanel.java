@@ -1,6 +1,6 @@
 package com.bypassfuzzer.burp.ui.session;
 
-import com.bypassfuzzer.burp.core.filter.FilterConfig;
+import com.bypassfuzzer.core.filter.FilterConfig;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;

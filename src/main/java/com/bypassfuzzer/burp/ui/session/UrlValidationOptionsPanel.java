@@ -1,10 +1,12 @@
 package com.bypassfuzzer.burp.ui.session;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import burp.api.montoya.http.message.requests.HttpRequest;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationAttackSetting;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationContext;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationEncoding;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationAttackSetting;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationEncoding;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -181,7 +183,7 @@ public class UrlValidationOptionsPanel extends JPanel {
         return throttleControl.throttleStatusCodesText();
     }
 
-    public com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture posture() {
+    public com.bypassfuzzer.core.throttle.ThrottleSettings.Posture posture() {
         return throttleControl.posture();
     }
 
@@ -189,7 +191,7 @@ public class UrlValidationOptionsPanel extends JPanel {
 
     public int perHostConcurrency() { return throttleControl.perHostConcurrency(); }
 
-    public com.bypassfuzzer.burp.core.throttle.ThrottleSettings.PauseMode pauseMode() {
+    public com.bypassfuzzer.core.throttle.ThrottleSettings.PauseMode pauseMode() {
         return throttleControl.pauseMode();
     }
 
@@ -199,12 +201,12 @@ public class UrlValidationOptionsPanel extends JPanel {
         return requestHeadersControl.headers();
     }
 
-    public com.bypassfuzzer.burp.http.UserAgentMode userAgentMode() {
+    public com.bypassfuzzer.core.http.UserAgentMode userAgentMode() {
         return requestHeadersControl.userAgentMode();
     }
 
     public long userAgentRandomizationSeed() {
-        if (userAgentMode() == com.bypassfuzzer.burp.http.UserAgentMode.DISABLED) return 0L;
+        if (userAgentMode() == com.bypassfuzzer.core.http.UserAgentMode.DISABLED) return 0L;
         if (userAgentRandomizationSeed == 0L) {
             userAgentRandomizationSeed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
         }

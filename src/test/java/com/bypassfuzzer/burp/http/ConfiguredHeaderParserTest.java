@@ -1,4 +1,6 @@
 package com.bypassfuzzer.burp.http;
+import com.bypassfuzzer.core.http.ConfiguredHeaderParser;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 
 import org.junit.jupiter.api.Test;
 

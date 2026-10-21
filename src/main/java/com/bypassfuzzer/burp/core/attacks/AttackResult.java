@@ -6,7 +6,7 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 /**
  * Represents the result of a single attack attempt.
  */
-public class AttackResult {
+public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
     private final String attackType;
     private final String payload;
     private final String targetLabel;
@@ -226,4 +226,12 @@ public class AttackResult {
     public String toString() {
         return String.format("[%s] %s -> %d (%d bytes)", attackType, payload, statusCode, contentLength);
     }
+    public String getRequestHost() {
+        if (getRequest() == null) return null;
+        try { if (getRequest().httpService() != null) return getRequest().httpService().host(); }
+        catch (Exception ignored) { }
+        try { return java.net.URI.create(getRequest().url()).getHost(); }
+        catch (Exception ignored) { return null; }
+    }
+    public String getResponseText() { return getResponse() == null ? null : String.valueOf(getResponse()); }
 }

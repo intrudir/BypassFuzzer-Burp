@@ -39,6 +39,8 @@ public final class HttpRequestData {
     public HttpProtocol protocol() { return protocol; }
     public List<HttpHeader> headers() { return headers; }
     public byte[] body() { return body.clone(); }
+    public int bodyLength() { return body.length; }
+    public HttpRequestData withBodyText(String value) { return withBody(value.getBytes(StandardCharsets.UTF_8)); }
 
     public String path() {
         int query = rawTarget.indexOf('?');

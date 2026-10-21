@@ -1,0 +1,19 @@
+package com.bypassfuzzer.core.input;
+
+import com.bypassfuzzer.core.http.*;
+import com.bypassfuzzer.core.scan.PlannedRequest;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+
+public record RetryPackageEntry(String targetLabel, String payload, String payloadFamily,
+    String payloadEncoding, int retryAttempt, String requestRaw, String url, String method,
+    String httpMode, String payloadLabel) {
+    public PlannedRequest planned() {
+        if (requestRaw == null || url == null) throw new IllegalArgumentException("Retry entry lacks requestRaw or url");
+        URI uri = URI.create(url);
+        TargetOrigin origin = TargetOrigin.parse(uri.getScheme() + "://" + uri.getRawAuthority());
+        HttpRequestData request = new RawHttpRequestParser().parse(requestRaw.getBytes(StandardCharsets.ISO_8859_1), origin);
+        if (httpMode != null && !httpMode.isBlank()) request = request.withProtocol(HttpProtocol.parse(httpMode));
+        return new PlannedRequest(payloadFamily, payload, payloadEncoding, request, false);
+    }
+}

@@ -19,9 +19,9 @@ public final class YamlJob {
         "", Set.of("schemaVersion", "input", "transport", "execution", "evidence", "sweep", "bypass", "idor", "urlValidation"),
         "input", Set.of("urls", "request", "targetOrigin", "requestManifest", "openapi", "postman", "retryPackage", "baseUrl"),
         "transport", Set.of("protocol", "proxy", "insecure", "connectTimeoutSeconds", "requestTimeoutSeconds"),
-        "execution", Set.of("globalConcurrency", "perHostConcurrency", "throttleStatusCodes", "retryAttempts", "maxProbes", "includeStateChanging", "headers", "userAgentMode", "userAgentSeed", "posture", "pauseMode", "fixedPauseMillis"),
+        "execution", Set.of("globalConcurrency", "perHostConcurrency", "throttleStatusCodes", "retryAttempts", "maxProbes", "includeStateChanging", "headers", "userAgentMode", "userAgentSeed", "posture", "pauseMode", "fixedPauseMillis", "oobDomain", "oobGenerator", "controlFile", "trafficMaxInFlight", "trafficMaxRps"),
         "evidence", Set.of("output", "redact"),
-        "sweep", Set.of("payloadSet", "families"),
+        "sweep", Set.of("payloadSet", "families", "mode", "authHeaders", "authCookies", "verifyUnauthenticatedAccess", "skipLikelyPublicEndpoints", "hostPorts", "maxCandidates", "excludeStaticAssets", "excludeHosts", "dedupeEndpoints"),
         "bypass", Set.of("families", "fuzzExistingCookies"),
         "idor", Set.of("authorizedId", "targetId", "location", "families", "includeMethodChanges", "uniqueJsonField", "baselineResponse"),
         "urlValidation", Set.of("marker", "allowedHost", "attackerHost", "scheme", "contexts", "attacks", "encodings")
@@ -51,6 +51,7 @@ public final class YamlJob {
 
     public String string(String section, String key) { Object value = section(section).get(key); return value == null ? null : value.toString(); }
     public Integer integer(String section, String key) { String value = string(section, key); return value == null ? null : Integer.valueOf(value); }
+    public Double doubleValue(String section, String key) { String value = string(section, key); return value == null ? null : Double.valueOf(value); }
     public Long longValue(String section, String key) { String value = string(section, key); return value == null ? null : Long.valueOf(value); }
     public Boolean bool(String section, String key) { String value = string(section, key); return value == null ? null : Boolean.valueOf(value); }
     public Path path(String section, String key) { String value = string(section, key); if (value == null) return null; Path path = Path.of(value); return path.isAbsolute() ? path : file.getParent().resolve(path).normalize(); }

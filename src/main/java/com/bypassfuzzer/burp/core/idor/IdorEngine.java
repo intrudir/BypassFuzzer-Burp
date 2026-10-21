@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.idor;
+import com.bypassfuzzer.core.scan.ScanDefaults;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -49,7 +50,7 @@ public final class IdorEngine {
         HttpProtocol requestProtocol = new CoreRequestAdapter().fromMontoya(request).protocol();
         ScanOptions execution = new ScanOptions(requestProtocol, Duration.ofSeconds(15), global,
             options.runOptions().perHostConcurrency(), options.runOptions().throttleStatusCodes(),
-            1, false, options.runOptions().posture().name().equals("CONSERVATIVE") ? "conservative" : "ride-hard",
+            ScanDefaults.IDOR_RETRIES, false, options.runOptions().posture().name().equals("CONSERVATIVE") ? "conservative" : "ride-hard",
             options.runOptions().pauseMode().name().toLowerCase().replace('_', '-'),
             options.runOptions().fixedPauseMillis());
         ConfiguredHeaderPolicy headers = new ConfiguredHeaderPolicy(options.runOptions().requestHeaders(),

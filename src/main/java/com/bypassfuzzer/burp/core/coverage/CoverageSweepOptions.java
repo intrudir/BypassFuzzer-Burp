@@ -1,8 +1,9 @@
 package com.bypassfuzzer.burp.core.coverage;
+import com.bypassfuzzer.core.scan.ScanDefaults;
 
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
-import com.bypassfuzzer.burp.http.UserAgentMode;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import java.util.List;
 import java.util.Set;
@@ -168,10 +169,10 @@ public record CoverageSweepOptions(
         return new CoverageSweepOptions(
             Set.of(401, 403),
             true,
-            100,
-            350,
-            1,
-            1,
+            ScanDefaults.SWEEP_CANDIDATES,
+            ScanDefaults.SWEEP_PROBES,
+            ScanDefaults.CONCURRENCY,
+            ScanDefaults.CONCURRENCY,
             Set.of(429, 503),
             CoverageSweepMode.BLOCKED_RESPONSES,
             CoverageSweepAuthSelection.defaults(),

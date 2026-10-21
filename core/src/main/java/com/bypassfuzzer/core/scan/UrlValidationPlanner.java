@@ -12,11 +12,16 @@ import java.util.List;
 public final class UrlValidationPlanner {
     private final UrlValidationPayloadGenerator generator = new UrlValidationPayloadGenerator();
 
-    public List<PlannedRequest> plan(HttpRequestData request, UrlValidationOptions options, int maximum) {
+    public void validate(HttpRequestData request, UrlValidationOptions options) {
         String marker = options.normalizedMarkerText();
         int count = RequestRewriter.count(request, marker);
         if (count == 0) throw new IllegalArgumentException("Marker " + marker + " was not found in the request");
         if (options.normalizedAttackerHost().isBlank()) throw new IllegalArgumentException("Attacker host is required");
+    }
+
+    public List<PlannedRequest> plan(HttpRequestData request, UrlValidationOptions options, int maximum) {
+        validate(request, options);
+        String marker = options.normalizedMarkerText();
         UrlValidationCandidate candidate = new UrlValidationCandidate(marker, marker, "marker");
         List<PlannedRequest> output = new ArrayList<>();
         output.add(PlannedRequest.baseline(request, "url-validation.baseline"));

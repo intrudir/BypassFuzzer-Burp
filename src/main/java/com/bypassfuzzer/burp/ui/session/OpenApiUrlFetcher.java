@@ -7,7 +7,7 @@ import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 
 import java.io.IOException;
 import java.util.Locale;

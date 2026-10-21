@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.throttle;
+import com.bypassfuzzer.core.throttle.AdaptiveRateController;
 
 import org.junit.jupiter.api.Test;
 

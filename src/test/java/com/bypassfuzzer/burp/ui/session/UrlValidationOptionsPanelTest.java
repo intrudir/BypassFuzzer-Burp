@@ -8,7 +8,7 @@ import static com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 import java.util.List;
 
 class UrlValidationOptionsPanelTest {

@@ -9,7 +9,7 @@ import com.bypassfuzzer.burp.core.FuzzerProgress;
 import com.bypassfuzzer.burp.core.collaborator.CollaboratorSupport;
 import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
 import com.bypassfuzzer.burp.http.CoreRequestAdapter;
-import com.bypassfuzzer.burp.http.RequestPathUtils;
+import com.bypassfuzzer.core.http.RequestPathUtils;
 import com.bypassfuzzer.burp.session.FuzzingSessionController;
 import com.bypassfuzzer.burp.session.SessionPreflightAnalyzer;
 import com.bypassfuzzer.burp.session.SessionRunOptions;

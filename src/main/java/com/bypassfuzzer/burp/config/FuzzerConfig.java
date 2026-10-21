@@ -1,9 +1,10 @@
 package com.bypassfuzzer.burp.config;
+import com.bypassfuzzer.core.scan.ScanDefaults;
 
 import com.bypassfuzzer.burp.core.attacks.AttackType;
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
-import com.bypassfuzzer.burp.http.UserAgentMode;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -32,8 +33,8 @@ public class FuzzerConfig {
     private boolean enableFuzzExistingCookies = true; // Fuzz existing cookies in request
 
     // Rate limiting (adaptive; pacing is automatic per host)
-    private int concurrency = 1;
-    private int perHostConcurrency = 1;
+    private int concurrency = ScanDefaults.CONCURRENCY;
+    private int perHostConcurrency = ScanDefaults.CONCURRENCY;
     private Set<Integer> throttleStatusCodes = new java.util.HashSet<>();
     private ThrottleSettings.Posture throttlePosture = ThrottleSettings.Posture.RIDE_HARD;
     private ThrottleSettings.PauseMode throttlePauseMode = ThrottleSettings.PauseMode.OFF;

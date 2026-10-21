@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.throttle;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;

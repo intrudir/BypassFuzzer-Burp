@@ -4,7 +4,7 @@
 
 - A literal marker identifies injection positions in the raw request.
 - Contexts, attack families, and encodings select parser/allow-list payloads.
-- An explicit attacker host is required; Collaborator is absent from this CLI surface.
+- An attacker host, `--oob-domain`, or `--oob-generator` supplies callback destinations.
 
 ## How to get to it (user POV)
 

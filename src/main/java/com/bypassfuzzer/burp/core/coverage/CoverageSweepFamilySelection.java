@@ -13,16 +13,7 @@ public record CoverageSweepFamilySelection(
     Set<AttackType> bypassFamilies
 ) {
 
-    public static final List<String> HIGH_SIGNAL_FAMILIES = List.of(
-        "Matrix / Extension",
-        "Extension / Negotiation",
-        "Path Normalization",
-        "Encoding",
-        "Debug Params",
-        "Content-Type",
-        "Header",
-        "Host Parsing"
-    );
+    public static final List<String> HIGH_SIGNAL_FAMILIES = com.bypassfuzzer.core.scan.HighSignalPlanner.ORDERED_FAMILIES;
 
     public CoverageSweepFamilySelection {
         highSignalFamilies = highSignalFamilies == null

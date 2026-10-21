@@ -1,7 +1,11 @@
 package com.bypassfuzzer.core.scan;
+import com.bypassfuzzer.core.http.CookieHeaderUtils;
 
 import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
+import com.bypassfuzzer.core.http.RequestParameterSupport;
+import com.bypassfuzzer.core.http.RequestBodyFormat;
+import com.bypassfuzzer.core.http.QueryStringUtils;
 import com.bypassfuzzer.core.payloads.PayloadRepository;
 import com.bypassfuzzer.core.payloads.UrlPayloadProcessor;
 
@@ -110,13 +114,34 @@ public final class BypassPlanner {
 
     private List<PlannedRequest> verbs(HttpRequestData request) {
         List<PlannedRequest> output = new ArrayList<>();
-        for (String method : METHODS) output.add(planned(AttackFamily.VERB, "Method: " + method, request.withMethod(method)));
+        for (String method : METHODS) {
+            String bodyParams = RequestParameterSupport.extractUrlEncodedBody(request);
+            HttpRequestData mutation = RequestParameterSupport.supportsBody(request.method()) && Set.of("GET", "HEAD", "DELETE").contains(method)
+                && bodyParams != null && !bodyParams.isEmpty()
+                ? RequestParameterSupport.moveBodyToQuery(request, method, bodyParams) : request.withMethod(method);
+            output.add(planned(AttackFamily.VERB, "Method: " + method, mutation));
+        }
         String original = request.method();
         for (String method : List.of(original.toLowerCase(Locale.ROOT), title(original), alternating(original), "X" + original, original + "X")) {
             output.add(planned(AttackFamily.VERB, "Method: " + method, request.withMethod(method)));
         }
         for (String header : OVERRIDE_HEADERS) for (String method : METHODS) {
             output.add(planned(AttackFamily.VERB, header + ": " + method, request.upsertHeader(header, method)));
+        }
+        for (String method : List.of("POST", "PUT")) for (String header : OVERRIDE_HEADERS)
+            for (String override : List.of("GET", "DELETE", "PATCH"))
+                output.add(planned(AttackFamily.VERB, method + " + " + header + ": " + override,
+                    request.withMethod(method).upsertHeader(header, override)));
+        String query = request.query();
+        String body = RequestParameterSupport.extractUrlEncodedBody(request);
+        for (String method : List.of("POST", "PUT", "PATCH")) {
+            if (!query.isEmpty()) output.add(planned(AttackFamily.VERB, method + " (params query→body)",
+                RequestParameterSupport.moveQueryToBody(request, method)));
+            if (body != null && !body.isEmpty()) output.add(planned(AttackFamily.VERB, method + " (params body→query)",
+                RequestParameterSupport.moveBodyToQuery(request, method, body)));
+            String parameters = query.isEmpty() ? body : query;
+            if (parameters != null && !parameters.isEmpty()) output.add(planned(AttackFamily.VERB, method + " (params in query+body)",
+                RequestParameterSupport.putParamsInBoth(request, method, parameters)));
         }
         return output;
     }
@@ -126,7 +151,7 @@ public final class BypassPlanner {
         Map<String, String> existing = parsePairs(request.query(), "&");
         for (String name : existing.keySet()) for (String value : FUZZ_VALUES) {
             output.add(planned(AttackFamily.PARAM, name + "=" + value,
-                request.withRawTarget(replaceQueryValue(request.rawTarget(), name, value))));
+                request.withRawTarget(QueryStringUtils.replaceValue(request.rawTarget(), name, value))));
         }
         for (String payload : new PayloadRepository().loadParamPayloads()) {
             output.add(planned(AttackFamily.PARAM, payload, request.withRawTarget(appendQuery(request.rawTarget(), payload))));
@@ -139,7 +164,7 @@ public final class BypassPlanner {
         String original = request.firstHeader("Cookie").orElse("");
         if (fuzzExisting) for (String name : parsePairs(original, ";").keySet()) for (String value : FUZZ_VALUES) {
             output.add(planned(AttackFamily.COOKIE, name + "=" + value,
-                request.upsertHeader("Cookie", replaceDelimitedValue(original, name, value, "; "))));
+                request.upsertHeader("Cookie", com.bypassfuzzer.core.http.CookieHeaderUtils.replaceValue(original, name, value))));
         }
         for (String payload : new PayloadRepository().loadParamPayloads()) {
             String value = original.isBlank() ? payload : original + "; " + payload;
@@ -171,10 +196,26 @@ public final class BypassPlanner {
     }
 
     private List<PlannedRequest> contentTypes(HttpRequestData request) {
-        return List.of("application/x-www-form-urlencoded", "application/json", "application/xml", "text/xml",
-            "multipart/form-data", "*/*", "application/*", "text/*", "application/json;", "application/json;charset=")
-            .stream().map(value -> planned(AttackFamily.CONTENT_TYPE, "Content-Type: " + value,
-                request.upsertHeader("Content-Type", value))).toList();
+        var output = new ArrayList<PlannedRequest>();
+        var parameters = RequestParameterSupport.extractLocatedParameters(request);
+        var prepared = !parameters.isEmpty() && !RequestParameterSupport.supportsBody(request.method())
+            ? RequestParameterSupport.prepareForBodyFormat(request, "POST") : request;
+        String current = prepared.firstHeader("Content-Type").orElse("");
+        if (!parameters.isEmpty()) for (var format : RequestBodyFormat.values()) {
+            String type = switch (format) {
+                case URL_ENCODED -> "application/x-www-form-urlencoded";
+                case JSON -> "application/json";
+                case XML -> "application/xml";
+                case MULTIPART -> "multipart/form-data";
+            };
+            if (current.contains(type) || format == RequestBodyFormat.XML && current.contains("text/xml")) continue;
+            output.add(planned(AttackFamily.CONTENT_TYPE, "Content-Type conversion: " + format,
+                RequestParameterSupport.applyBodyFormat(prepared, parameters, format)));
+        }
+        for (String type : List.of("application/x-www-form-urlencoded", "application/json", "application/xml", "text/xml",
+            "multipart/form-data", "*/*", "application/*", "text/*", "application/json;", "application/json;charset="))
+            output.add(planned(AttackFamily.CONTENT_TYPE, "Content-Type: " + type, prepared.upsertHeader("Content-Type", type)));
+        return output;
     }
 
     private List<PlannedRequest> encodings(HttpRequestData request) {
@@ -186,6 +227,19 @@ public final class BypassPlanner {
                 String encoded = encodeOrdinal(path, ordinal, kind);
                 if (!encoded.equals(path)) output.add(planned(AttackFamily.ENCODING,
                     "Path " + kind + " #" + ordinal + ": " + encoded, request.withRawTarget(encoded + query)));
+            }
+        }
+        for (var parameter : RequestParameterSupport.extractLocatedParameters(request)) {
+            if (parameter.name().length() > 100 || parameter.value().length() > 100) continue;
+            for (String kind : List.of("url", "double-url", "triple-url", "unicode", "unicode-long", "unicode-overflow")) {
+                String name = encodeOrdinal(parameter.name(), 1, kind);
+                String value = encodeOrdinal(parameter.value(), 1, kind);
+                if (!name.equals(parameter.name())) output.add(planned(AttackFamily.ENCODING,
+                    "Param name " + kind + " (" + parameter.location() + "): " + parameter.name() + " → " + name,
+                    RequestParameterSupport.replaceParameterName(request, parameter, name)));
+                if (!value.equals(parameter.value())) output.add(planned(AttackFamily.ENCODING,
+                    "Param value " + kind + " (" + parameter.location() + "): " + parameter.name() + "=" + value,
+                    RequestParameterSupport.replaceParameterValue(request, parameter, value)));
             }
         }
         return output;
@@ -201,10 +255,12 @@ public final class BypassPlanner {
     }
 
     private List<PlannedRequest> cases(HttpRequestData request) {
-        String target = request.rawTarget();
-        LinkedHashSet<String> values = new LinkedHashSet<>(List.of(target.toUpperCase(Locale.ROOT),
-            target.toLowerCase(Locale.ROOT), title(target), alternating(target)));
-        values.remove(target);
+        var values = new LinkedHashSet<String>();
+        String path = request.path(), query = request.query();
+        List<String> paths = List.of(path, path.toUpperCase(Locale.ROOT), path.toLowerCase(Locale.ROOT), title(path), alternating(path));
+        List<String> queries = List.of(query, query.toUpperCase(Locale.ROOT), query.toLowerCase(Locale.ROOT), title(query), alternating(query));
+        for (String p : paths) for (String q : queries) values.add(p + (q.isEmpty() ? "" : "?" + q));
+        values.remove(request.rawTarget());
         return values.stream().map(value -> planned(AttackFamily.CASE, value, request.withRawTarget(value))).toList();
     }
 
@@ -223,7 +279,7 @@ public final class BypassPlanner {
                 List<PlannedRequest> values = families.getOrDefault(family, List.of());
                 if (index >= values.size()) continue;
                 PlannedRequest value = values.get(index);
-                String key = family.id() + "\n" + value.request().method() + "\n" + value.request().rawTarget() + "\n"
+                String key = family.id() + "\n" + value.request().protocol() + "\n" + value.request().method() + "\n" + value.request().rawTarget() + "\n"
                     + value.request().headers() + "\n" + Arrays.hashCode(value.request().body());
                 if (seen.add(key)) output.add(value);
                 added = true;
@@ -242,6 +298,5 @@ public final class BypassPlanner {
     private String alternating(String input) { StringBuilder result = new StringBuilder(); int index = 0; for (char current : input.toCharArray()) result.append(Character.isLetter(current) ? ((index++ & 1) == 0 ? Character.toUpperCase(current) : Character.toLowerCase(current)) : current); return result.toString(); }
     private String encodeOrdinal(String input, int ordinal, String kind) { int seen = 0; for (int i = 0; i < input.length(); i++) { char current = input.charAt(i); if (!Character.isLetterOrDigit(current)) continue; if (++seen != ordinal) continue; String encoded = switch (kind) { case "url" -> String.format("%%%02X", (int) current); case "double-url" -> String.format("%%25%02X", (int) current); case "triple-url" -> String.format("%%2525%02X", (int) current); case "unicode" -> String.format("%%u%04x", (int) current); case "unicode-long" -> String.format("\\u%04x", (int) current); default -> String.format("%%u%04x", (int) current + (0x4e * 0x100)); }; return input.substring(0, i) + encoded + input.substring(i + 1); } return input; }
     private Map<String, String> parsePairs(String text, String separator) { Map<String, String> values = new LinkedHashMap<>(); if (text == null || text.isBlank()) return values; for (String part : text.split(java.util.regex.Pattern.quote(separator))) { int equal = part.indexOf('='); String name = (equal < 0 ? part : part.substring(0, equal)).trim(); if (!name.isEmpty()) values.put(name, equal < 0 ? "" : part.substring(equal + 1).trim()); } return values; }
-    private String replaceQueryValue(String target, String name, String value) { int question = target.indexOf('?'); if (question < 0) return appendQuery(target, name + "=" + value); String path = target.substring(0, question); Map<String, String> pairs = parsePairs(target.substring(question + 1), "&"); pairs.put(name, value); return path + "?" + pairs.entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue()).collect(java.util.stream.Collectors.joining("&")); }
-    private String replaceDelimitedValue(String text, String name, String value, String separator) { Map<String, String> pairs = parsePairs(text, ";"); pairs.put(name, value); return pairs.entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue()).collect(java.util.stream.Collectors.joining(separator)); }
+
 }

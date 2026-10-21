@@ -1,4 +1,5 @@
 package com.bypassfuzzer.core.scan;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
@@ -28,19 +29,32 @@ public final class ScanEngine {
     private final ScanOptions options;
     private final Map<String, Semaphore> hostPermits = new ConcurrentHashMap<>();
     private final Semaphore globalPermits;
-    private final PauseGate pauseGate;
+    private final Object pauseGate = new Object();
+    private final com.bypassfuzzer.core.throttle.HostThrottleCoordinator<HttpRequestData, HttpResponseData> throttle;
     private final AtomicLong requestsSent = new AtomicLong();
     private volatile boolean stopped;
     private volatile boolean paused;
 
     public ScanEngine(ScanOptions options) {
-        this.options = options;
-        this.globalPermits = new Semaphore(options.globalConcurrency());
-        this.pauseGate = new PauseGate(options);
+        this(options, true);
     }
 
-    public void pause() { paused = true; }
-    public void resume() { paused = false; synchronized (pauseGate) { pauseGate.notifyAll(); } }
+    /** Burp already supplies the same shared controller at its Montoya boundary. */
+    public ScanEngine(ScanOptions options, boolean ownThrottle) {
+        this.options = options;
+        this.globalPermits = new Semaphore(options.globalConcurrency());
+        var settings = new com.bypassfuzzer.core.throttle.ThrottleSettings(options.throttleStatusCodes(),
+            options.globalConcurrency(), options.perHostConcurrency(), 400,
+            com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.valueOf(options.posture().replace('-', '_').toUpperCase()),
+            com.bypassfuzzer.core.throttle.ThrottleSettings.PauseMode.valueOf(options.pauseMode().toUpperCase()),
+            options.fixedPauseMillis());
+        throttle = ownThrottle ? new com.bypassfuzzer.core.throttle.HostThrottleCoordinator<>(settings,
+            request -> request.origin().scheme() + "://" + request.origin().host().toLowerCase() + ":" + request.origin().port(),
+            HttpResponseData::statusCode, response -> response.firstHeader("Retry-After").orElse(null), message -> {}) : null;
+    }
+
+    public void pause() { paused = true; if (throttle != null) throttle.manualPause(); }
+    public void resume() { paused = false; if (throttle != null) throttle.manualResume(); synchronized (pauseGate) { pauseGate.notifyAll(); } }
     public void stop() { stopped = true; resume(); }
     public boolean isPaused() { return paused; }
     public long requestsSent() { return requestsSent.get(); }
@@ -75,6 +89,7 @@ public final class ScanEngine {
                     for (PlannedRequest item : plan) {
                         if (!item.baseline() || stopped) continue;
                         Outcome outcome = send(transport, item, 0);
+                        if (stopped && outcome.response == null) break;
                         boolean idor = "idor".equals(mode);
                         boolean targetControl = idor && item.payload().equals("idor.baseline.target");
                         String signal = outcome.error != null || outcome.response == null ? "NO_RESPONSE" : "BASELINE";
@@ -108,6 +123,7 @@ public final class ScanEngine {
                         if (idor && !targetComparable && item.intent() != ProbeIntent.MASS_ASSIGNMENT) continue;
                         pending.add(pool.submit(() -> {
                             Outcome outcome = send(transport, item, 0);
+                            if (stopped && outcome.response == null) return;
                             String signal = classify(mode, item, authorizedBaseline, targetBaseline, outcome);
                             publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, 0), records, findings, throttled, errors);
                             if (retryable(item.request().method()) && options.retryAttempts() > 0) {
@@ -137,7 +153,11 @@ public final class ScanEngine {
 
     private Outcome send(RequestTransport transport, PlannedRequest item, int attempt) {
         ExchangeResult<HttpResponseData> result = exchange(item.request(),
-            () -> transport.send(item.request(), options.requestTimeout()), HttpResponseData::statusCode, attempt);
+            () -> throttle == null ? transport.send(item.request(), options.requestTimeout()) :
+                throttle.send(item.request(), () -> {
+                    try { return transport.send(item.request(), options.requestTimeout()); }
+                    catch (Exception error) { throw new java.util.concurrent.CompletionException(error); }
+                }, () -> !stopped), HttpResponseData::statusCode, attempt);
         return new Outcome(result.response(), result.error());
     }
 
@@ -157,13 +177,11 @@ public final class ScanEngine {
             host.acquire(); hostAcquired = true;
             synchronized (pauseGate) {
                 while (paused && !stopped) pauseGate.wait(250);
-                pauseGate.await(() -> stopped);
             }
             if (stopped) return new ExchangeResult<>(null, new InterruptedException("Scan stopped"));
             if (attempt > 0) Thread.sleep(Math.min(5_000L, 500L * (1L << Math.min(attempt, 3))));
             requestsSent.incrementAndGet();
             T response = action.send();
-            if (response != null) pauseGate.observe(statusCode.applyAsInt(response));
             return new ExchangeResult<>(response, null);
         } catch (Exception error) {
             return new ExchangeResult<>(null, error);
@@ -206,6 +224,8 @@ public final class ScanEngine {
         }
         HttpResponseData baseline = "idor".equals(mode) ? target : authorized;
         if (baseline == null) return "UNCLASSIFIED";
+        if (mode.equals("sweep")) return SweepClassifier.signal(new SweepClassifier.Baseline(
+            baseline.statusCode(), baseline.body().length, baseline.firstHeader("Content-Type").orElse("")), SweepClassifier.response(baseline), SweepClassifier.response(response));
         boolean blocked = baseline.statusCode() == 401 || baseline.statusCode() == 403;
         boolean success = response.statusCode() >= 200 && response.statusCode() < 400;
         if ("idor".equals(mode) && isIdorDeniedTargetStatus(baseline.statusCode()) && success)
@@ -239,27 +259,6 @@ public final class ScanEngine {
     }
     @FunctionalInterface public interface CheckedExchange<T> { T send() throws Exception; }
     public record ExchangeResult<T>(T response, Throwable error) { }
-
-    private static final class PauseGate {
-        private final ScanOptions options;
-        private long resumeAt;
-        private int recentThrottles;
-        private long throttleWindowStarted;
-        PauseGate(ScanOptions options) { this.options = options; }
-        synchronized void await(java.util.function.BooleanSupplier stopped) throws InterruptedException {
-            long remaining;
-            while (!stopped.getAsBoolean() && (remaining = resumeAt - System.currentTimeMillis()) > 0)
-                wait(Math.min(remaining, 250L));
-        }
-        synchronized void observe(int statusCode) {
-            if (!options.throttleStatusCodes().contains(statusCode) || options.pauseMode().equals("off")) return;
-            long now = System.currentTimeMillis();
-            if (now - throttleWindowStarted > 10_000L) { throttleWindowStarted = now; recentThrottles = 0; }
-            recentThrottles++;
-            if (options.pauseMode().equals("fixed") || recentThrottles >= (options.posture().equals("conservative") ? 2 : 3))
-                resumeAt = Math.max(resumeAt, now + options.fixedPauseMillis());
-        }
-    }
 
     public record Summary(String state, String mode, String startedAt, String finishedAt, int inputs,
                           long records, int findings, int throttled, int transportErrors, long requestsSent) {

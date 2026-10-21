@@ -1,7 +1,8 @@
 package com.bypassfuzzer.burp.ui.session;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import com.bypassfuzzer.burp.core.idor.IdorRunOptions;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
@@ -51,7 +52,7 @@ public class IdorRunOptionsPanel extends JPanel {
     }
 
     private long effectiveUserAgentSeed() {
-        if (requestHeadersControl.userAgentMode() == com.bypassfuzzer.burp.http.UserAgentMode.DISABLED) {
+        if (requestHeadersControl.userAgentMode() == com.bypassfuzzer.core.http.UserAgentMode.DISABLED) {
             return 0L;
         }
         if (userAgentRandomizationSeed == 0L) {

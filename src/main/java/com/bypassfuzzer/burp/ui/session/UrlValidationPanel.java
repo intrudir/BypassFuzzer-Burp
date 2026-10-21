@@ -8,7 +8,7 @@ import com.bypassfuzzer.burp.core.collaborator.CollaboratorSupport;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationCandidateFinder;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationEngine;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationOptions;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayload;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationPayload;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayloadGenerator;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationCandidate;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;

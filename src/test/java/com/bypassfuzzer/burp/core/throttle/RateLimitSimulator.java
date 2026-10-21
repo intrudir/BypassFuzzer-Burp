@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.throttle;
+import com.bypassfuzzer.core.throttle.AdaptiveRateController;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

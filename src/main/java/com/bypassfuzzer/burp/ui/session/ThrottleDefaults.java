@@ -3,7 +3,7 @@ package com.bypassfuzzer.burp.ui.session;
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepOptions;
 import com.bypassfuzzer.burp.core.idor.IdorRunOptions;
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import java.util.Set;
 

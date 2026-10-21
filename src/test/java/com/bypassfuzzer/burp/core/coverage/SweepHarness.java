@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.coverage;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.HttpService;
@@ -6,7 +7,7 @@ import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.http.message.responses.HttpResponse;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 import com.bypassfuzzer.burp.http.RequestSender;
 import com.bypassfuzzer.burp.smoke.MontoyaStubs;
 
@@ -83,7 +84,7 @@ public final class SweepHarness {
             config.globalConcurrency(), config.perHostConcurrency(), Set.of(429, 503),
             CoverageSweepMode.IMPORTED_TARGETS, CoverageSweepAuthSelection.defaults(), true, false,
             List.of(), List.of(new ConfiguredHeader("User-Agent", BROWSER_UA)), config.payloadSet(),
-            com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
+            com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
 
         CoverageSweepEngine engine = new CoverageSweepEngine(
             stubApi(), sender, new CoverageSweepProbeGenerator(), SweepHarness::importedRequest);

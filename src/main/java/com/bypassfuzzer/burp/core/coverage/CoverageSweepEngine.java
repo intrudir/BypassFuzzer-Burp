@@ -1,4 +1,7 @@
 package com.bypassfuzzer.burp.core.coverage;
+import com.bypassfuzzer.core.input.PostmanCollectionParser;
+import com.bypassfuzzer.core.input.OpenApiSpecParser;
+import com.bypassfuzzer.core.input.OpenApiOperation;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.HttpService;
@@ -10,14 +13,14 @@ import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.core.throttle.HostThrottleCoordinator;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.core.ExecutionPauseController;
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 import com.bypassfuzzer.burp.http.MontoyaRequestSender;
-import com.bypassfuzzer.burp.http.RequestPathUtils;
+import com.bypassfuzzer.core.http.RequestPathUtils;
 import com.bypassfuzzer.burp.http.RequestHeaderUtils;
 import com.bypassfuzzer.burp.http.RequestSender;
 import com.bypassfuzzer.burp.http.TargetUrlResolver;
 import com.bypassfuzzer.burp.http.ConfiguredHeaderPolicy;
-import com.bypassfuzzer.burp.http.CookieHeaderUtils;
+import com.bypassfuzzer.core.http.CookieHeaderUtils;
 import com.bypassfuzzer.burp.http.CoreRequestAdapter;
 import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.scan.ScanEngine;
@@ -47,12 +50,6 @@ import java.util.regex.Pattern;
 
 public class CoverageSweepEngine {
 
-    private static final Pattern IMAGE_PATH_PATTERN = Pattern.compile(
-        ".*\\.(?:apng|avif|bmp|gif|ico|jpe?g|png|svg|tiff?|webp)$");
-    private static final Pattern JAVASCRIPT_PATH_PATTERN = Pattern.compile(
-        ".*\\.(?:cjs|js|mjs|js\\.map)$");
-    private static final Pattern STYLESHEET_OR_FONT_PATH_PATTERN = Pattern.compile(
-        ".*\\.(?:css|woff2?)$");
     private static final int MAX_AUTOMATIC_THROTTLE_RETRIES = 3;
 
     private final MontoyaApi api;
@@ -439,7 +436,7 @@ public class CoverageSweepEngine {
         coreScan = new ScanEngine(new ScanOptions(HttpProtocol.AUTO, Duration.ofSeconds(15),
             throttleSettings.globalConcurrency(), throttleSettings.perHostConcurrency(),
             options.throttleStatusCodes(), 0, false, options.posture().name().toLowerCase(),
-            options.pauseMode().name().toLowerCase(), options.fixedPauseMillis(), false));
+            options.pauseMode().name().toLowerCase(), options.fixedPauseMillis(), false), false);
         phase = SweepPhase.MAIN_SWEEP;
         int concurrency = throttleSettings.globalConcurrency();
         safeLog("Coverage sweep starting: " + candidates.size() + " candidate(s); adaptive rate control, "
@@ -513,206 +510,54 @@ public class CoverageSweepEngine {
             + options.payloadSet() + "; deferred retries remaining: " + retryQueue.size());
     }
 
-    private void executeCandidate(CoverageSweepCandidate candidate,
-                                  CoverageSweepOptions options,
-                                  Consumer<AttackResult> resultCallback,
-                                  ConcurrentLinkedQueue<RetryTask> retryQueue) {
-        ConfiguredHeaderPolicy headerPolicy = new ConfiguredHeaderPolicy(
-            options.requestHeaders(), options.userAgentMode(), options.userAgentRandomizationSeed());
-        HttpResponse controlResponse = null;
-        HttpResponse anonymousControlResponse = null;
-        HttpRequest verificationRequest = null;
-        if (options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
-            && options.verifyUnauthenticatedAccess()) {
-            ConfiguredHeaderPolicy anonymousPolicy = headerPolicy.withoutAuthentication(
-                options.authSelection().headerNames(), options.authSelection().cookieNames());
-            HttpRequest anonymousBase = stripAuthentication(candidate.request(), options.authSelection());
-            verificationRequest = anonymousPolicy.reconcileMutation(anonymousBase, anonymousBase);
-            HttpRequest scheduledVerificationRequest = verificationRequest;
-            plannedMainRequests.incrementAndGet();
-            anonymousControlResponse = sendScheduled(scheduledVerificationRequest,
-                () -> requestSender.send(scheduledVerificationRequest, this::awaitSendAdmission));
-            completedMainRequests.incrementAndGet();
-            String signal = anonymousControlResponse == null
-                ? "No response"
-                : CoverageSweepClassifier.unauthenticatedControlSignal(candidate, anonymousControlResponse);
-            boolean skipProbes = options.skipLikelyPublicEndpoints()
-                && signal.startsWith(CoverageSweepClassifier.LIKELY_PUBLIC_PREFIX);
-            if (skipProbes) {
-                skippedPublicEndpoints.incrementAndGet();
-            }
-            if (resultCallback != null) {
-                AttackResult result = new AttackResult(
-                    "Authenticated Coverage Sweep",
-                    "Original request without authentication",
-                    candidate.method() + " " + candidate.displayUrl(),
-                    "Unauthenticated Control",
-                    signal,
-                    verificationRequest,
-                    anonymousControlResponse,
-                    candidate.request(),
-                    candidate.originalResponse(),
-                    verificationRequest,
-                    anonymousControlResponse
-                ).copyEvidenceToTempFile();
-                resultCallback.accept(result);
-            }
-            if (skipProbes) {
-                return;
-            }
-        }
-
-        if (!canContinue()) {
-            return;
-        }
-        List<CoverageSweepProbe> probes = buildProbes(candidate, options);
-        plannedMainRequests.addAndGet(probes.size());
-        for (CoverageSweepProbe probe : probes) {
-            if (!canContinue()) {
-                return;
-            }
-            HttpResponse response = sendScheduled(probe.request(), () -> requestSender.sendWithOptionalMode(
-                probe.request(), probe.httpMode(), this::awaitSendAdmission));
-            completedMainRequests.incrementAndGet();
-            if ("Control".equals(probe.family())) {
-                controlResponse = response;
-            }
-            String signal;
-            if (response == null) {
-                signal = "No response";
-            } else if (options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC) {
-                if (options.verifyUnauthenticatedAccess()) {
-                    signal = CoverageSweepClassifier.authenticatedBypassSignal(
-                        candidate, anonymousControlResponse, response);
-                    if (signal.isBlank()) {
-                        signal = CoverageSweepClassifier.unauthenticatedMutationSignal(
-                            anonymousControlResponse, response);
-                    }
-                } else {
-                    signal = "";
+    private void executeCandidate(CoverageSweepCandidate candidate, CoverageSweepOptions options,
+        Consumer<AttackResult> resultCallback, ConcurrentLinkedQueue<RetryTask> retryQueue) {
+        var workflow = new com.bypassfuzzer.core.scan.SweepWorkflow<HttpRequest, HttpResponse>(
+            com.bypassfuzzer.burp.http.MontoyaRequestAccess.INSTANCE, CoverageSweepClassifier::toCore);
+        var policy = new ConfiguredHeaderPolicy(options.requestHeaders(), options.userAgentMode(),
+            options.userAgentRandomizationSeed());
+        var execution = new com.bypassfuzzer.core.scan.SweepWorkflow.Options(
+            options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC,
+            options.verifyUnauthenticatedAccess(), options.skipLikelyPublicEndpoints(),
+            options.authSelection().headerNames(), options.authSelection().cookieNames());
+        var input = new com.bypassfuzzer.core.scan.SweepWorkflow.Candidate<>(candidate.request(),
+            candidate.originalResponse(), candidate.method() + " " + candidate.displayUrl(),
+            new com.bypassfuzzer.core.scan.SweepClassifier.Baseline(candidate.statusCode(), candidate.contentLength(), candidate.contentType()));
+        workflow.execute(input, execution, policy.shared(), () -> buildProbes(candidate, options).stream()
+            .map(probe -> new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(), probe.family(),
+                probe.request(), probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_2 ? HttpProtocol.HTTP_2
+                    : probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_1 ? HttpProtocol.HTTP_1 : HttpProtocol.AUTO)).toList(),
+            probe -> sendScheduled(probe.request(), () -> requestSender.sendWithOptionalMode(probe.request(),
+                coreRequests.httpMode(probe.protocol()), this::awaitSendAdmission)), this::canContinue,
+            new com.bypassfuzzer.core.scan.SweepWorkflow.Observer<HttpRequest, HttpResponse>() {
+                public void planned(int count) { plannedMainRequests.addAndGet(count); }
+                public void completed() { completedMainRequests.incrementAndGet(); }
+                public void skippedPublic() { skippedPublicEndpoints.incrementAndGet(); }
+                public void result(com.bypassfuzzer.core.scan.SweepWorkflow.Result<HttpRequest, HttpResponse> event) {
+                    AttackResult result = new AttackResult(event.attackType(), event.probe().label(), event.target(),
+                        event.probe().family(), event.signal(), event.probe().request(), event.response(),
+                        event.originalRequest(), event.originalResponse(), event.verificationRequest(), event.verificationResponse())
+                        .copyEvidenceToTempFile();
+                    if (resultCallback != null) resultCallback.accept(result);
+                    // The master's anonymous verification control is evidence, not deferred mutation work.
+                    if (!event.probe().family().equals("Unauthenticated Control") && isRetryableResponse(event.response(), options))
+                        retryQueue.add(new RetryTask(result, new CoverageSweepProbe(event.probe().label(), event.probe().family(),
+                            event.probe().request(), coreRequests.httpMode(event.probe().protocol()))));
                 }
-            } else if ("Control".equals(probe.family())) {
-                signal = "";
-            } else {
-                signal = CoverageSweepClassifier.signal(candidate, controlResponse, response);
-            }
-            HttpResponse originalResponse = candidate.originalResponse() != null
-                ? candidate.originalResponse() : controlResponse;
-            AttackResult result = new AttackResult(
-                    options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC ? "Authenticated Coverage Sweep" : "Coverage Sweep",
-                    probe.label(),
-                    candidate.method() + " " + candidate.displayUrl(),
-                    probe.family(),
-                    signal,
-                    probe.request(),
-                    response,
-                    candidate.request(),
-                    originalResponse,
-                    verificationRequest,
-                    anonymousControlResponse
-            ).copyEvidenceToTempFile();
-            if (resultCallback != null) {
-                resultCallback.accept(result);
-            }
-            if (isRetryableResponse(response, options)) {
-                retryQueue.add(new RetryTask(result, probe));
-            }
-        }
+            });
     }
 
-    private void runDeferredRetries(ConcurrentLinkedQueue<RetryTask> retryQueue,
-                                    CoverageSweepOptions options,
-                                    Consumer<AttackResult> resultCallback,
-                                    int concurrency) {
-        Set<RetryGroupKey> quarantinedGroups = new HashSet<>();
-        Set<String> hostWideThrottles = new HashSet<>();
-        for (int attempt = 1; attempt <= MAX_AUTOMATIC_THROTTLE_RETRIES
-            && canContinue() && !retryQueue.isEmpty(); attempt++) {
-            List<RetryTask> pending = new ArrayList<>();
-            RetryTask task;
-            while ((task = retryQueue.poll()) != null) {
-                pending.add(task);
-            }
-            if (pending.isEmpty()) {
-                return;
-            }
-            safeLog("Coverage sweep deferred retry pass " + attempt + ": "
-                + pending.size() + " payload(s).");
-            Map<RetryGroupKey, List<RetryTask>> groups = new LinkedHashMap<>();
-            for (RetryTask retry : pending) {
-                groups.computeIfAbsent(retryGroupKey(retry), ignored -> new ArrayList<>()).add(retry);
-            }
-            int retryAttempt = attempt;
-            AtomicInteger workerCounter = new AtomicInteger(1);
-            executor = Executors.newFixedThreadPool(Math.max(1, Math.min(concurrency, pending.size())), runnable -> {
-                Thread thread = new Thread(runnable,
-                    "bypassfuzzer-coverage-sweep-retry-worker-" + workerCounter.getAndIncrement());
-                thread.setDaemon(true);
-                return thread;
-            });
-            for (Map.Entry<RetryGroupKey, List<RetryTask>> entry : groups.entrySet()) {
-                RetryGroupKey group = entry.getKey();
-                List<RetryTask> retries = entry.getValue();
-                if (quarantinedGroups.contains(group) || hostWideThrottles.contains(group.authority())) {
-                    retryQueue.addAll(retries);
-                    continue;
-                }
-
-                RetryTask sample = retries.get(0);
-                HttpRequest controlRequest = sample.result().getOriginalRequest();
-                if (controlRequest == null) {
-                    controlRequest = sample.probe().request();
-                }
-                HttpRequest scheduledControl = controlRequest;
-                HttpResponse controlResponse = sendScheduled(scheduledControl,
-                    () -> requestSender.send(scheduledControl, this::awaitSendAdmission));
-                if (!canContinue() || controlResponse == null || isThrottleResponse(controlResponse, options)) {
-                    retryQueue.addAll(retries);
-                    hostWideThrottles.add(group.authority());
-                    safeLog("Coverage sweep automatic retries paused for " + group.authority()
-                        + ": the unmodified control canary "
-                        + (controlResponse == null ? "had no response" : "returned " + controlResponse.statusCode())
-                        + ". Requests remain in the manual retry queue.");
-                    continue;
-                }
-
-                boolean sampleStillRetryable = executeDeferredRetry(
-                    sample, retryAttempt, options, resultCallback, retryQueue);
-                if (sampleStillRetryable) {
-                    if (retries.size() > 1) {
-                        retryQueue.addAll(retries.subList(1, retries.size()));
-                    }
-                    quarantinedGroups.add(group);
-                    quarantinedRetryRequests.addAndGet(retries.size());
-                    safeLog("Coverage sweep quarantined " + retries.size() + " " + group.family()
-                        + " retry payload(s) for " + group.authority()
-                        + ": the control canary was accepted but the sampled mutation was still throttled or had no response.");
-                    continue;
-                }
-
-                for (int index = 1; index < retries.size(); index++) {
-                    RetryTask retry = retries.get(index);
-                    executor.submit(() -> executeDeferredRetry(
-                        retry, retryAttempt, options, resultCallback, retryQueue));
-                }
-            }
-            executor.shutdown();
-            try {
-                while (canContinue() && !executor.awaitTermination(200, TimeUnit.MILLISECONDS)) {
-                    // Wait for this retry pass to finish before starting another pass.
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } finally {
-                if (!executor.isTerminated()) {
-                    executor.shutdownNow();
-                }
-            }
-        }
-        if (!retryQueue.isEmpty()) {
-            safeLog("Coverage sweep deferred retry limit reached; " + retryQueue.size()
-                + " throttled or no-response payload(s) remain available for manual retry.");
-        }
+    private void runDeferredRetries(ConcurrentLinkedQueue<RetryTask> retryQueue, CoverageSweepOptions options,
+        Consumer<AttackResult> resultCallback, int concurrency) {
+        new com.bypassfuzzer.core.scan.DeferredRetryRunner<RetryTask>().run(retryQueue,
+            com.bypassfuzzer.core.scan.ScanDefaults.SWEEP_RETRIES, concurrency, this::canContinue,
+            item -> retryGroupKey(item).authority(), item -> retryGroupKey(item).family(), item -> {
+                HttpRequest control = item.result().getOriginalRequest() == null
+                    ? item.probe().request() : item.result().getOriginalRequest();
+                HttpResponse response = sendScheduled(control, () -> requestSender.send(control, this::awaitSendAdmission));
+                return canContinue() && response != null && !isThrottleResponse(response, options);
+            }, (item, attempt) -> executeDeferredRetry(item, attempt, options, resultCallback, retryQueue),
+            quarantinedRetryRequests::addAndGet, this::safeLog);
     }
 
     private boolean executeDeferredRetry(RetryTask retry,
@@ -879,29 +724,7 @@ public class CoverageSweepEngine {
     }
 
     private boolean isStaticAsset(HttpRequest request, HttpResponse response) {
-        String responseContentType = safe(contentType(response))
-            .toLowerCase(Locale.ROOT)
-            .split(";", 2)[0]
-            .trim();
-        if (responseContentType.startsWith("image/")
-            || responseContentType.equals("text/css")
-            || responseContentType.equals("text/javascript")
-            || responseContentType.equals("application/javascript")
-            || responseContentType.equals("application/x-javascript")
-            || responseContentType.equals("text/ecmascript")
-            || responseContentType.equals("application/ecmascript")
-            || responseContentType.equals("font/woff")
-            || responseContentType.equals("font/woff2")
-            || responseContentType.equals("application/font-woff")
-            || responseContentType.equals("application/x-font-woff")) {
-            return true;
-        }
-
-        String path = request == null ? "" : RequestPathUtils.pathWithoutQuery(safe(request.path()))
-            .toLowerCase(Locale.ROOT);
-        return IMAGE_PATH_PATTERN.matcher(path).matches()
-            || JAVASCRIPT_PATH_PATTERN.matcher(path).matches()
-            || STYLESHEET_OR_FONT_PATH_PATTERN.matcher(path).matches();
+        return com.bypassfuzzer.core.scan.SweepCandidateRules.staticAsset(request == null ? "" : request.path(), contentType(response));
     }
 
     public boolean matchesAuthSelection(CoverageSweepCandidate candidate, CoverageSweepAuthSelection selection) {
@@ -922,24 +745,10 @@ public class CoverageSweepEngine {
     }
 
     HttpRequest stripAuthentication(HttpRequest request, CoverageSweepAuthSelection selection) {
-        HttpRequest stripped = request.withRemovedHeader("Authorization")
-            .withRemovedHeader("Proxy-Authorization");
-        if (selection != null) {
-            for (String headerName : selection.headerNames()) {
-                if (headerName != null && !headerName.isBlank()) {
-                    stripped = stripped.withRemovedHeader(headerName.trim());
-                }
-            }
-            String cookieHeader = stripped.headerValue("Cookie");
-            String retainedCookies = CookieHeaderUtils.removeCookies(cookieHeader, selection.cookieNames());
-            if (cookieHeader != null) {
-                stripped = stripped.withRemovedHeader("Cookie");
-                if (retainedCookies != null && !retainedCookies.isBlank()) {
-                    stripped = stripped.withAddedHeader("Cookie", retainedCookies);
-                }
-            }
-        }
-        return stripped;
+        return new com.bypassfuzzer.core.scan.SweepWorkflow<HttpRequest, HttpResponse>(
+            com.bypassfuzzer.burp.http.MontoyaRequestAccess.INSTANCE, CoverageSweepClassifier::toCore)
+            .stripAuthentication(request, selection == null ? Set.of() : selection.headerNames(),
+                selection == null ? Set.of() : selection.cookieNames());
     }
 
     private List<CoverageSweepProbe> reconcileProbes(List<CoverageSweepProbe> probes,
@@ -1124,24 +933,8 @@ public class CoverageSweepEngine {
         }
     }
 
-    private String normalizedPathShape(String pathWithQuery) {
-        String path = RequestPathUtils.pathWithoutQuery(pathWithQuery);
-        String[] parts = path.split("/");
-        List<String> normalized = new ArrayList<>();
-        for (String part : parts) {
-            if (part.isEmpty()) {
-                continue;
-            }
-            String lower = part.toLowerCase(Locale.ROOT);
-            if (lower.matches("\\d+")) {
-                normalized.add("{num}");
-            } else if (lower.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
-                normalized.add("{uuid}");
-            } else {
-                normalized.add(lower);
-            }
-        }
-        return "/" + String.join("/", normalized);
+    private String normalizedPathShape(String path) {
+        return com.bypassfuzzer.core.scan.SweepCandidateRules.normalizedPathShape(path);
     }
 
     private boolean newer(ZonedDateTime left, ZonedDateTime right) {
@@ -1237,22 +1030,8 @@ public class CoverageSweepEngine {
 
     /** Round-robin interleave candidates so all hosts make progress concurrently. */
     private List<CoverageSweepCandidate> interleaveCandidatesByHost(List<CoverageSweepCandidate> candidates) {
-        Map<String, List<CoverageSweepCandidate>> byHost = new LinkedHashMap<>();
-        for (CoverageSweepCandidate candidate : candidates) {
-            String h = host(candidate.request(), candidate.displayUrl());
-            byHost.computeIfAbsent(h, ignored -> new ArrayList<>()).add(candidate);
-        }
-        List<CoverageSweepCandidate> result = new ArrayList<>(candidates.size());
-        int maxSize = byHost.values().stream().mapToInt(List::size).max().orElse(0);
-        List<List<CoverageSweepCandidate>> buckets = new ArrayList<>(byHost.values());
-        for (int i = 0; i < maxSize; i++) {
-            for (List<CoverageSweepCandidate> bucket : buckets) {
-                if (i < bucket.size()) {
-                    result.add(bucket.get(i));
-                }
-            }
-        }
-        return result;
+        return com.bypassfuzzer.core.scan.CandidateScheduler.interleave(candidates,
+            candidate -> host(candidate.request(), candidate.displayUrl()));
     }
 
     private record RetryGroupKey(String authority, String family) {

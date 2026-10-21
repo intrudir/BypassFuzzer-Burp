@@ -1,4 +1,8 @@
 package com.bypassfuzzer.burp.ui.session;
+import com.bypassfuzzer.core.input.RetryPackage;
+import com.bypassfuzzer.core.input.RetryPackageEntry;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.HttpMode;
@@ -15,8 +19,8 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepOptions;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPayloadSet;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
-import com.bypassfuzzer.burp.http.UserAgentMode;
-import com.bypassfuzzer.burp.core.coverage.PostmanCollectionParser;
+import com.bypassfuzzer.core.http.UserAgentMode;
+import com.bypassfuzzer.core.input.PostmanCollectionParser;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
@@ -694,14 +698,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         updateEstimate();
         updatePreviewButton();
         statusLabel.setText("Excluded " + excluded.size() + " host(s); removed " + removed + " request(s).");
-    }
-
-    private record RetryPackage(String version, String type, List<RetryPackageEntry> entries) {
-    }
-
-    private record RetryPackageEntry(String targetLabel, String payload, String payloadFamily,
-                                     String payloadEncoding, int retryAttempt, String requestRaw,
-                                     String url, String method, String httpMode, String payloadLabel) {
     }
 
     private void toggleConfigurationPanel() {
@@ -1550,11 +1546,11 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             effectiveRequestHeaders(),
             currentPayloadSet(),
             throttleControl != null ? throttleControl.posture()
-                : com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
+                : com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
             payloadFamilyControl != null ? payloadFamilyControl.selection()
                 : com.bypassfuzzer.burp.core.coverage.CoverageSweepFamilySelection.defaults(),
             throttleControl != null ? throttleControl.pauseMode()
-                : com.bypassfuzzer.burp.core.throttle.ThrottleSettings.PauseMode.OFF,
+                : com.bypassfuzzer.core.throttle.ThrottleSettings.PauseMode.OFF,
             throttleControl != null ? throttleControl.fixedPauseMillis() : 30_000L,
             requestHeadersControl != null ? requestHeadersControl.userAgentMode()
                 : UserAgentMode.DISABLED,
@@ -1571,8 +1567,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
      * The configured request headers, with a browser {@code User-Agent} prepended when the preset is
      * enabled and the user has not already supplied one of their own.
      */
-    private java.util.List<com.bypassfuzzer.burp.http.ConfiguredHeader> effectiveRequestHeaders() {
-        java.util.List<com.bypassfuzzer.burp.http.ConfiguredHeader> headers =
+    private java.util.List<com.bypassfuzzer.core.http.ConfiguredHeader> effectiveRequestHeaders() {
+        java.util.List<com.bypassfuzzer.core.http.ConfiguredHeader> headers =
             requestHeadersControl == null ? java.util.List.of() : requestHeadersControl.headers();
         if (requestHeadersControl != null
             && requestHeadersControl.userAgentMode() != UserAgentMode.DISABLED) {
@@ -1586,9 +1582,9 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         if (userSetUserAgent) {
             return headers;
         }
-        java.util.List<com.bypassfuzzer.burp.http.ConfiguredHeader> withUa =
+        java.util.List<com.bypassfuzzer.core.http.ConfiguredHeader> withUa =
             new java.util.ArrayList<>(headers.size() + 1);
-        withUa.add(new com.bypassfuzzer.burp.http.ConfiguredHeader("User-Agent", BROWSER_USER_AGENT));
+        withUa.add(new com.bypassfuzzer.core.http.ConfiguredHeader("User-Agent", BROWSER_USER_AGENT));
         withUa.addAll(headers);
         return withUa;
     }

@@ -1,4 +1,6 @@
 package com.bypassfuzzer.burp.core.coverage;
+import com.bypassfuzzer.core.input.PostmanCollectionParser;
+import com.bypassfuzzer.core.input.OpenApiOperation;
 
 import org.junit.jupiter.api.Test;
 

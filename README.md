@@ -1,6 +1,6 @@
 # BypassFuzzer — Burp Suite and CLI
 
-An authorization-bypass fuzzer available as both a Burp Suite extension and a standalone Java/Docker CLI. Both surfaces use the scan planners and request-admission engine in `core`; Burp adds Proxy history, Collaborator, and its UI, while the CLI adds file inputs and evidence output.
+An authorization-bypass fuzzer available as both a Burp Suite extension and a standalone Java/Docker CLI. The Burp extension is the behavioral reference. Both surfaces use the mutation catalogs, Sweep workflow, adaptive throttling, header policy, result filters, and retry format in `core`. Burp supplies its message transport, Proxy history, editors, and native Collaborator generator; the CLI supplies file inputs, a standalone HTTP transport, evidence output, and an operator-configured OOB generator.
 
 ## Table of Contents
 
@@ -37,7 +37,7 @@ BypassFuzzer has four main testing areas:
 - **IDOR** for object identifier and BOLA-style request mutation.
 - **URL Validation** for marker-driven URL validation and SSRF-style allow-list bypass testing.
 
-All four modes are available from the CLI. Sweep accepts URL lists, raw-request manifests, OpenAPI/Swagger, Postman, and Burp version-1 retry packages. Proxy history and Burp Collaborator remain desktop-only.
+All four modes are available from the CLI. Sweep accepts URL lists, raw-request manifests, OpenAPI/Swagger, Postman, and Burp version-1 retry packages. Captured requests can be supplied to the CLI as raw files or manifests. Native Collaborator domains can be supplied through `--oob-domain` or an executable `--oob-generator`.
 
 - **Standalone CLI:**
   - Runs as a Java fat JAR or a locally built non-root Docker image
@@ -187,6 +187,20 @@ Accept: application/json
 
 Raw requests require `--target-origin`. This is the real socket and TLS destination and must contain only the scheme, host, and optional port. A payload that changes `Host` or the request target will not silently redirect the scanner to another server.
 
+### Shared behavior and verification
+
+Burp's defaults apply to both entrypoints: concurrency and per-host concurrency are 1; High Signal Sweep has a 350-request budget plus enabled Host parsing probes; Bypass and Sweep `all` use the complete catalog. `all` rejects a numeric `--max-probes` so a requested cap cannot be silently ignored. Bypass, IDOR, and URL Validation retry defaults are 3, 1, and 0; Sweep uses up to 3 deferred retry passes with control canaries and mutation quarantine. Optional targeted Bypass/URL Validation caps remain available.
+
+Always-send headers retain ordered duplicates and survive mutations of the same header. User-Agent variation is derived per generated request using the shared implementation. `retry-queue.json` uses Burp's version-1 interchange format. Importing it replays exact requests and preserves family, encoding, protocol, and attempt metadata.
+
+Run the cross-surface comparison, full test suites, and loopback labs with:
+
+```bash
+python3 scripts/audit-cli-parity.py
+```
+
+The audit builds both runnable JARs, compares actual CLI previews with the Burp adapters, drives all four packaged CLI scan modes, and checks that old parallel implementations have not returned. Evidence is retained under `artifacts/verification/surface-parity/`. The parity workflow runs on pull requests. UI rendering and the running Burp application's own Proxy/editor state remain host integrations; CLI request manifests supply captured inputs.
+
 ### Sweep
 
 High Signal is the default bounded Sweep corpus. It is the best starting point for broad coverage:
@@ -224,7 +238,6 @@ java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
   --urls targets.txt \
   --payload-set all \
   --families header,path,verb,encoding,protocol \
-  --max-probes 500 \
   --redact \
   --output output/sweep-all
 ```
@@ -292,6 +305,17 @@ java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
   --output output/request-manifest
 ```
 
+Authenticated Sweep uses the same credential stripping, anonymous control, public-endpoint skipping, and classification workflow as Burp:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
+  --request authenticated.raw --target-origin https://app.example \
+  --sweep-mode authenticated --auth-header Authorization --auth-cookie session \
+  --host-ports 0,8080,8443 --output output/authenticated-sweep
+```
+
+`--no-verify-unauthenticated-access` and `--no-skip-likely-public` expose the corresponding Burp toggles. Use `--max-candidates`, `--exclude-host`, `--no-exclude-static-assets`, and `--no-dedupe-endpoints` to control candidate selection.
+
 ### Targeted bypass
 
 Run selected attack families against one blocked request:
@@ -306,7 +330,7 @@ java -jar cli/build/libs/bypassfuzzer-cli.jar bypass \
   --output output/bypass
 ```
 
-Add `--fuzz-existing-cookies` when the request contains cookies whose current values should also be mutated:
+Existing-cookie mutation is enabled by default, matching Burp. Use `--no-fuzz-existing-cookies` to disable it. The positive form is also accepted:
 
 ```bash
 java -jar cli/build/libs/bypassfuzzer-cli.jar bypass \
@@ -389,7 +413,7 @@ Available encoding IDs are:
 raw,intruders,everything,special-chars,unicode-escape
 ```
 
-The CLI requires an explicit attacker host and never creates Burp Collaborator or other out-of-band payloads.
+Supply `--attacker-host`, `--oob-domain`, or `--oob-generator`. The generator is an executable that prints a native Collaborator or other operator-controlled hostname, with no shell command parsing. It is called when the shared catalog needs an OOB payload; Bypass and full-catalog Sweep also accept these options. The CLI uses the same payload substitution as Burp. Poll interactions with the provider that generated the domain.
 
 ### Runtime controls
 
@@ -425,6 +449,8 @@ Protocol modes:
 - `both`: runs the baseline and generated probes over HTTP/1.1 and HTTP/2.
 
 Use `--insecure` only when an authorized target intentionally uses an untrusted TLS certificate. Proxy URLs use `http://[user:password@]host:port` syntax.
+
+Use `--traffic-max-in-flight` and `--traffic-max-rps` for the same shared admission limits used by Burp's Dashboard. All scan modes accept `--control-file control.txt`; write `pause`, `resume`, or `stop` to the file while the command runs. Pausing gates new sends; stopping retains unfinished retry work. The corresponding YAML keys are `execution.controlFile`, `execution.trafficMaxInFlight`, and `execution.trafficMaxRps`.
 
 ### YAML jobs
 
@@ -462,7 +488,7 @@ bypass:
 java -jar cli/build/libs/bypassfuzzer-cli.jar bypass --config job.yaml
 ```
 
-Paths in YAML resolve relative to the YAML file. Command-line flags override YAML values, and YAML overrides built-in defaults. Unknown keys are rejected. Any key containing `collaborator` is also rejected because Collaborator is not part of the CLI.
+Paths in YAML resolve relative to the YAML file. Command-line flags override YAML values, and YAML overrides built-in defaults. Unknown keys are rejected. Use `execution.oobDomain` or `execution.oobGenerator` for OOB integration. A generic `collaborator: true` key is rejected because a standalone process needs an actual hostname or generator.
 
 ### Results and evidence
 
@@ -482,6 +508,7 @@ Each output directory contains:
 run.json
 results.jsonl
 summary.json
+retry-queue.json
 requests/000001-request.raw
 responses/000001-response.raw
 ```
@@ -494,9 +521,19 @@ sed -n '1,160p' output/sweep/requests/000001-request.raw
 sed -n '1,160p' output/sweep/responses/000001-response.raw
 ```
 
-Useful result signals include `LIKELY_BYPASS`, `RESPONSE_CHANGED`, `THROTTLED`, `NO_SIGNAL`, and `NO_RESPONSE`. A signal is triage evidence, not a vulnerability verdict.
+Useful result signals include `LIKELY_BYPASS`, `RESPONSE_CHANGED`, `THROTTLED`, `NO_SIGNAL`, and `NO_RESPONSE`. Sweep uses Burp's descriptive signals, including status and Content-Type changes, `LIKELY PUBLIC`, and `BYPASS?`. A signal is triage evidence, not a vulnerability verdict.
 
 Raw evidence can contain credentials. Use `--redact` to mask common credential headers in stored evidence without changing the requests sent on the wire. Preflight and usage errors return exit code `2`; once a scan starts, automation should read `summary.json` for final state and findings.
+
+The `results` command uses the same manual and smart filters as Burp and exports retained evidence without resending traffic:
+
+```bash
+java -jar cli/build/libs/bypassfuzzer-cli.jar results \
+  --input output/sweep --format tsv --show-status 200,302 \
+  --signal-contains 'BYPASS' --output output/interesting.tsv
+```
+
+Formats are `tsv`, `jsonl`, `hosts`, and `payloads`. Filters include status and length allow/deny lists, min/max length, content type, host, payload, signal text/regex, response text/regex with inversion, and `--smart-repeats`. Raw request/response references remain in JSONL and TSV exports. `hosts` exports completed Sweep hosts from the summary.
 
 ## Burp Suite usage
 

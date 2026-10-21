@@ -23,4 +23,8 @@ public record PlannedRequest(String family, String payload, String encoding, Htt
     public static PlannedRequest baseline(HttpRequestData request, String label) {
         return new PlannedRequest("Control", label, "", request, true);
     }
+
+    public PlannedRequest withRequest(HttpRequestData value) {
+        return new PlannedRequest(family, payload, encoding, value, baseline, intent, sourcePointer, targetIdentifier);
+    }
 }

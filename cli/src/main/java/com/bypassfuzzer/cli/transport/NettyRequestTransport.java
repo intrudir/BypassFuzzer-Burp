@@ -77,7 +77,6 @@ public final class NettyRequestTransport implements RequestTransport {
 
     @Override
     public HttpResponseData send(HttpRequestData request, Duration timeout) throws Exception {
-        request = request.withSyncedContentLength();
         HttpProtocol requested = request.protocol();
         if (requested == HttpProtocol.BOTH) throw new IllegalArgumentException("BOTH must be expanded before transport");
         if (requested == HttpProtocol.HTTP_0_9) return sendHttp09(request, timeout);

@@ -2,7 +2,7 @@ package com.bypassfuzzer.burp.ui.session;
 
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.idor.IdorRunOptions;
-import com.bypassfuzzer.burp.http.UserAgentMode;
+import com.bypassfuzzer.core.http.UserAgentMode;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.JCheckBox;

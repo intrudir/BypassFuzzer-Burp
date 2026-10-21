@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.coverage;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.core.ByteArray;
@@ -11,7 +12,7 @@ import burp.api.montoya.proxy.ProxyHistoryFilter;
 import burp.api.montoya.proxy.ProxyHttpRequestResponse;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.http.RequestSender;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -120,7 +121,7 @@ class CoverageSweepEngineTest {
             defaults.maxProbesPerCandidate(), defaults.concurrency(), defaults.perHostConcurrency(),
             defaults.throttleStatusCodes(), defaults.mode(), defaults.authSelection(),
             defaults.excludeStaticAssets(), defaults.verifyUnauthenticatedAccess(), List.of(),
-            defaults.requestHeaders(), CoverageSweepPayloadSet.ALL_PAYLOADS, com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
+            defaults.requestHeaders(), CoverageSweepPayloadSet.ALL_PAYLOADS, com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
             new StaticSender(response(403, "text/plain", "blocked")),
             new CoverageSweepProbeGenerator());
@@ -149,7 +150,7 @@ class CoverageSweepEngineTest {
             defaults.mode(), defaults.authSelection(), defaults.excludeStaticAssets(),
             defaults.verifyUnauthenticatedAccess(), List.of(), defaults.requestHeaders(),
             CoverageSweepPayloadSet.ALL_PAYLOADS,
-            com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
+            com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
             new CoverageSweepFamilySelection(Set.of(), Set.of(
                 com.bypassfuzzer.burp.core.attacks.AttackType.TRAILING_DOT,
                 com.bypassfuzzer.burp.core.attacks.AttackType.PROTOCOL)),
@@ -182,7 +183,7 @@ class CoverageSweepEngineTest {
             defaults.maxProbesPerCandidate(), defaults.concurrency(), defaults.perHostConcurrency(),
             defaults.throttleStatusCodes(), CoverageSweepMode.AUTHENTICATED_TRAFFIC,
             new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of("session"), false),
-            true, true, List.of(), List.of(), CoverageSweepPayloadSet.ALL_PAYLOADS, com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
+            true, true, List.of(), List.of(), CoverageSweepPayloadSet.ALL_PAYLOADS, com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
             new StaticSender(response(200, "text/plain", "ok")),
             new CoverageSweepProbeGenerator());
@@ -446,7 +447,7 @@ class CoverageSweepEngineTest {
                 new ConfiguredHeader("Authorization", "Bearer stable"),
                 new ConfiguredHeader("Cookie", "JSESSIONID=stable; theme=light"),
                 new ConfiguredHeader("X-Forwarded-For", "10.0.0.1")
-            ), CoverageSweepPayloadSet.HIGH_SIGNAL, com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
+            ), CoverageSweepPayloadSet.HIGH_SIGNAL, com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
             new StaticSender(response(200, "text/plain", "ok")), new CoverageSweepProbeGenerator());
 
@@ -641,7 +642,7 @@ class CoverageSweepEngineTest {
                 new ConfiguredHeader("Authorization", "Bearer stable"),
                 new ConfiguredHeader("Cookie", "session=stable; theme=configured"),
                 new ConfiguredHeader("X-Tenant", "blue")
-            ), CoverageSweepPayloadSet.HIGH_SIGNAL, com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
+            ), CoverageSweepPayloadSet.HIGH_SIGNAL, com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD);
         List<AttackResult> results = new ArrayList<>();
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
             new StaticSender(response(403, "application/json", "blocked")),

@@ -1,7 +1,7 @@
 package com.bypassfuzzer.burp.ui.session;
 
 import com.bypassfuzzer.burp.config.FuzzerConfig;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;

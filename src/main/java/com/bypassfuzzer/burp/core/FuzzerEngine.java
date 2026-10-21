@@ -1,4 +1,6 @@
 package com.bypassfuzzer.burp.core;
+import com.bypassfuzzer.core.scan.ScanDefaults;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -192,8 +194,8 @@ public class FuzzerEngine {
         com.bypassfuzzer.core.scan.ScanOptions options = new com.bypassfuzzer.core.scan.ScanOptions(
             com.bypassfuzzer.core.http.HttpProtocol.AUTO, java.time.Duration.ofSeconds(15),
             config.getConcurrency(), config.getPerHostConcurrency(), config.getThrottleStatusCodes(),
-            3, true, config.throttleSettings().posture() ==
-                com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.CONSERVATIVE
+            ScanDefaults.BYPASS_RETRIES, true, config.throttleSettings().posture() ==
+                com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.CONSERVATIVE
                 ? "conservative" : "ride-hard", config.throttleSettings().pauseMode().name().toLowerCase(),
             config.throttleSettings().fixedPauseMillis(), false);
         com.bypassfuzzer.burp.http.BurpScanAdapter current = new com.bypassfuzzer.burp.http.BurpScanAdapter(
@@ -208,11 +210,11 @@ public class FuzzerEngine {
             }, result -> {
                 if (!running) return;
                 handleResult(result, resultCallback);
-                if (result.getThrottleRetryAttempt() == 3
+                if (result.getThrottleRetryAttempt() == ScanDefaults.BYPASS_RETRIES
                     && config.getThrottleStatusCodes().contains(result.getStatusCode())) {
                     retryQueue.enqueue(new ThrottledRequest(result.getRequest(), result.getAttackType(),
                         result.getPayload(), result.getTargetLabel(), result.getPayloadFamily(),
-                        result.getPayloadEncoding(), 3));
+                        result.getPayloadEncoding(), ScanDefaults.BYPASS_RETRIES));
                 }
             });
             httpRequestsSent.set(current.requestsSent());

@@ -11,10 +11,12 @@ import java.util.List;
 public class CoverageSweepProbeGenerator {
     private final CoreRequestAdapter adapter = new CoreRequestAdapter();
     private final HighSignalPlanner planner;
+    private final boolean customTemplates;
 
-    public CoverageSweepProbeGenerator() { this.planner = new HighSignalPlanner(); }
+    public CoverageSweepProbeGenerator() { this.planner = new HighSignalPlanner(); this.customTemplates = false; }
 
     CoverageSweepProbeGenerator(List<CoverageSweepProbeTemplate> templates) {
+        this.customTemplates = true;
         this.planner = new HighSignalPlanner(templates.stream()
             .map(item -> item.kind() + "|" + item.family() + "|" + item.label() + "|" + item.value())
             .toList());
@@ -27,23 +29,23 @@ public class CoverageSweepProbeGenerator {
     public List<CoverageSweepProbe> buildProbes(HttpRequest request, CoverageSweepOptions options,
                                                boolean includeControl) {
         if (request == null) return List.of();
-        int hostCount = 0;
-        if (options.hostPortProbesEnabled() && options.familySelection().highSignalEnabled("Host Parsing")) {
-            hostCount = 2 + (int) options.hostPortProbePorts().stream()
-                .filter(port -> port != null && port >= 1 && port <= 65535).count() * 3;
-        }
-        int limit = Math.max(1, options.maxProbesPerCandidate()) + hostCount;
-        List<CoverageSweepProbe> output = new ArrayList<>();
-        if (includeControl) output.add(new CoverageSweepProbe("Control: original blocked request", "Control", request));
         var base = adapter.fromMontoya(request);
         String host = request.headerValue("Host");
         if (host != null && !host.isBlank()) base = base.upsertHeader("Host", host);
-        for (PlannedRequest planned : planner.plan(base,
-            options.familySelection().highSignalFamilies(), Math.max(0, limit - output.size()),
-            options.hostPortProbesEnabled(), options.hostPortProbePorts())) {
-            output.add(new CoverageSweepProbe(planned.payload(), planned.family(),
-                adapter.toMontoya(request, planned.request()), adapter.httpMode(planned.request().protocol())));
-        }
-        return List.copyOf(output);
+        List<PlannedRequest> planned;
+        if (customTemplates) {
+            int hostCount = options.hostPortProbesEnabled() && options.familySelection().highSignalEnabled("Host Parsing")
+                ? 2 + (int) options.hostPortProbePorts().stream().filter(p -> p != null && p >= 1 && p <= 65535).count() * 3 : 0;
+            var values = new ArrayList<PlannedRequest>();
+            if (includeControl) values.add(PlannedRequest.baseline(base, "Control: original blocked request"));
+            values.addAll(planner.plan(base, options.familySelection().highSignalFamilies(),
+                Math.max(0, Math.max(1, options.maxProbesPerCandidate()) + hostCount - values.size()),
+                options.hostPortProbesEnabled(), options.hostPortProbePorts()));
+            planned = values;
+        } else planned = new com.bypassfuzzer.core.scan.SweepPlanner().highSignal(base,
+            options.familySelection().highSignalFamilies(), options.maxProbesPerCandidate(),
+            options.hostPortProbePorts(), includeControl);
+        return planned.stream().map(p -> new CoverageSweepProbe(p.payload(), p.family(),
+            adapter.toMontoya(request, p.request()), p.baseline() ? null : adapter.httpMode(p.request().protocol()))).toList();
     }
 }

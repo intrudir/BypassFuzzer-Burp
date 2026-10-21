@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.filter;
+import com.bypassfuzzer.core.filter.FilterConfig;
 
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
 

@@ -1,4 +1,8 @@
 package com.bypassfuzzer.burp.core.urlvalidation;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationPayload;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationEncoding;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationAttackSetting;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;

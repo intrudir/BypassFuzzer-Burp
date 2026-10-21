@@ -1,4 +1,7 @@
 package com.bypassfuzzer.burp.core.urlvalidation;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationEncoding;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationAttackSetting;
 
 import burp.api.montoya.http.message.requests.HttpRequest;
 import org.junit.jupiter.api.Test;

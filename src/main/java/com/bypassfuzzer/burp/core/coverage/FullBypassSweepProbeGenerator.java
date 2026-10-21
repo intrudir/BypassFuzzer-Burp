@@ -27,22 +27,17 @@ final class FullBypassSweepProbeGenerator {
         if (request == null) return List.of();
         Set<AttackFamily> enabled = new LinkedHashSet<>();
         for (AttackType type : familySelection.bypassFamilies()) enabled.add(AttackFamily.parse(type.id()));
-        BypassPlanner planner = new BypassPlanner(() -> {
+        java.util.function.Supplier<String> domain = () -> {
             if (!CollaboratorSupport.isAvailable(api)) return "";
             String payload = CollaboratorSupport.generatePayload(api);
             return payload == null ? "" : payload.replaceFirst("^https?://", "").replaceFirst("/.*$", "");
-        });
-        List<CoverageSweepProbe> mutations = planner.plan(adapter.fromMontoya(request), enabled, false, Integer.MAX_VALUE)
-            .stream().map(planned -> toProbe(request, planned)).toList();
-        if (!includeControl) return mutations;
-        java.util.ArrayList<CoverageSweepProbe> output = new java.util.ArrayList<>(mutations.size() + 1);
-        output.add(new CoverageSweepProbe("Control: original blocked request", "Control", request));
-        output.addAll(mutations);
-        return List.copyOf(output);
+        };
+        return new com.bypassfuzzer.core.scan.SweepPlanner().all(adapter.fromMontoya(request), enabled,
+            domain, includeControl).stream().map(planned -> toProbe(request, planned)).toList();
     }
 
     private CoverageSweepProbe toProbe(HttpRequest original, PlannedRequest planned) {
         return new CoverageSweepProbe(planned.payload(), planned.family(), adapter.toMontoya(original, planned.request()),
-            adapter.httpMode(planned.request().protocol()));
+            planned.baseline() ? null : adapter.httpMode(planned.request().protocol()));
     }
 }

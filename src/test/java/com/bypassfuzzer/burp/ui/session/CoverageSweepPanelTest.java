@@ -19,9 +19,9 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepPayloadSet;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbeGenerator;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
-import com.bypassfuzzer.burp.http.UserAgentMode;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.http.UserAgentMode;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -205,12 +205,12 @@ class CoverageSweepPanelTest {
         JCheckBox rideHard = field(throttle, "rideHardCheckbox", JCheckBox.class);
 
         assertTrue(rideHard.isSelected());
-        assertEquals(com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
+        assertEquals(com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.RIDE_HARD,
             currentOptions(panel).throttlePosture());
 
         rideHard.setSelected(false);
 
-        assertEquals(com.bypassfuzzer.burp.core.throttle.ThrottleSettings.Posture.CONSERVATIVE,
+        assertEquals(com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.CONSERVATIVE,
             currentOptions(panel).throttlePosture());
     }
 

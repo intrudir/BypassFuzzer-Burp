@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.http;
+import com.bypassfuzzer.core.http.QueryStringUtils;
 
 import org.junit.jupiter.api.Test;
 

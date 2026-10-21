@@ -1,8 +1,8 @@
 package com.bypassfuzzer.burp.ui.session;
 
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
-import com.bypassfuzzer.burp.http.ConfiguredHeaderParser;
-import com.bypassfuzzer.burp.http.UserAgentMode;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.ConfiguredHeaderParser;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;

@@ -1,6 +1,6 @@
 package com.bypassfuzzer.burp.ui.session;
 
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;

@@ -37,6 +37,12 @@ public final class EvidenceWriter implements AutoCloseable {
         this.root = root.toAbsolutePath().normalize();
         this.runId = runId;
         this.redact = redact;
+        if (Files.exists(this.root)) {
+            if (!Files.isDirectory(this.root)) throw new IOException("Evidence output must be a directory");
+            try (var files = Files.list(this.root)) {
+                if (files.findAny().isPresent()) throw new IOException("Evidence output must be new or empty: " + this.root);
+            }
+        }
         this.requests = this.root.resolve("requests");
         this.responses = this.root.resolve("responses");
         Files.createDirectories(requests);
@@ -108,11 +114,26 @@ public final class EvidenceWriter implements AutoCloseable {
     public Path root() { return root; }
     public long count() { return sequence.get(); }
 
+    public com.bypassfuzzer.core.input.RetryPackageEntry retryEntry(PlannedRequest planned, int attempt) {
+        var request = planned.request();
+        return new com.bypassfuzzer.core.input.RetryPackageEntry(request.targetLabel(), planned.payload(),
+            planned.family(), planned.encoding(), attempt, rawRequest(request),
+            request.origin() + request.rawTarget(), request.method(), request.protocol().name(), planned.payload());
+    }
+
+    public synchronized void retryPackage(java.util.List<com.bypassfuzzer.core.input.RetryPackageEntry> entries) throws IOException {
+        if (redact) entries = entries.stream().map(entry -> new com.bypassfuzzer.core.input.RetryPackageEntry(
+            entry.targetLabel(), entry.payload(), entry.payloadFamily(), entry.payloadEncoding(), entry.retryAttempt(),
+            rawRequest(entry.planned().request()), entry.url(), entry.method(), entry.httpMode(), entry.payloadLabel())).toList();
+        writeJsonAtomic(root.resolve("retry-queue.json"), new com.bypassfuzzer.core.input.RetryPackage(
+            "1", "bypassfuzzer-retry-queue", entries));
+    }
+
     private String rawRequest(HttpRequestData request) {
         HttpRequestData stored = request;
         if (redact) {
             for (HttpHeader header : request.headers()) {
-                if (SECRET_HEADERS.contains(header.name().toLowerCase())) stored = stored.upsertHeader(header.name(), "[REDACTED]");
+                if (SECRET_HEADERS.contains(header.name().toLowerCase(java.util.Locale.ROOT))) stored = stored.upsertHeader(header.name(), "[REDACTED]");
             }
         }
         return stored.toRaw();

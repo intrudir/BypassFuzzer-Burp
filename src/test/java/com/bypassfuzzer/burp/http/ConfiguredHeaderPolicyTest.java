@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.http;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
 
 import burp.api.montoya.http.message.requests.HttpRequest;
 import org.junit.jupiter.api.Test;

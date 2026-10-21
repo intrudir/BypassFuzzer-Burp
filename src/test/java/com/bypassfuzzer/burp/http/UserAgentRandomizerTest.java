@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.http;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import burp.api.montoya.http.message.requests.HttpRequest;
 import com.bypassfuzzer.burp.testsupport.HeaderRequestTestFactory;

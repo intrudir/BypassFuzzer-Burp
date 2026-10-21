@@ -1,4 +1,7 @@
 package com.bypassfuzzer.burp.http;
+import com.bypassfuzzer.core.http.RequestBodyFormat;
+import com.bypassfuzzer.core.http.ParameterLocation;
+import com.bypassfuzzer.core.http.LocatedParameter;
 
 import burp.api.montoya.http.message.requests.HttpRequest;
 import org.junit.jupiter.api.Test;
@@ -16,7 +19,7 @@ class RequestParameterSupportTest {
     @Test
     void extractsCombinedParametersMergesQueryAndBodyWithBodyTakingPrecedence() {
         HttpRequest request = request(
-            "/admin?debug=query&source=query",
+            "/admin",
             "debug=query&source=query",
             "POST",
             "application/x-www-form-urlencoded",
@@ -42,7 +45,7 @@ class RequestParameterSupportTest {
     @Test
     void extractsCombinedParametersFromComplexJsonBody() {
         HttpRequest request = request(
-            "/admin?source=query",
+            "/admin",
             "source=query",
             "POST",
             "application/json",

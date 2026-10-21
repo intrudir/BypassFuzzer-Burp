@@ -12,8 +12,9 @@ import java.util.Set;
 
 /** Renders the same bundled curated Sweep inventory without a Burp dependency. */
 public final class HighSignalPlanner {
-    public static final Set<String> FAMILIES = Set.of("Matrix / Extension", "Extension / Negotiation",
+    public static final List<String> ORDERED_FAMILIES = List.of("Matrix / Extension", "Extension / Negotiation",
         "Path Normalization", "Encoding", "Debug Params", "Content-Type", "Header", "Host Parsing");
+    public static final Set<String> FAMILIES = java.util.Collections.unmodifiableSet(new LinkedHashSet<>(ORDERED_FAMILIES));
     private final List<String> templates;
 
     public HighSignalPlanner() { this(ResourcePayloads.load("sweep_probes.txt")); }

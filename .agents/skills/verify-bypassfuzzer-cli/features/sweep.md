@@ -17,5 +17,5 @@ Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> sweep`. Th
 ## Gotchas
 
 - Exactly one input source is required.
-- `--max-probes` applies per input; the baseline is additional.
+- High Signal uses the master's control accounting plus enabled Host probes. `all` is uncapped and rejects `--max-probes`. Retry packages replay exact saved mutations.
 - Imported API operations that can change state require `--include-state-changing` and explicit target authorization.

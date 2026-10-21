@@ -6,17 +6,12 @@ import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.logging.Logging;
 import com.bypassfuzzer.burp.config.FuzzerConfig;
 import com.bypassfuzzer.burp.core.throttle.HostThrottleCoordinator;
-import com.bypassfuzzer.burp.core.attacks.AttackExecutor;
-import com.bypassfuzzer.burp.core.attacks.AttackRegistry;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
-import com.bypassfuzzer.burp.core.attacks.AttackStrategy;
 import com.bypassfuzzer.burp.core.attacks.AttackType;
-import com.bypassfuzzer.burp.core.attacks.RegisteredAttack;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationAttack;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationAttackSetting;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationAttackSetting;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationCandidateFinder;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationContext;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationEncoding;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationEncoding;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationOptions;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationPayloadGenerator;
 import com.bypassfuzzer.burp.http.RequestSender;
@@ -47,7 +42,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AttackPlaybookSmokeTest {
 
     private static final String HOST = "127.0.0.1";
-    private static final AttackRegistry ATTACK_REGISTRY = new AttackRegistry();
 
     private static Process smokeLab;
     private static String baseUrl;
@@ -357,31 +351,18 @@ class AttackPlaybookSmokeTest {
     }
 
     private void assertAttackSucceeds(Scenario scenario) {
-        MontoyaApi api = montoyaApi();
-        HostThrottleCoordinator coordinator = null; // no pacing needed against the local lab
-        AtomicBoolean running = new AtomicBoolean(true);
         List<AttackResult> results = new ArrayList<>();
-        AttackStrategy strategy = attackStrategy(scenario.type(), scenario.targetUrl());
-        AttackExecutor executor = new AttackExecutor(new RawSocketRequestSender());
-
-        strategy.execute(
-            api,
-            baseRequest(scenario.rawRequest()),
-            scenario.targetUrl(),
-            result -> {
-                results.add(result);
-                HttpResponse response = result.getResponse();
-                if (response != null && response.statusCode() == 200) {
-                    String marker = response.headerValue("X-Smoke-Bypass");
-                    if (marker != null && marker.contains(scenario.expectedMarker())) {
-                        running.set(false);
-                    }
-                }
-            },
-            running::get,
-            coordinator,
-            executor
-        );
+        var original = baseRequest(scenario.rawRequest());
+        var base = new com.bypassfuzzer.burp.http.CoreRequestAdapter().fromMontoya(original);
+        var plans = new com.bypassfuzzer.core.scan.BypassPlanner().plan(base,
+            Set.of(com.bypassfuzzer.core.scan.AttackFamily.parse(scenario.type().id())), true, Integer.MAX_VALUE);
+        for (var plan : plans) {
+            HttpRequest request = MontoyaStubs.request(original.httpService(), plan.request().withSyncedContentLength().toRaw());
+            HttpResponse response = new RawSocketRequestSender().send(request);
+            results.add(new AttackResult(scenario.type().displayName(), plan.payload(), request, response));
+            if (response != null && response.statusCode() == 200 && response.headerValue("X-Smoke-Bypass") != null
+                && response.headerValue("X-Smoke-Bypass").contains(scenario.expectedMarker())) break;
+        }
 
         assertFalse(results.isEmpty(), "No requests were executed for " + scenario.type());
         boolean matched = results.stream().anyMatch(result -> {
@@ -405,35 +386,17 @@ class AttackPlaybookSmokeTest {
     }
 
     private void assertUrlValidationSucceeds(HttpRequest request, UrlValidationOptions options, String expectedMarker) {
-        MontoyaApi api = montoyaApi();
-        HostThrottleCoordinator coordinator = null; // no pacing needed against the local lab
-        AtomicBoolean running = new AtomicBoolean(true);
         List<AttackResult> results = new ArrayList<>();
-        UrlValidationAttack attack = new UrlValidationAttack(
-            options,
-            new UrlValidationCandidateFinder(MontoyaStubs::request),
-            new UrlValidationPayloadGenerator()
-        );
-        AttackExecutor executor = new AttackExecutor(new RawSocketRequestSender());
-
-        attack.execute(
-            api,
-            request,
-            buildUrl(request.httpService(), request.path()),
-            result -> {
-                results.add(result);
-                HttpResponse response = result.getResponse();
-                if (response != null && response.statusCode() == 200) {
-                    String marker = response.headerValue("X-Smoke-Bypass");
-                    if (marker != null && marker.contains(expectedMarker)) {
-                        running.set(false);
-                    }
-                }
-            },
-            running::get,
-            coordinator,
-            executor
-        );
+        var base = new com.bypassfuzzer.burp.http.CoreRequestAdapter().fromMontoya(request);
+        var plans = new com.bypassfuzzer.core.scan.UrlValidationPlanner().plan(base,
+            UrlValidationPayloadGenerator.toCoreOptions(options, options.normalizedAttackerHost()), Integer.MAX_VALUE);
+        for (var plan : plans) {
+            HttpRequest changed = MontoyaStubs.request(request.httpService(), plan.request().withSyncedContentLength().toRaw());
+            HttpResponse response = new RawSocketRequestSender().send(changed);
+            results.add(new AttackResult("URL Validation", plan.payload(), changed, response));
+            if (response != null && response.statusCode() == 200 && response.headerValue("X-Smoke-Bypass") != null
+                && response.headerValue("X-Smoke-Bypass").contains(expectedMarker)) break;
+        }
 
         assertFalse(results.isEmpty(), "No URL Validation requests were executed");
         boolean matched = results.stream().anyMatch(result -> {
@@ -450,53 +413,6 @@ class AttackPlaybookSmokeTest {
             .reduce((left, right) -> left + "\n" + right)
             .orElse("<no results>");
         assertTrue(matched, "Expected URL Validation marker '%s'. First results:%n%s".formatted(expectedMarker, summary));
-    }
-
-    private static AttackStrategy attackStrategy(AttackType type, String targetUrl) {
-        if (type == AttackType.PROTOCOL) {
-            return new com.bypassfuzzer.burp.core.attacks.ProtocolAttack(MontoyaStubs::request);
-        }
-        FuzzerConfig config = new FuzzerConfig();
-        disableAllAttacks(config);
-        enable(config, type);
-        List<RegisteredAttack> attacks = ATTACK_REGISTRY.buildEnabledAttacks(config, targetUrl);
-        assertFalse(attacks.isEmpty(), "No attack strategy built for " + type);
-        return attacks.get(0).strategy();
-    }
-
-    private static void disableAllAttacks(FuzzerConfig config) {
-        config.setEnableHeaderAttack(false);
-        config.setEnablePathAttack(false);
-        config.setEnableVerbAttack(false);
-        config.setEnableParamAttack(false);
-        config.setEnableCookieParamAttack(false);
-        config.setEnableTrailingDotAttack(false);
-        config.setEnableProtocolAttack(false);
-        config.setEnableCaseAttack(false);
-        config.setEnableTrailingSlashAttack(false);
-        config.setEnableExtensionAttack(false);
-        config.setEnableContentTypeAttack(false);
-        config.setEnableEncodingAttack(false);
-    }
-
-    private static void enable(FuzzerConfig config, AttackType type) {
-        switch (type) {
-            case HEADER -> config.setEnableHeaderAttack(true);
-            case PATH -> config.setEnablePathAttack(true);
-            case VERB -> config.setEnableVerbAttack(true);
-            case PARAM -> config.setEnableParamAttack(true);
-            case COOKIE -> {
-                config.setEnableCookieParamAttack(true);
-                config.setEnableFuzzExistingCookies(true);
-            }
-            case TRAILING_DOT -> config.setEnableTrailingDotAttack(true);
-            case PROTOCOL -> config.setEnableProtocolAttack(true);
-            case CASE -> config.setEnableCaseAttack(true);
-            case TRAILING_SLASH -> config.setEnableTrailingSlashAttack(true);
-            case EXTENSION -> config.setEnableExtensionAttack(true);
-            case CONTENT_TYPE -> config.setEnableContentTypeAttack(true);
-            case ENCODING -> config.setEnableEncodingAttack(true);
-        }
     }
 
     private static HttpRequest baseRequest(String rawRequest) {

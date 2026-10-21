@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.urlvalidation;
+import com.bypassfuzzer.core.scan.ScanDefaults;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -101,7 +102,7 @@ public class UrlValidationEngine {
                 options.userAgentMode(), options.userAgentRandomizationSeed());
             ScanOptions scanOptions = new ScanOptions(HttpProtocol.AUTO, Duration.ofSeconds(15),
                 options.concurrency(), options.perHostConcurrency(), options.throttleStatusCodes(),
-                0, false, options.posture().name().toLowerCase(),
+                ScanDefaults.URL_VALIDATION_RETRIES, false, options.posture().name().toLowerCase(),
                 options.pauseMode().name().toLowerCase(), options.fixedPauseMillis(), false);
             BurpScanAdapter current = new BurpScanAdapter(request, requestSender, scanOptions,
                 coordinator, mutated -> headers.reconcileMutation(request, mutated));

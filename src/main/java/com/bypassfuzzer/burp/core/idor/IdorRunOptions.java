@@ -1,8 +1,8 @@
 package com.bypassfuzzer.burp.core.idor;
 
-import com.bypassfuzzer.burp.core.throttle.ThrottleSettings;
-import com.bypassfuzzer.burp.http.ConfiguredHeader;
-import com.bypassfuzzer.burp.http.UserAgentMode;
+import com.bypassfuzzer.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.http.ConfiguredHeader;
+import com.bypassfuzzer.core.http.UserAgentMode;
 
 import java.util.List;
 import java.util.Set;

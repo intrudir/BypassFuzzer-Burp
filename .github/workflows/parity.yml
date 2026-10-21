@@ -1,0 +1,30 @@
+name: Burp and CLI parity
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Compare Burp and CLI and exercise the loopback labs
+        run: python3 scripts/audit-cli-parity.py --output artifacts/verification/surface-parity/ci
+      - name: Retain parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surface-parity-evidence
+          path: artifacts/verification/surface-parity/ci

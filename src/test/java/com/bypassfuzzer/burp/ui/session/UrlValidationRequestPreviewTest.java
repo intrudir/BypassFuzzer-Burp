@@ -3,9 +3,9 @@ package com.bypassfuzzer.burp.ui.session;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 import burp.api.montoya.ui.editor.HttpResponseEditor;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationAttackSetting;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationContext;
-import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationEncoding;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationAttackSetting;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
+import com.bypassfuzzer.core.urlvalidation.UrlValidationEncoding;
 import com.bypassfuzzer.burp.core.urlvalidation.UrlValidationOptions;
 import org.junit.jupiter.api.Test;
 

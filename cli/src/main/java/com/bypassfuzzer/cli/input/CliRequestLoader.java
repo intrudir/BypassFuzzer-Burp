@@ -1,6 +1,8 @@
 package com.bypassfuzzer.cli.input;
 
 import com.bypassfuzzer.core.http.HttpHeader;
+import com.bypassfuzzer.core.input.RetryPackage;
+import com.bypassfuzzer.core.input.RetryPackageEntry;
 import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
 import com.bypassfuzzer.core.http.RawHttpRequestParser;
@@ -77,26 +79,17 @@ public final class CliRequestLoader {
         return operations(new PostmanCollectionParser().parse(source, baseUrl), includeStateChanging);
     }
 
-    public List<HttpRequestData> retryPackage(Path file) throws IOException {
+    public List<RetryPackageEntry> retryEntries(Path file) throws IOException {
         RetryPackage retry;
-        try {
-            retry = new Gson().fromJson(Files.readString(file, StandardCharsets.UTF_8), RetryPackage.class);
-        } catch (RuntimeException exception) {
-            throw new IllegalArgumentException("Invalid retry-package JSON", exception);
-        }
-        if (retry == null || !"1".equals(retry.version) || !"bypassfuzzer-retry-queue".equals(retry.type)
-            || retry.entries == null) {
-            throw new IllegalArgumentException("Expected a BypassFuzzer version-1 retry package");
-        }
-        List<HttpRequestData> requests = new ArrayList<>();
-        for (RetryEntry entry : retry.entries) {
-            if (entry.requestRaw == null || entry.url == null) throw new IllegalArgumentException("Retry entry lacks requestRaw or url");
-            URI url = URI.create(entry.url);
-            TargetOrigin origin = origin(url);
-            requests.add(rawParser.parse(entry.requestRaw.getBytes(StandardCharsets.ISO_8859_1), origin));
-        }
-        if (requests.isEmpty()) throw new IllegalArgumentException("Retry package contains no requests");
-        return List.copyOf(requests);
+        try { retry = new Gson().fromJson(Files.readString(file, StandardCharsets.UTF_8), RetryPackage.class); }
+        catch (RuntimeException error) { throw new IllegalArgumentException("Invalid retry-package JSON", error); }
+        if (retry == null || retry.entries().isEmpty()) throw new IllegalArgumentException("Retry package contains no requests");
+        for (var entry : retry.entries()) entry.planned();
+        return retry.entries();
+    }
+
+    public List<HttpRequestData> retryPackage(Path file) throws IOException {
+        return retryEntries(file).stream().map(entry -> entry.planned().request()).toList();
     }
 
     private List<HttpRequestData> operations(List<OpenApiOperation> operations, boolean includeStateChanging) {
@@ -153,6 +146,4 @@ public final class CliRequestLoader {
     private Yaml yaml() { LoaderOptions options = new LoaderOptions(); options.setAllowDuplicateKeys(false); options.setMaxAliasesForCollections(50); return new Yaml(new SafeConstructor(options)); }
 
     private record Source(String text, String name, String url) {}
-    private static final class RetryPackage { String version; String type; List<RetryEntry> entries; }
-    private static final class RetryEntry { String requestRaw; String url; }
 }

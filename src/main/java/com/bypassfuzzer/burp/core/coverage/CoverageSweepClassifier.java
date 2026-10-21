@@ -1,166 +1,37 @@
 package com.bypassfuzzer.burp.core.coverage;
 
 import burp.api.montoya.http.message.responses.HttpResponse;
+import com.bypassfuzzer.core.http.HttpHeader;
+import com.bypassfuzzer.core.http.HttpResponseData;
+import com.bypassfuzzer.core.scan.SweepClassifier;
 
+/** Montoya boundary for Burp's shared Sweep classification rules. */
 public final class CoverageSweepClassifier {
-
-    public static final String LIKELY_PUBLIC_PREFIX = "LIKELY PUBLIC";
-    public static final String LIKELY_UNAUTHENTICATED_BYPASS_PREFIX = "LIKELY UNAUTHENTICATED BYPASS";
-    public static final String BYPASS_PREFIX = "BYPASS?";
-
-    private CoverageSweepClassifier() {
+    public static final String LIKELY_PUBLIC_PREFIX = SweepClassifier.LIKELY_PUBLIC_PREFIX;
+    public static final String LIKELY_UNAUTHENTICATED_BYPASS_PREFIX = SweepClassifier.LIKELY_UNAUTHENTICATED_BYPASS_PREFIX;
+    public static final String BYPASS_PREFIX = SweepClassifier.BYPASS_PREFIX;
+    private static SweepClassifier.Baseline baseline(CoverageSweepCandidate c) {
+        return c == null ? null : new SweepClassifier.Baseline(c.statusCode(), c.contentLength(), c.contentType());
     }
-
-    public static boolean isInteresting(CoverageSweepCandidate candidate, HttpResponse controlResponse, HttpResponse probeResponse) {
-        if (candidate == null || probeResponse == null) {
-            return false;
-        }
-
-        int probeStatus = probeResponse.statusCode();
-        if (isClientError(probeStatus)) {
-            return false;
-        }
-
-        int baselineStatus = controlResponse == null ? candidate.statusCode() : controlResponse.statusCode();
-        if (isBlocked(baselineStatus) && (isSuccess(probeStatus) || isRedirect(probeStatus))) {
-            return true;
-        }
-        if (isBlocked(baselineStatus) && !isBlocked(probeStatus)) {
-            return true;
-        }
-
-        String baselineType = controlResponse == null ? candidate.contentType() : contentType(controlResponse);
-        String probeType = contentType(probeResponse);
-        if (!blank(baselineType) && !baselineType.equalsIgnoreCase(probeType)) {
-            return true;
-        }
-
-        int baselineLength = controlResponse == null ? candidate.contentLength() : bodyLength(controlResponse);
-        return Math.abs(bodyLength(probeResponse) - baselineLength) >= 100;
+    public static SweepClassifier.Response toCore(HttpResponse response) {
+        if (response == null) return null;
+        String type = response.headers().stream().filter(h -> h.name().equalsIgnoreCase("Content-Type"))
+            .map(h -> h.value()).findFirst().orElse("");
+        return new SweepClassifier.Response(response.statusCode(), response.body() == null ? 0 : response.body().length(), type);
     }
-
-    public static String signal(CoverageSweepCandidate candidate, HttpResponse controlResponse, HttpResponse probeResponse) {
-        if (candidate == null || probeResponse == null) {
-            return "";
-        }
-
-        int probeStatus = probeResponse.statusCode();
-        if (isClientError(probeStatus)) {
-            return "";
-        }
-
-        int baselineStatus = controlResponse == null ? candidate.statusCode() : controlResponse.statusCode();
-        if (isBlocked(baselineStatus) && !isBlocked(probeStatus)) {
-            return baselineStatus + " -> " + probeStatus;
-        }
-
-        String baselineType = controlResponse == null ? candidate.contentType() : contentType(controlResponse);
-        String probeType = contentType(probeResponse);
-        if (!blank(baselineType) && !baselineType.equalsIgnoreCase(probeType)) {
-            return "Content-Type " + baselineType + " -> " + (blank(probeType) ? "-" : probeType);
-        }
-
-        int baselineLength = controlResponse == null ? candidate.contentLength() : bodyLength(controlResponse);
-        int delta = bodyLength(probeResponse) - baselineLength;
-        if (Math.abs(delta) >= 100) {
-            return "Length " + (delta > 0 ? "+" : "") + delta;
-        }
-
-        return "";
+    public static boolean isInteresting(CoverageSweepCandidate c, HttpResponse control, HttpResponse probe) {
+        return SweepClassifier.isInteresting(baseline(c), toCore(control), toCore(probe));
     }
-
-    public static String unauthenticatedControlSignal(CoverageSweepCandidate candidate,
-                                                       HttpResponse anonymousResponse) {
-        if (candidate == null || anonymousResponse == null || !isSuccess(anonymousResponse.statusCode())) {
-            return "";
-        }
-
-        int authenticatedStatus = candidate.statusCode();
-        if (!isSuccess(authenticatedStatus)) {
-            return "";
-        }
-
-        String authenticatedType = normalizeContentType(candidate.contentType());
-        String anonymousType = normalizeContentType(contentType(anonymousResponse));
-        if (!blank(authenticatedType) && !blank(anonymousType)
-            && !authenticatedType.equalsIgnoreCase(anonymousType)) {
-            return "";
-        }
-
-        return LIKELY_PUBLIC_PREFIX + ": authenticated " + authenticatedStatus
-            + " -> unauthenticated " + anonymousResponse.statusCode();
+    public static String signal(CoverageSweepCandidate c, HttpResponse control, HttpResponse probe) {
+        return SweepClassifier.signal(baseline(c), toCore(control), toCore(probe));
     }
-
-    public static String unauthenticatedMutationSignal(HttpResponse anonymousControl,
-                                                        HttpResponse probeResponse) {
-        if (anonymousControl == null || probeResponse == null || !isBlocked(anonymousControl.statusCode())) {
-            return "";
-        }
-        int probeStatus = probeResponse.statusCode();
-        if (!isSuccess(probeStatus)) {
-            return "";
-        }
-        return LIKELY_UNAUTHENTICATED_BYPASS_PREFIX + ": "
-            + anonymousControl.statusCode() + " -> " + probeStatus;
+    public static String unauthenticatedControlSignal(CoverageSweepCandidate c, HttpResponse anonymous) {
+        return SweepClassifier.unauthenticatedControlSignal(baseline(c), toCore(anonymous));
     }
-
-    public static String authenticatedBypassSignal(CoverageSweepCandidate candidate,
-                                                   HttpResponse anonymousControl,
-                                                   HttpResponse probeResponse) {
-        if (candidate == null || anonymousControl == null || probeResponse == null
-            || !isSuccess(candidate.statusCode())
-            || !isAuthBoundary(anonymousControl.statusCode())
-            || !isSuccess(probeResponse.statusCode())) {
-            return "";
-        }
-
-        String confidence = isStrongAuthBoundary(anonymousControl.statusCode()) ? "" : " (weak)";
-        return BYPASS_PREFIX + confidence + ": authenticated " + candidate.statusCode()
-            + " -> anonymous " + anonymousControl.statusCode()
-            + " -> probe " + probeResponse.statusCode();
+    public static String unauthenticatedMutationSignal(HttpResponse anonymous, HttpResponse probe) {
+        return SweepClassifier.unauthenticatedMutationSignal(toCore(anonymous), toCore(probe));
     }
-
-    private static boolean isBlocked(int status) {
-        return status == 401 || status == 403;
-    }
-
-    private static boolean isSuccess(int status) {
-        return status >= 200 && status < 300;
-    }
-
-    private static boolean isRedirect(int status) {
-        return status >= 300 && status < 400;
-    }
-
-    private static boolean isClientError(int status) {
-        return status >= 400 && status < 500;
-    }
-
-    private static boolean isAuthBoundary(int status) {
-        return isRedirect(status) || isClientError(status);
-    }
-
-    private static boolean isStrongAuthBoundary(int status) {
-        return status == 401 || status == 403 || isRedirect(status);
-    }
-
-    private static int bodyLength(HttpResponse response) {
-        return response == null || response.body() == null ? 0 : response.body().length();
-    }
-
-    private static String contentType(HttpResponse response) {
-        return response == null ? "" : response.headers().stream()
-            .filter(header -> header.name().equalsIgnoreCase("Content-Type"))
-            .map(header -> header.value())
-            .findFirst()
-            .orElse("");
-    }
-
-    private static boolean blank(String value) {
-        return value == null || value.isBlank();
-    }
-
-    private static String normalizeContentType(String value) {
-        return blank(value) ? "" : value.split(";", 2)[0].trim();
+    public static String authenticatedBypassSignal(CoverageSweepCandidate c, HttpResponse anonymous, HttpResponse probe) {
+        return SweepClassifier.authenticatedBypassSignal(baseline(c), toCore(anonymous), toCore(probe));
     }
 }

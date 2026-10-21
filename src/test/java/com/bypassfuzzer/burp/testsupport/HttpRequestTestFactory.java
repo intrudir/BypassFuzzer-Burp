@@ -4,7 +4,7 @@ import burp.api.montoya.core.ByteArray;
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
-import com.bypassfuzzer.burp.http.RequestPathUtils;
+import com.bypassfuzzer.core.http.RequestPathUtils;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;

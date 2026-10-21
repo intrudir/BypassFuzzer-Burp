@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.http;
+import com.bypassfuzzer.core.http.CookieHeaderUtils;
 
 import org.junit.jupiter.api.Test;
 

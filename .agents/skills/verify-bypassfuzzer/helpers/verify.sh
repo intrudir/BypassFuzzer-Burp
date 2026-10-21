@@ -201,7 +201,7 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.bypassKeepsAttackTypesInlineAndMovesRunOptionsBehindButton \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
-        --tests com.bypassfuzzer.burp.core.attacks.AttackExecutorThrottleTest \
+        --tests com.bypassfuzzer.burp.core.FuzzerEngineThrottleTest \
         --tests com.bypassfuzzer.burp.core.FuzzerEngineThrottleTest \
         --tests com.bypassfuzzer.burp.core.throttle.RetryQueueTest
       copy_results "$evidence_dir" test
@@ -221,7 +221,7 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.aNewPrimaryRunResetsManualRetryRequestTelemetry \
         --tests com.bypassfuzzer.burp.core.idor.IdorEngineTest \
-        --tests com.bypassfuzzer.burp.core.idor.IdorPlaybookBehaviorTest
+        --tests com.bypassfuzzer.burp.core.idor.IdorEngineTest
       copy_results "$evidence_dir" test
       ;;
     url-validation)

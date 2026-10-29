@@ -158,5 +158,18 @@ tasks.register('runSweepHarness', JavaExec) {
     }
 }
 
+tasks.register('auditOpenApiImport', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    group = 'verification'
+    description = 'Audits a JSON OpenAPI contract through Sweep import and control preview without sending traffic.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.bypassfuzzer.burp.core.coverage.OpenApiImportAudit'
+    if (project.hasProperty('auditSpec')) {
+        args project.property('auditSpec').toString(),
+            project.findProperty('auditOutput') ?: layout.buildDirectory.dir('reports/openapi-import-audit').get().asFile.path,
+            project.findProperty('auditSourceUrl') ?: 'https://example.test/docs/openapi.json'
+    }
+}
+
 // Make shadowJar the default build artifact
 build.dependsOn shadowJar, ':core:test', ':cli:test', ':cli:shadowJar'

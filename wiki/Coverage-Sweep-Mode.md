@@ -348,3 +348,18 @@ It should not:
 - scan the entire application blindly
 - run thousands of payload combinations per endpoint
 - replace targeted Bypass, IDOR, or URL Validation testing
+
+## Offline OpenAPI import audit
+
+Run a saved JSON contract through Sweep's production importer and control-probe generator:
+
+```sh
+./gradlew auditOpenApiImport \
+  -PauditSpec=/path/to/swagger.json \
+  -PauditSourceUrl=https://api.example.test/docs/swagger.json \
+  -PauditOutput=artifacts/verification/openapi-import
+```
+
+The check covers every operation across all parameter policies, empty/filled variables, and the declared server/HTTPS override. It compares declared parameter locations, values, array serialization, UUID/date formats, enums, scheme/host/port, headers, and body presence with the imported request, then checks control-request parity and blocks unresolved execution. It uses an offline Montoya adapter and never sends requests. `report.json`, the source snapshot, and per-scenario `.http` files are written under the output directory; local verification artifacts are ignored by Git.
+
+This audit currently accepts JSON contracts with concrete HTTP(S) servers, path/query/header parameters, form-style query arrays, and no request bodies. Contracts needing cookie/form/body or other serialization expectations fail explicitly. The existing importer tests cover those additional request forms. Import fidelity does not establish that generated sample identifiers exist or fill omissions in an API's documentation.

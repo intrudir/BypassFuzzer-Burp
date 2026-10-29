@@ -302,8 +302,8 @@ public final class OpenApiSpecParser {
         if (depth > 5) return null;
         Map<String, Object> schema = map(resolve(root, rawSchema));
         if (schema.isEmpty()) return null;
-        if (schema.containsKey("example")) return schema.get("example");
-        if (schema.containsKey("default")) return schema.get("default");
+        if (schema.get("example") != null) return schema.get("example");
+        if (schema.get("default") != null) return schema.get("default");
         List<Object> enums = list(schema.get("enum"));
         if (!enums.isEmpty()) return enums.get(0);
         for (String composition : List.of("oneOf", "anyOf")) {

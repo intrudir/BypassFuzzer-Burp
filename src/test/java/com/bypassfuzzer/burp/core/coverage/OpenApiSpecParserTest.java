@@ -520,4 +520,82 @@ class OpenApiSpecParserTest {
         assertEquals("https://api.example.test/search?ids=1&ids=2&filter%5Bactive%5D=true", operation.url());
     }
 
+    @Test
+    void nullSchemaExamplesAndDefaultsStillGenerateSamplesForTheDeclaredFormat() {
+        String spec = """
+            openapi: 3.0.1
+            servers: [{url: https://api.example.test}]
+            paths:
+              /items/{mediaItemKey}/restore:
+                patch:
+                  parameters:
+                    - name: mediaItemKey
+                      in: path
+                      required: true
+                      schema: {type: string, format: uuid, example: null, default: null}
+                  responses: {'200': {description: OK}}
+              /items:
+                post:
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          type: object
+                          properties:
+                            id: {type: string, format: uuid, default: null}
+                            enabled: {type: boolean, example: null, default: false}
+                            count: {type: integer, example: null, default: 0}
+                            category: {type: string, example: null, default: null, enum: [first, second]}
+            """;
+        var parser = new OpenApiSpecParser();
+        var samples = parser.variableSamples(spec, "api.yaml");
+        assertEquals("00000000-0000-4000-8000-000000000000", samples.get("mediaItemKey"));
+        java.util.UUID.fromString(samples.get("mediaItemKey"));
+        var operations = parser.parse(spec, "api.yaml");
+        var patch = operations.stream().filter(op -> op.method().equals("PATCH")).findFirst().orElseThrow();
+        assertEquals("https://api.example.test/items/00000000-0000-4000-8000-000000000000/restore", patch.url());
+        assertEquals("", patch.body());
+        assertTrue(patch.headers().isEmpty());
+        var post = operations.stream().filter(op -> op.method().equals("POST")).findFirst().orElseThrow();
+        var body = com.google.gson.JsonParser.parseString(post.body()).getAsJsonObject();
+        assertEquals("00000000-0000-4000-8000-000000000000", body.get("id").getAsString());
+        assertEquals(false, body.get("enabled").getAsBoolean());
+        assertEquals(0, body.get("count").getAsInt());
+        assertEquals("first", body.get("category").getAsString());
+    }
+
+    @Test
+    void queryOnlyPutKeepsDeclaredLocationsAndDoesNotInventABody() {
+        String spec = """
+            openapi: 3.0.1
+            servers: [{url: https://api.example.test}]
+            components:
+              schemas:
+                PrintOptions: {type: string, enum: [undefined, yes, onFirstFillOnly, no]}
+            paths:
+              /items/{mediaItemKey}:
+                put:
+                  parameters:
+                    - {name: mediaItemKey, in: path, required: true, schema: {type: string, format: uuid, default: null}}
+                    - {name: tenant.id, in: query, required: true, schema: {type: integer}}
+                    - {name: 'ws:prod.id', in: query, schema: {type: string}}
+                    - {name: FileName, in: query, required: true, schema: {type: string}}
+                    - {name: IsPrintWithDeliveryTicketOption, in: query, schema: {$ref: '#/components/schemas/PrintOptions'}}
+                    - {name: StoreFile, in: query, schema: {type: boolean}}
+            """;
+        var parser = new OpenApiSpecParser();
+        var values = new java.util.LinkedHashMap<>(parser.variableSamples(spec, "api.yaml"));
+        values.put("tenant.id", "1105");
+        values.put("mediaItemKey", "11111111-2222-4333-8444-555555555555");
+        var operation = parser.parse(spec, "api.yaml", "", "", new OpenApiImportOptions(
+            OpenApiImportOptions.ParameterPolicy.ALL_VARIABLES, values)).get(0);
+        assertEquals("PUT", operation.method());
+        assertTrue(operation.url().contains("/items/11111111-2222-4333-8444-555555555555?tenant.id=1105"));
+        assertTrue(operation.url().contains("ws%3Aprod.id=ws%3Aprod.id"));
+        assertTrue(operation.url().contains("IsPrintWithDeliveryTicketOption=undefined"));
+        assertTrue(operation.url().endsWith("StoreFile=true"));
+        assertEquals("", operation.body());
+        assertTrue(operation.headers().isEmpty());
+    }
+
 }

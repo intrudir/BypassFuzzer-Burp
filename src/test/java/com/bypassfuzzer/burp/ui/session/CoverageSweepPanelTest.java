@@ -20,6 +20,7 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbeGenerator;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
 import com.bypassfuzzer.core.http.UserAgentMode;
+import com.bypassfuzzer.core.input.OpenApiImportOptions;
 import com.bypassfuzzer.core.http.ConfiguredHeader;
 import com.bypassfuzzer.core.throttle.ThrottleSettings;
 import org.junit.jupiter.api.Test;
@@ -747,7 +748,7 @@ class CoverageSweepPanelTest {
             candidate("https://api.example.test/users", "/users")
         ));
         when(engine.collectPreviewFromOpenApi(anyString(), anyString(), anyString(), eq(""),
-            any(CoverageSweepOptions.class), eq(true)))
+            any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class)))
             .thenReturn(preview);
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
 
@@ -757,6 +758,161 @@ class CoverageSweepPanelTest {
         assertEquals(1, table.getRowCount());
         assertEquals("/users", table.getValueAt(0, 3));
         assertTrue(field(panel, "statusLabel", JLabel.class).getText().contains("OpenAPI operation"));
+    }
+
+    private static final String TENANT_SPEC = """
+        openapi: 3.0.3
+        servers: [{url: https://api.example.test}]
+        paths:
+          /tenants/{tenantId}/users:
+            get:
+              parameters:
+                - {name: tenantId, in: path, required: true, example: sample}
+                - {name: filter, in: query, required: true, schema: {type: string}}
+                - {name: optional, in: query, schema: {type: string}}
+          /tenants/{tenantId}/reports:
+            get:
+              parameters:
+                - {name: tenantId, in: path, required: true, example: sample}
+        """;
+
+    @Test
+    void changingEveryParameterModeRetainsRowsChecksAndTheFocusedRequest() throws Exception {
+        Path spec = tempDir.resolve("tenant.yaml");
+        Files.writeString(spec, TENANT_SPEC);
+        var api = api(List.of());
+        var sender = mock(com.bypassfuzzer.burp.http.RequestSender.class);
+        CoverageSweepEngine engine = com.bypassfuzzer.burp.core.coverage.SweepEngineTestFactory
+            .importedEngine(api, sender);
+        CoverageSweepPanel panel = new CoverageSweepPanel(api, engine);
+        field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
+        assertTrue(panel.importTargetsFromFile(spec));
+        JTable table = field(panel, "candidateTable", JTable.class);
+        assertEquals(2, table.getRowCount());
+        table.setValueAt(false, 0, 0);
+        table.setRowSelectionInterval(1, 1);
+        String focusedRoute = String.valueOf(table.getValueAt(1, 3)).contains("/users") ? "/users" : "/reports";
+        JComboBox policy = field(panel, "openApiParameterPolicy", JComboBox.class);
+        for (int option = 0; option < policy.getItemCount(); option++) {
+            var mode = (OpenApiImportOptions.ParameterPolicy) policy.getItemAt(option);
+            policy.setSelectedItem(mode);
+            assertEquals(2, table.getRowCount(), mode.toString());
+            assertEquals(false, table.getValueAt(0, 0), mode.toString());
+            assertEquals(true, table.getValueAt(1, 0), mode.toString());
+            String users = java.util.stream.IntStream.range(0, table.getRowCount())
+                .mapToObj(row -> String.valueOf(table.getValueAt(row, 3)))
+                .filter(path -> path.contains("/users")).findFirst().orElseThrow();
+            switch (mode) {
+                case SAMPLE_VALUES -> assertTrue(users.contains("filter=filter&optional=optional"));
+                case SOURCE_VALUES_ONLY -> assertFalse(users.contains("?"));
+                case REQUIRED_EMPTY -> assertTrue(users.endsWith("?filter="));
+                case REQUIRED_VARIABLES -> assertTrue(users.endsWith("?filter={{filter}}"));
+                case ALL_EMPTY -> assertTrue(users.endsWith("?filter=&optional="));
+                case ALL_VARIABLES -> assertTrue(users.endsWith("?filter={{filter}}&optional={{optional}}"));
+            }
+            assertTrue(String.valueOf(table.getValueAt(table.getSelectedRow(), 3)).contains(focusedRoute));
+        }
+        assertTrue(String.valueOf(table.getValueAt(0, 3)).contains("{{tenantId}}"));
+        assertEquals("Variables unset", table.getValueAt(0, 4));
+        assertFalse(button(panel, "startButton").isEnabled());
+        assertTrue(button(panel, "viewCandidateButton").isEnabled());
+        assertTrue(button(panel, "previewProbesButton").isEnabled());
+        assertTrue(field(panel, "statusLabel", JLabel.class).getText().contains("tenantId"));
+        Method start = CoverageSweepPanel.class.getDeclaredMethod("startSweep");
+        start.setAccessible(true);
+        start.invoke(panel);
+        org.mockito.Mockito.verifyNoInteractions(sender);
+
+        policy.setSelectedItem(OpenApiImportOptions.ParameterPolicy.REQUIRED_VARIABLES);
+        panel.setOpenApiVariables(Map.of("tenantId", "live", "filter", "active"));
+        assertEquals(2, table.getRowCount());
+        assertTrue(String.valueOf(table.getValueAt(0, 3)).contains("/live/"));
+        assertTrue(String.valueOf(table.getValueAt(1, 3)).contains("/live/"));
+        assertEquals(false, table.getValueAt(0, 0));
+        assertTrue(button(panel, "startButton").isEnabled());
+        panel.cleanup();
+    }
+
+    @Test
+    void urlImportShowsTemplatesAndRebuildsThemWithoutDownloadingAgain() throws Exception {
+        var api = api(List.of());
+        var sender = mock(com.bypassfuzzer.burp.http.RequestSender.class);
+        CoverageSweepEngine engine = com.bypassfuzzer.burp.core.coverage.SweepEngineTestFactory
+            .importedEngine(api, sender);
+        var downloads = new java.util.concurrent.atomic.AtomicInteger();
+        CoverageSweepPanel panel = new CoverageSweepPanel(api, engine, (url, mode) -> {
+            downloads.incrementAndGet();
+            return TENANT_SPEC;
+        });
+        field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
+        field(panel, "openApiParameterPolicy", JComboBox.class)
+            .setSelectedItem(OpenApiImportOptions.ParameterPolicy.ALL_VARIABLES);
+        assertTrue(panel.importTargetsFromUrl("https://api.example.test/openapi.yaml"));
+        waitForRemoteImport(panel);
+        JTable table = field(panel, "candidateTable", JTable.class);
+        assertEquals(2, table.getRowCount());
+        assertTrue(String.valueOf(table.getValueAt(0, 3)).contains("{{tenantId}}"));
+        assertTrue(button(panel, "openApiVariablesButton").isEnabled());
+        assertFalse(button(panel, "startButton").isEnabled());
+        panel.setOpenApiVariables(Map.of("tenantId", "live", "filter", "active", "optional", "true"));
+        assertEquals(2, table.getRowCount());
+        assertTrue(String.valueOf(table.getValueAt(0, 3)).contains("/live/"));
+        assertTrue(button(panel, "startButton").isEnabled());
+        assertEquals(1, downloads.get());
+        panel.cleanup();
+    }
+
+    @Test
+    void manageVariablesListsSpecInputsAndFillsSamplesWithoutOverwritingTheTenant() throws Exception {
+        Path spec = tempDir.resolve("tenant-variables.yaml");
+        Files.writeString(spec, TENANT_SPEC);
+        var api = api(List.of());
+        var sender = mock(com.bypassfuzzer.burp.http.RequestSender.class);
+        CoverageSweepPanel panel = new CoverageSweepPanel(api,
+            com.bypassfuzzer.burp.core.coverage.SweepEngineTestFactory.importedEngine(api, sender));
+        field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
+        assertTrue(panel.importTargetsFromFile(spec));
+        JComboBox policy = field(panel, "openApiParameterPolicy", JComboBox.class);
+        assertEquals(OpenApiImportOptions.ParameterPolicy.REQUIRED_VARIABLES, policy.getSelectedItem());
+        for (int option = 0; option < policy.getItemCount(); option++) {
+            assertFalse(policy.getItemAt(option) == OpenApiImportOptions.ParameterPolicy.SAMPLE_VALUES);
+        }
+        OpenApiVariablesEditor editor = panel.openApiVariablesEditor();
+        assertEquals(Map.of("tenantId", "", "filter", "", "optional", ""), editor.variables());
+        OpenApiVariablesEditorTest.find(editor, javax.swing.JTextArea.class)
+            .setText("tenantId=live-tenant\nfilter=\noptional=\n");
+        OpenApiVariablesEditorTest.fillButton(editor).doClick();
+        assertEquals(Map.of("tenantId", "live-tenant", "filter", "filter", "optional", "optional"), editor.variables());
+        JTable table = field(panel, "candidateTable", JTable.class);
+        assertTrue(String.valueOf(table.getValueAt(0, 3)).contains("/sample/"));
+        panel.setOpenApiVariables(editor.variables());
+        assertTrue(String.valueOf(table.getValueAt(0, 3)).contains("/live-tenant/"));
+        assertTrue(button(panel, "startButton").isEnabled());
+        assertEquals("live-tenant", panel.openApiVariablesEditor().variables().get("tenantId"));
+        assertEquals(2, table.getRowCount());
+        panel.cleanup();
+    }
+
+    @Test
+    void resolvedSelectedRequestsCanRunWhileUnselectedTemplatesRemainVisible() throws Exception {
+        Path spec = tempDir.resolve("mixed.yaml");
+        Files.writeString(spec, TENANT_SPEC + "  /health: {get: {responses: {}}}\n");
+        var api = api(List.of());
+        var sender = mock(com.bypassfuzzer.burp.http.RequestSender.class);
+        CoverageSweepPanel panel = new CoverageSweepPanel(api,
+            com.bypassfuzzer.burp.core.coverage.SweepEngineTestFactory.importedEngine(api, sender));
+        field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
+        field(panel, "openApiParameterPolicy", JComboBox.class)
+            .setSelectedItem(OpenApiImportOptions.ParameterPolicy.ALL_VARIABLES);
+        assertTrue(panel.importTargetsFromFile(spec));
+        JTable table = field(panel, "candidateTable", JTable.class);
+        assertEquals(3, table.getRowCount());
+        for (int row = 0; row < table.getRowCount(); row++) {
+            table.setValueAt("/health".equals(table.getValueAt(row, 3)), row, 0);
+        }
+        assertTrue(button(panel, "startButton").isEnabled());
+        assertEquals(3, table.getRowCount());
+        panel.cleanup();
     }
 
     @Test
@@ -794,10 +950,10 @@ class CoverageSweepPanelTest {
         CoverageSweepPreview rebasedPreview = new CoverageSweepPreview(1, 1, List.of(
             candidate("https://api.example.test/v2/users", "/v2/users")));
         when(engine.collectPreviewFromOpenApi(eq(source), eq("openapi.yaml"), eq(""), eq(""),
-            any(CoverageSweepOptions.class), eq(true)))
+            any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class)))
             .thenReturn(originalPreview);
         when(engine.collectPreviewFromOpenApi(eq(source), eq("openapi.yaml"),
-            eq("https://api.example.test/v2"), eq(""), any(CoverageSweepOptions.class), eq(true)))
+            eq("https://api.example.test/v2"), eq(""), any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class)))
             .thenReturn(rebasedPreview);
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
         field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
@@ -815,7 +971,7 @@ class CoverageSweepPanelTest {
         assertEquals("/v2/users", table.getValueAt(0, 3));
         assertTrue(field(panel, "statusLabel", JLabel.class).getText().contains("Applied OpenAPI base URL"));
         verify(engine).collectPreviewFromOpenApi(eq(source), eq("openapi.yaml"),
-            eq("https://api.example.test/v2"), eq(""), any(CoverageSweepOptions.class), eq(true));
+            eq("https://api.example.test/v2"), eq(""), any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class));
     }
 
     @Test
@@ -827,9 +983,9 @@ class CoverageSweepPanelTest {
         CoverageSweepPreview originalPreview = new CoverageSweepPreview(1, 1, List.of(
             candidate("https://localhost/users", "/users")));
         when(engine.collectPreviewFromOpenApi(eq(source), eq("openapi.json"), eq(""), eq(""),
-            any(CoverageSweepOptions.class), eq(true))).thenReturn(originalPreview);
+            any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class))).thenReturn(originalPreview);
         when(engine.collectPreviewFromOpenApi(eq(source), eq("openapi.json"), eq("not-a-url"),
-            eq(""), any(CoverageSweepOptions.class), eq(true))).thenThrow(
+            eq(""), any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class))).thenThrow(
                 new IllegalArgumentException("OpenAPI base URL must be an absolute HTTP or HTTPS URL"));
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
         field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
@@ -853,7 +1009,7 @@ class CoverageSweepPanelTest {
             candidate("https://api.example.test/users", "/users")
         ));
         when(engine.collectPreviewFromOpenApi(anyString(), eq("openapi.json"), anyString(),
-            anyString(), any(CoverageSweepOptions.class), eq(true))).thenReturn(preview);
+            anyString(), any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class))).thenReturn(preview);
         AtomicBoolean fetchedOnEventThread = new AtomicBoolean(true);
         AtomicReference<String> fetchedUrl = new AtomicReference<>();
         CountDownLatch fetchStarted = new CountDownLatch(1);
@@ -881,7 +1037,7 @@ class CoverageSweepPanelTest {
         assertEquals("/users", table.getValueAt(0, 3));
         assertTrue(field(panel, "statusLabel", JLabel.class).getText().contains("OpenAPI operation"));
         verify(engine).collectPreviewFromOpenApi(anyString(), eq("openapi.json"), anyString(),
-            eq(malformedUrl), any(CoverageSweepOptions.class), eq(true));
+            eq(malformedUrl), any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class));
     }
 
     @Test
@@ -910,7 +1066,7 @@ class CoverageSweepPanelTest {
             candidate("https://api.example.test/users/1", "/users/1", "DELETE")
         ));
         when(engine.collectPreviewFromOpenApi(anyString(), anyString(), anyString(), eq(""),
-            any(CoverageSweepOptions.class), eq(true)))
+            any(CoverageSweepOptions.class), eq(true), any(OpenApiImportOptions.class)))
             .thenReturn(preview);
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
         field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);

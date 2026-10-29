@@ -1,6 +1,8 @@
 package com.bypassfuzzer.core.input;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.ToNumberPolicy;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
@@ -15,11 +17,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.LinkedHashSet;
+import java.util.regex.Matcher;
 
 public final class OpenApiSpecParser {
 
     private static final Set<String> METHODS = Set.of("get", "head", "post", "put", "patch", "delete", "options", "trace");
     private final Gson gson = new Gson();
+    private final Gson variableJson = new GsonBuilder()
+        .setObjectToNumberStrategy(ToNumberPolicy.LONG_OR_DOUBLE).create();
 
     public List<OpenApiOperation> parse(String source, String fileName) {
         return parse(source, fileName, "");
@@ -31,20 +37,24 @@ public final class OpenApiSpecParser {
 
     public List<OpenApiOperation> parse(String source, String fileName, String baseUrlOverride,
                                  String sourceUrl) {
-        if (source != null && !source.isEmpty() && source.charAt(0) == '\ufeff') {
-            source = source.substring(1);
-        }
-        source = removeYamlForbiddenCharacters(source);
+        return parse(source, fileName, baseUrlOverride, sourceUrl, OpenApiImportOptions.DEFAULT);
+    }
+
+    public List<OpenApiOperation> parse(String source, String fileName, String baseUrlOverride,
+                                        String sourceUrl, OpenApiImportOptions options) {
+        List<OpenApiOperation> operations = parseTemplates(source, fileName, baseUrlOverride, sourceUrl, options);
+        Set<String> missing = new LinkedHashSet<>();
+        for (OpenApiOperation operation : operations) missing.addAll(operation.unresolvedVariables());
+        if (!missing.isEmpty()) throw new OpenApiImportOptions.MissingVariablesException(missing);
+        return operations;
+    }
+
+    public List<OpenApiOperation> parseTemplates(String source, String fileName, String baseUrlOverride,
+                                                String sourceUrl, OpenApiImportOptions options) {
         if (baseUrlOverride != null && !baseUrlOverride.isBlank() && !absoluteHttpUrl(baseUrlOverride)) {
             throw new IllegalArgumentException("OpenAPI base URL must be an absolute HTTP or HTTPS URL");
         }
-        Object loaded = isJson(source, fileName)
-            ? gson.fromJson(source, Object.class)
-            : new Yaml(new SafeConstructor(new LoaderOptions())).load(source);
-        Map<String, Object> root = map(loaded);
-        if (root.isEmpty() || (!root.containsKey("openapi") && !root.containsKey("swagger"))) {
-            throw new IllegalArgumentException("File is not an OpenAPI or Swagger specification");
-        }
+        Map<String, Object> root = document(source, fileName);
 
         Map<String, Object> paths = map(root.get("paths"));
         List<OpenApiOperation> operations = new ArrayList<>();
@@ -54,15 +64,18 @@ public final class OpenApiSpecParser {
                 Map<String, Object> operation = map(resolve(root, pathItem.get(method)));
                 if (operation.isEmpty()) continue;
 
+                ImportContext context = new ImportContext(options == null ? OpenApiImportOptions.DEFAULT : options);
                 List<Map<String, Object>> parameters = combinedParameters(root,
                     pathItem.get("parameters"), operation.get("parameters"));
-                RequestParts parts = requestParts(root, pathEntry.getKey(), parameters);
-                BodyParts bodyParts = requestBody(root, operation, parameters);
-                for (String server : servers(root, pathItem, operation, baseUrlOverride, sourceUrl)) {
+                RequestParts parts = requestParts(root, pathEntry.getKey(), parameters, context);
+                BodyParts bodyParts = requestBody(root, operation, parameters, context);
+                for (String server : servers(root, pathItem, operation, baseUrlOverride, sourceUrl, context)) {
                     String url = combine(server, parts.pathAndQuery());
                     if (url != null) {
                         operations.add(new OpenApiOperation(method.toUpperCase(Locale.ROOT), url,
-                            merge(parts.headers(), bodyParts.headers()), bodyParts.body()));
+                            merge(parts.headers(), bodyParts.headers()), bodyParts.body(),
+                            new OpenApiOperation.Source(serverIdentity(root, pathItem, operation, sourceUrl),
+                                pathEntry.getKey()), context.missing));
                     }
                 }
             }
@@ -71,6 +84,105 @@ public final class OpenApiSpecParser {
             throw new IllegalArgumentException("OpenAPI specification contains no operations with an absolute HTTP(S) server URL");
         }
         return List.copyOf(operations);
+    }
+
+    private Map<String, Object> document(String source, String fileName) {
+        if (source != null && !source.isEmpty() && source.charAt(0) == '\ufeff') {
+            source = source.substring(1);
+        }
+        source = removeYamlForbiddenCharacters(source);
+        Object loaded = isJson(source, fileName)
+            ? gson.fromJson(source, Object.class)
+            : new Yaml(new SafeConstructor(new LoaderOptions())).load(source);
+        Map<String, Object> root = map(loaded);
+        if (root.isEmpty() || (!root.containsKey("openapi") && !root.containsKey("swagger"))) {
+            throw new IllegalArgumentException("File is not an OpenAPI or Swagger specification");
+        }
+
+        return root;
+    }
+
+    /** Request variables with spec examples/defaults or generated suggestions. */
+    public Map<String, String> variableSamples(String source, String fileName) {
+        Map<String, Object> root = document(source, fileName);
+        VariableExamples examples = new VariableExamples();
+        for (var pathEntry : map(root.get("paths")).entrySet()) {
+            Map<String, Object> path = map(resolve(root, pathEntry.getValue()));
+            for (String method : METHODS) {
+                Map<String, Object> operation = map(resolve(root, path.get(method)));
+                if (operation.isEmpty()) continue;
+                examples.placeholders(pathEntry.getKey());
+                for (Map<String, Object> scope : List.of(root, path, operation)) {
+                    for (Object raw : list(scope.get("servers"))) {
+                        Map<String, Object> server = map(raw);
+                        examples.placeholders(string(server.get("url")));
+                        for (var variable : map(server.get("variables")).entrySet()) {
+                            Object declared = map(variable.getValue()).get("default");
+                            examples.add(variable.getKey(), declared == null ? "value" : declared,
+                                declared == null ? 1 : 2);
+                        }
+                    }
+                }
+                examples.placeholders(string(root.get("host")));
+                examples.placeholders(string(root.get("basePath")));
+                List<Map<String, Object>> parameters = combinedParameters(root,
+                    path.get("parameters"), operation.get("parameters"));
+                for (Map<String, Object> parameter : parameters) {
+                    String location = string(parameter.get("in"));
+                    String name = string(parameter.get("name"));
+                    if (!Set.of("path", "query", "header", "cookie", "formData").contains(location)) continue;
+                    if ("header".equals(location)
+                        && ("host".equalsIgnoreCase(name) || "content-type".equalsIgnoreCase(name))) continue;
+                    Object declared = sourceParameterValue(root, parameter);
+                    examples.add(name, declared == null ? sampleParameterValue(root, parameter) : declared,
+                        declared == null ? 1 : 2);
+                }
+                ImportContext context = new ImportContext(OpenApiImportOptions.DEFAULT);
+                requestBody(root, operation, parameters, context);
+                for (String name : context.missing) examples.add(name, null, 0);
+            }
+        }
+        examples.values.replaceAll((name, value) -> value.isEmpty() && !examples.conflicts.contains(name)
+            ? name : value);
+        return java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(examples.values));
+    }
+
+    private final class VariableExamples {
+        private final Map<String, String> values = new LinkedHashMap<>();
+        private final Set<String> conflicts = new HashSet<>();
+        // Spec values (2) take precedence over generated samples (1).
+        private final Map<String, Integer> priorities = new LinkedHashMap<>();
+
+        private void add(String name, Object example, int priority) {
+            if (name.isBlank()) return;
+            values.putIfAbsent(name, "");
+            if (example == null) return;
+            String candidate = scalar(example);
+            placeholders(candidate);
+            Matcher tokens = OpenApiOperation.VARIABLE.matcher(candidate);
+            while (tokens.find()) {
+                String referenced = tokens.group(1) == null ? tokens.group(2) : tokens.group(1);
+                if (name.equals(referenced)) return;
+            }
+            int previousPriority = priorities.getOrDefault(name, -1);
+            if (candidate.isEmpty() || priority < previousPriority) return;
+            if (priority > previousPriority) {
+                values.put(name, candidate);
+                priorities.put(name, priority);
+                conflicts.remove(name);
+            } else if (!values.get(name).equals(candidate)) {
+                values.put(name, "");
+                conflicts.add(name);
+            }
+        }
+
+        private void placeholders(String value) {
+            Matcher matcher = OpenApiOperation.VARIABLE.matcher(value);
+            while (matcher.find()) {
+                String name = matcher.group(1) == null ? matcher.group(2) : matcher.group(1);
+                values.putIfAbsent(name, "");
+            }
+        }
     }
 
     private String removeYamlForbiddenCharacters(String source) {
@@ -102,7 +214,7 @@ public final class OpenApiSpecParser {
     }
 
     private RequestParts requestParts(Map<String, Object> root, String path,
-                                      List<Map<String, Object>> parameters) {
+                                      List<Map<String, Object>> parameters, ImportContext context) {
         String renderedPath = path;
         List<String> query = new ArrayList<>();
         Map<String, String> headers = new LinkedHashMap<>();
@@ -111,26 +223,43 @@ public final class OpenApiSpecParser {
             String name = string(parameter.get("name"));
             String location = string(parameter.get("in"));
             if (name.isBlank() || location.isBlank()) continue;
-            Object rawValue = sampleParameterValue(root, parameter);
+            if (!Set.of("path", "query", "header", "cookie").contains(location)) continue;
+            if ("header".equals(location)
+                && ("host".equalsIgnoreCase(name) || "content-type".equalsIgnoreCase(name))) continue;
+            Object rawValue = parameterValue(root, parameter, context);
+            if (rawValue == OMIT) continue;
             if ("path".equals(location)) {
                 renderedPath = renderedPath.replace("{" + name + "}", encodePath(serializedValue(rawValue)));
             } else if ("query".equals(location)) {
                 appendQueryParameter(query, name, rawValue, parameter);
-            } else if ("header".equals(location)
-                && !"host".equalsIgnoreCase(name) && !"content-type".equalsIgnoreCase(name)) {
-                headers.put(name, serializedValue(rawValue));
+            } else if ("header".equals(location)) {
+                String value = serializedValue(rawValue);
+                if (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+                    throw new IllegalArgumentException("OpenAPI header contains a newline: " + name);
+                }
+                headers.put(name, value);
             } else if ("cookie".equals(location)) {
                 cookies.add(encodeQuery(name) + "=" + encodeQuery(serializedValue(rawValue)));
             }
         }
         if (!cookies.isEmpty()) headers.put("Cookie", String.join("; ", cookies));
-        renderedPath = renderedPath.replaceAll("\\{[^}/]+}", "1");
+        Matcher remaining = OpenApiOperation.VARIABLE.matcher(renderedPath);
+        StringBuffer completed = new StringBuffer();
+        while (remaining.find()) {
+            String name = remaining.group(1) == null ? remaining.group(2) : remaining.group(1);
+            String value = context.missing.contains(name) ? "{{" + name + "}}"
+                : context.options.parameterPolicy() == OpenApiImportOptions.ParameterPolicy.SAMPLE_VALUES
+                    && !context.hasValue(name) ? "1" : context.variable(name);
+            remaining.appendReplacement(completed, Matcher.quoteReplacement(encodePath(value)));
+        }
+        remaining.appendTail(completed);
+        renderedPath = completed.toString();
         if (!query.isEmpty()) renderedPath += (renderedPath.contains("?") ? "&" : "?") + String.join("&", query);
         return new RequestParts(renderedPath, headers);
     }
 
     private BodyParts requestBody(Map<String, Object> root, Map<String, Object> operation,
-                                  List<Map<String, Object>> parameters) {
+                                  List<Map<String, Object>> parameters, ImportContext context) {
         Map<String, Object> requestBody = map(resolve(root, operation.get("requestBody")));
         Map<String, Object> content = map(requestBody.get("content"));
         if (!content.isEmpty()) {
@@ -141,7 +270,7 @@ public final class OpenApiSpecParser {
             if (example == null || emptyContainerExample(example, schema)) {
                 example = schemaExample(root, schema, 0, "value");
             }
-            String body = bodyString(example, contentType);
+            String body = bodyString(context.resolveValue(example), contentType);
             return new BodyParts(body.isBlank() ? Map.of() : Map.of("Content-Type", contentType), body);
         }
 
@@ -152,12 +281,13 @@ public final class OpenApiSpecParser {
                 string(parameter.get("name")));
             String contentType = firstString(operation.containsKey("consumes")
                 ? operation.get("consumes") : root.get("consumes"), "application/json");
-            return new BodyParts(Map.of("Content-Type", contentType), bodyString(example, contentType));
+            return new BodyParts(Map.of("Content-Type", contentType), bodyString(context.resolveValue(example), contentType));
         }
         Map<String, Object> form = new LinkedHashMap<>();
         for (Map<String, Object> parameter : parameters) {
             if ("formData".equals(string(parameter.get("in")))) {
-                form.put(string(parameter.get("name")), sampleParameterValue(root, parameter));
+                Object value = parameterValue(root, parameter, context);
+                if (value != OMIT) form.put(string(parameter.get("name")), value);
             }
         }
         if (!form.isEmpty()) {
@@ -239,7 +369,7 @@ public final class OpenApiSpecParser {
         };
     }
 
-    private Object sampleParameterValue(Map<String, Object> root, Map<String, Object> parameter) {
+    private Object sourceParameterValue(Map<String, Object> root, Map<String, Object> parameter) {
         Object value = parameter.get("example");
         if (value == null) value = parameter.get("default");
         if (value == null) value = firstExampleValue(root, parameter.get("examples"));
@@ -247,6 +377,45 @@ public final class OpenApiSpecParser {
         Map<String, Object> schema = parameterSchema(root, parameter);
         if (value == null) value = schema.get("example");
         if (value == null) value = schema.get("default");
+        return value;
+    }
+
+    private static final Object OMIT = new Object();
+
+    private Object parameterValue(Map<String, Object> root, Map<String, Object> parameter,
+                                  ImportContext context) {
+        String name = string(parameter.get("name"));
+        boolean path = "path".equals(string(parameter.get("in")));
+        boolean required = path || Boolean.TRUE.equals(parameter.get("required"));
+        OpenApiImportOptions.ParameterPolicy policy = context.options.parameterPolicy();
+        if (context.hasValue(name) || policy == OpenApiImportOptions.ParameterPolicy.ALL_VARIABLES) {
+            String value = context.variable(name);
+            Map<String, Object> schema = parameterSchema(root, parameter);
+            String type = string(schema.getOrDefault("type", parameter.get("type")));
+            if (!OpenApiOperation.VARIABLE.matcher(value).find()
+                && (("array".equals(type) && value.startsWith("["))
+                    || ("object".equals(type) && value.startsWith("{")))) {
+                Object structured = variableJson.fromJson(value, Object.class);
+                if (structured instanceof List<?> || structured instanceof Map<?, ?>) return structured;
+            }
+            return value;
+        }
+        Object source = sourceParameterValue(root, parameter);
+        if (source != null) return context.resolveValue(source);
+        if (policy == OpenApiImportOptions.ParameterPolicy.SAMPLE_VALUES) {
+            return context.resolveValue(sampleParameterValue(root, parameter));
+        }
+        if (path || required && policy == OpenApiImportOptions.ParameterPolicy.REQUIRED_VARIABLES) {
+            return context.variable(name);
+        }
+        if (policy == OpenApiImportOptions.ParameterPolicy.ALL_EMPTY
+            || required && policy == OpenApiImportOptions.ParameterPolicy.REQUIRED_EMPTY) return "";
+        return OMIT;
+    }
+
+    private Object sampleParameterValue(Map<String, Object> root, Map<String, Object> parameter) {
+        Object value = sourceParameterValue(root, parameter);
+        Map<String, Object> schema = parameterSchema(root, parameter);
         List<Object> enumValues = !list(schema.get("enum")).isEmpty()
             ? list(schema.get("enum")) : list(parameter.get("enum"));
         if (value == null && !enumValues.isEmpty()) value = enumValues.get(0);
@@ -259,8 +428,8 @@ public final class OpenApiSpecParser {
 
     private List<String> servers(Map<String, Object> root, Map<String, Object> pathItem,
                                  Map<String, Object> operation, String baseUrlOverride,
-                                 String sourceUrl) {
-        if (absoluteHttpUrl(baseUrlOverride)) return List.of(baseUrlOverride);
+                                 String sourceUrl, ImportContext context) {
+        if (absoluteHttpUrl(baseUrlOverride)) return List.of(context.resolveText(baseUrlOverride));
         Object raw = operation.containsKey("servers") ? operation.get("servers")
             : pathItem.containsKey("servers") ? pathItem.get("servers") : root.get("servers");
         List<String> result = new ArrayList<>();
@@ -270,9 +439,14 @@ public final class OpenApiSpecParser {
             for (Map.Entry<String, Object> variable : map(server.get("variables")).entrySet()) {
                 Map<String, Object> definition = map(variable.getValue());
                 String value = string(definition.get("default"));
-                url = url.replace("{" + variable.getKey() + "}", value.isBlank() ? "value" : value);
+                String name = variable.getKey();
+                String resolved = context.hasValue(name)
+                    || context.options.parameterPolicy() == OpenApiImportOptions.ParameterPolicy.ALL_VARIABLES
+                    ? context.variable(name) : context.resolveText(value.isBlank() ? "value" : value);
+                url = url.replace("{" + name + "}", resolved);
             }
-            if (absoluteHttpUrl(url)) {
+            url = context.resolveText(url);
+            if (absoluteHttpUrl(OpenApiOperation.previewUri(url).toString())) {
                 result.add(url);
                 break;
             }
@@ -284,9 +458,9 @@ public final class OpenApiSpecParser {
         }
         if (!result.isEmpty()) return result;
 
-        String host = string(root.get("host"));
+        String host = context.resolveText(string(root.get("host")));
         if (!host.isBlank()) {
-            String basePath = string(root.get("basePath"));
+            String basePath = context.resolveText(string(root.get("basePath")));
             List<Object> schemes = list(root.get("schemes"));
             if (schemes.isEmpty()) schemes = List.of("https");
             result.add(schemes.get(0) + "://" + host + basePath);
@@ -296,6 +470,15 @@ public final class OpenApiSpecParser {
             if (implicit != null) result.add(implicit);
         }
         return result.isEmpty() ? List.of("https://localhost") : result;
+    }
+
+    private String serverIdentity(Map<String, Object> root, Map<String, Object> path,
+                                  Map<String, Object> operation, String sourceUrl) {
+        Object raw = operation.containsKey("servers") ? operation.get("servers")
+            : path.containsKey("servers") ? path.get("servers") : root.get("servers");
+        List<Object> declared = list(raw);
+        if (!declared.isEmpty()) return string(map(declared.get(0)).get("url"));
+        return string(root.get("host")) + string(root.get("basePath")) + string(sourceUrl);
     }
 
     private Object resolve(Map<String, Object> root, Object value) {
@@ -380,8 +563,8 @@ public final class OpenApiSpecParser {
     private String combine(String server, String path) {
         String combined = server.replaceAll("/+$", "") + "/" + path.replaceFirst("^/+", "");
         try {
-            URI uri = URI.create(combined);
-            return absoluteHttpUrl(combined) && uri.getHost() != null ? uri.toString() : null;
+            URI uri = OpenApiOperation.previewUri(combined);
+            return absoluteHttpUrl(uri.toString()) && uri.getHost() != null ? combined : null;
         } catch (Exception e) {
             return null;
         }
@@ -396,7 +579,15 @@ public final class OpenApiSpecParser {
     }
 
     private String encodeQuery(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+        Matcher matcher = OpenApiOperation.VARIABLE.matcher(value);
+        StringBuilder encoded = new StringBuilder();
+        int offset = 0;
+        while (matcher.find()) {
+            encoded.append(URLEncoder.encode(value.substring(offset, matcher.start()), StandardCharsets.UTF_8));
+            encoded.append(matcher.group());
+            offset = matcher.end();
+        }
+        return encoded.append(URLEncoder.encode(value.substring(offset), StandardCharsets.UTF_8)).toString();
     }
 
     private void appendQueryParameter(List<String> query, String name, Object value,
@@ -484,9 +675,21 @@ public final class OpenApiSpecParser {
         try {
             URI source = URI.create(sourceUrl.replace("\\", "%5C").replace(" ", "%20"));
             if (!absoluteHttpUrl(source.toString()) || source.getHost() == null) return null;
-            URI resolved = source.resolve(server == null || server.isBlank() ? "/" : server);
-            return absoluteHttpUrl(resolved.toString()) && resolved.getHost() != null
-                ? resolved.toString() : null;
+            String relative = server == null || server.isBlank() ? "/" : server;
+            // Escape only placeholders for URI.resolve, then restore them for the request viewer.
+            Matcher matcher = OpenApiOperation.VARIABLE.matcher(relative);
+            Map<String, String> tokens = new LinkedHashMap<>();
+            StringBuffer escaped = new StringBuffer();
+            while (matcher.find()) {
+                String token = "%7B%7B" + tokens.size() + "%7D%7D";
+                tokens.put(token, matcher.group());
+                matcher.appendReplacement(escaped, Matcher.quoteReplacement(token));
+            }
+            matcher.appendTail(escaped);
+            URI resolved = source.resolve(escaped.toString());
+            String value = resolved.toString();
+            for (var token : tokens.entrySet()) value = value.replace(token.getKey(), token.getValue());
+            return absoluteHttpUrl(value) && resolved.getHost() != null ? value : null;
         } catch (Exception ignored) {
             return null;
         }
@@ -525,6 +728,53 @@ public final class OpenApiSpecParser {
         Map<String, String> merged = new LinkedHashMap<>(left);
         merged.putAll(right);
         return merged;
+    }
+
+    private static final class ImportContext {
+        private final OpenApiImportOptions options;
+        private final Set<String> missing = new LinkedHashSet<>();
+        private final Set<String> resolving = new HashSet<>();
+
+        private ImportContext(OpenApiImportOptions options) { this.options = options; }
+
+        private boolean hasValue(String name) {
+            String value = options.variables().get(name);
+            return value != null && !value.isEmpty();
+        }
+
+        private String variable(String name) {
+            if (!hasValue(name) || !resolving.add(name)) {
+                missing.add(name);
+                return "{{" + name + "}}";
+            }
+            String value = resolveText(options.variables().get(name));
+            resolving.remove(name);
+            return value;
+        }
+
+        private String resolveText(String value) {
+            Matcher matcher = OpenApiOperation.VARIABLE.matcher(value);
+            StringBuffer out = new StringBuffer();
+            while (matcher.find()) {
+                String name = matcher.group(1) == null ? matcher.group(2) : matcher.group(1);
+                matcher.appendReplacement(out, Matcher.quoteReplacement(variable(name)));
+            }
+            matcher.appendTail(out);
+            return out.toString();
+        }
+
+        private Object resolveValue(Object value) {
+            if (value instanceof String text) return resolveText(text);
+            if (value instanceof List<?> values) return values.stream().map(this::resolveValue).toList();
+            if (value instanceof Map<?, ?> values) {
+                Map<String, Object> resolved = new LinkedHashMap<>();
+                values.forEach((key, item) -> resolved.put(String.valueOf(key), resolveValue(item)));
+                return resolved;
+            }
+            return value;
+        }
+
+
     }
 
     private record RequestParts(String pathAndQuery, Map<String, String> headers) {}

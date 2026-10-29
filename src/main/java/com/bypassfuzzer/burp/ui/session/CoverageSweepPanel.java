@@ -21,6 +21,7 @@ import com.bypassfuzzer.burp.core.coverage.CoverageSweepProbe;
 import com.bypassfuzzer.burp.core.coverage.CoverageSweepPreview;
 import com.bypassfuzzer.core.http.UserAgentMode;
 import com.bypassfuzzer.core.input.PostmanCollectionParser;
+import com.bypassfuzzer.core.input.OpenApiImportOptions;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
@@ -115,6 +116,11 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JCheckBox status4xxCheckBox;
     private JTextField openApiBaseUrlField;
     private JLabel openApiBaseUrlLabel;
+    private JPanel openApiVariablesRow;
+    private JComboBox<OpenApiImportOptions.ParameterPolicy> openApiParameterPolicy;
+    private JButton openApiVariablesButton;
+    private Map<String, String> openApiVariables = Map.of();
+    private String openApiConfigurationError;
     private Component pullResponsesSpacer;
     private JLabel statusLabel;
     private JLabel estimateLabel;
@@ -404,6 +410,22 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         controls.add(modeRow);
         controls.add(modeActionsRow);
         configurationPanel.add(modeOptionsRow);
+        openApiVariablesRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        openApiVariablesRow.add(new JLabel("OpenAPI parameters:"));
+        openApiParameterPolicy = new JComboBox<>(java.util.Arrays.stream(OpenApiImportOptions.ParameterPolicy.values())
+            .filter(policy -> policy != OpenApiImportOptions.ParameterPolicy.SAMPLE_VALUES)
+            .toArray(OpenApiImportOptions.ParameterPolicy[]::new));
+        openApiParameterPolicy.setSelectedItem(OpenApiImportOptions.ParameterPolicy.REQUIRED_VARIABLES);
+        openApiParameterPolicy.setToolTipText(
+            "Choose how declared parameters without values are filled. Managed variables override examples/defaults.");
+        openApiParameterPolicy.addActionListener(e -> {
+            if (importedOpenApiDocument != null && !importedOpenApiDocument.postman()) rebuildImportedDocument(true);
+        });
+        openApiVariablesButton = new JButton("Manage Variables...");
+        openApiVariablesButton.addActionListener(e -> manageOpenApiVariables());
+        openApiVariablesRow.add(openApiParameterPolicy);
+        openApiVariablesRow.add(openApiVariablesButton);
+        configurationPanel.add(openApiVariablesRow);
         configurationPanel.add(methodOptionsRow);
         configurationPanel.add(executionRow);
         controls.add(configurationPanel);
@@ -723,12 +745,12 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             updateEstimate();
             updatePreviewButton();
             if (!engine.isRunning() && startButton != null) {
-                startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
+                startButton.setEnabled(canStartSelectedCandidates());
             }
         });
         candidateTable.getColumnModel().getColumn(0).setMaxWidth(55);
         candidateTable.getColumnModel().getColumn(1).setMaxWidth(72);
-        candidateTable.getColumnModel().getColumn(4).setMaxWidth(70);
+        candidateTable.getColumnModel().getColumn(4).setPreferredWidth(110);
         candidateTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 updatePreviewButton();
@@ -845,7 +867,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         } else {
             setCandidateRows(preview.candidates());
         }
-        startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
+        startButton.setEnabled(canStartSelectedCandidates());
         updatePreviewButton();
         statusLabel.setText("Found " + preview.blockedHistoryCount()
             + " matching history items; " + preview.dedupedEndpointCount()
@@ -1014,6 +1036,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         statusLabel.setText("Downloading OpenAPI document from " + target.host() + "...");
         CoverageSweepOptions options = currentOptions();
         String baseUrl = openApiBaseUrlField.getText().trim();
+        OpenApiImportOptions importOptions = currentOpenApiImportOptions();
         boolean dedupeEndpoints = dedupeOnEndpointCheckBox.isSelected();
         SwingWorker<RemoteOpenApiImport, Void> worker = new SwingWorker<>() {
             @Override
@@ -1022,10 +1045,11 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 OpenApiUrlFetcher.FetchedDocument fetched = openApiUrlFetcher.fetchDocument(
                     target.rawUrl(), httpMode, options.requestHeaders());
                 String source = fetched.source();
-                CoverageSweepPreview preview = engine.collectPreviewFromOpenApi(
-                    source, fileName, baseUrl, fetched.effectiveUrl(), options, dedupeEndpoints);
-                return new RemoteOpenApiImport(preview,
-                    new ImportedOpenApiDocument(source, fileName, fetched.effectiveUrl(), false));
+                ImportedOpenApiDocument document =
+                    new ImportedOpenApiDocument(source, fileName, fetched.effectiveUrl(), false);
+                CoverageSweepPreview preview = collectOpenApiPreview(document, baseUrl, options,
+                    dedupeEndpoints, importOptions);
+                return new RemoteOpenApiImport(preview, document);
             }
 
             @Override
@@ -1074,6 +1098,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 CoverageSweepPreview preview = engine.collectPreviewFromUrls(
                     retryUrls, currentOptions(), dedupeEndpoints);
                 importedOpenApiDocument = null;
+                openApiConfigurationError = null;
                 applyImportedPreview(preview, false, dedupeEndpoints);
                 statusLabel.setText("Imported " + retryUrls.size()
                     + " retry-package request(s) as Sweep candidates; "
@@ -1083,18 +1108,16 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             boolean postman = PostmanCollectionParser.looksLikePostmanCollection(source);
             boolean openApi = !postman && isOpenApiSource(path, source);
             String fileName = path.getFileName().toString();
+            importedOpenApiDocument = openApi || postman
+                ? new ImportedOpenApiDocument(source, fileName, "", postman) : null;
             CoverageSweepPreview preview = postman
                 ? engine.collectPreviewFromPostman(source, openApiBaseUrlField.getText().trim(),
                     currentOptions(), dedupeOnEndpointCheckBox.isSelected())
                 : openApi
-                ? engine.collectPreviewFromOpenApi(source, fileName,
-                    openApiBaseUrlField.getText().trim(), "", currentOptions(),
-                    dedupeOnEndpointCheckBox.isSelected())
+                ? collectOpenApiPreview(importedOpenApiDocument, openApiBaseUrlField.getText().trim(),
+                    currentOptions(), dedupeOnEndpointCheckBox.isSelected(), currentOpenApiImportOptions())
                 : engine.collectPreviewFromUrls(Files.readAllLines(path), currentOptions(),
                     dedupeOnEndpointCheckBox.isSelected());
-            importedOpenApiDocument = openApi || postman
-                ? new ImportedOpenApiDocument(source, fileName, "", postman)
-                : null;
             applyImportedPreview(preview, postman ? "Postman request" : openApi ? "OpenAPI operation" : "valid target URL",
                 dedupeOnEndpointCheckBox.isSelected());
             return true;
@@ -1107,6 +1130,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void applyOpenApiBaseUrl() {
+        rebuildImportedDocument(false);
+    }
+
+    private void rebuildImportedDocument(boolean variableSettingsChanged) {
         if (currentMode() != CoverageSweepMode.IMPORTED_TARGETS || engine.isRunning()) {
             return;
         }
@@ -1125,15 +1152,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             CoverageSweepPreview preview = document.postman()
                 ? engine.collectPreviewFromPostman(document.source(), baseUrl, currentOptions(),
                     dedupeOnEndpointCheckBox.isSelected())
-                : document.sourceUrl().isBlank()
-                ? engine.collectPreviewFromOpenApi(
-                    document.source(), document.fileName(), baseUrl, "", currentOptions(),
-                    dedupeOnEndpointCheckBox.isSelected())
-                : engine.collectPreviewFromOpenApi(
-                    document.source(), document.fileName(), baseUrl, document.sourceUrl(), currentOptions(),
-                    dedupeOnEndpointCheckBox.isSelected());
+                : collectOpenApiPreview(document, baseUrl, currentOptions(),
+                    dedupeOnEndpointCheckBox.isSelected(), currentOpenApiImportOptions());
             applyImportedPreview(preview, document.postman() ? "Postman request" : "OpenAPI operation",
-                dedupeOnEndpointCheckBox.isSelected());
+                dedupeOnEndpointCheckBox.isSelected(), true);
             statusLabel.setText((baseUrl.isEmpty()
                 ? (document.postman() ? "Restored Postman request URLs; " : "Restored OpenAPI server URLs; ")
                 : (document.postman() ? "Applied Postman base URL " : "Applied OpenAPI base URL ")
@@ -1141,11 +1163,51 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 + importedPreviewCounts(preview, dedupeOnEndpointCheckBox.isSelected()));
         } catch (Exception e) {
             String message = e.getMessage() == null ? "unknown error" : e.getMessage();
-            statusLabel.setText("Unable to apply OpenAPI base URL: " + message);
-            startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
+            statusLabel.setText("Unable to apply OpenAPI "
+                + (variableSettingsChanged ? "variables: " : "base URL: ") + message);
+            if (variableSettingsChanged) openApiConfigurationError = message;
+            startButton.setEnabled(canStartSelectedCandidates());
             updatePreviewButton();
         } finally {
             finishCandidateLoading();
+        }
+    }
+
+    private OpenApiImportOptions currentOpenApiImportOptions() {
+        return new OpenApiImportOptions(
+            (OpenApiImportOptions.ParameterPolicy) openApiParameterPolicy.getSelectedItem(), openApiVariables);
+    }
+
+    private CoverageSweepPreview collectOpenApiPreview(ImportedOpenApiDocument document, String baseUrl,
+                                                       CoverageSweepOptions options, boolean dedupe,
+                                                       OpenApiImportOptions importOptions) {
+        return engine.collectPreviewFromOpenApi(document.source(), document.fileName(), baseUrl,
+            document.sourceUrl(), options, dedupe, importOptions);
+    }
+
+    void setOpenApiVariables(Map<String, String> variables) {
+        openApiVariables = Map.copyOf(variables);
+        openApiVariablesButton.setText("Manage Variables... (" + openApiVariables.size() + ")");
+        if (importedOpenApiDocument != null && !importedOpenApiDocument.postman()) rebuildImportedDocument(true);
+    }
+
+    OpenApiVariablesEditor openApiVariablesEditor() {
+        Map<String, String> examples = importedOpenApiDocument == null || importedOpenApiDocument.postman()
+            ? Map.of() : new com.bypassfuzzer.core.input.OpenApiSpecParser().variableSamples(
+                importedOpenApiDocument.source(), importedOpenApiDocument.fileName());
+        return new OpenApiVariablesEditor(openApiVariables, examples);
+    }
+
+    private void manageOpenApiVariables() {
+        OpenApiVariablesEditor editor = openApiVariablesEditor();
+        while (JOptionPane.showConfirmDialog(this, editor, "OpenAPI Variables",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
+            try {
+                setOpenApiVariables(editor.variables());
+                return;
+            } catch (IllegalArgumentException e) {
+                JOptionPane.showMessageDialog(this, e.getMessage(), "Invalid variable", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 
@@ -1156,9 +1218,15 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private void applyImportedPreview(CoverageSweepPreview preview, String itemLabel,
                                       boolean dedupeEndpoints) {
-        setCandidateRows(preview.candidates());
-        applyImportedMethodSelection();
-        startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
+        applyImportedPreview(preview, itemLabel, dedupeEndpoints, false);
+    }
+
+    private void applyImportedPreview(CoverageSweepPreview preview, String itemLabel,
+                                      boolean dedupeEndpoints, boolean preserveSelection) {
+        openApiConfigurationError = null;
+        setCandidateRows(preview.candidates(), preserveSelection);
+        if (!preserveSelection) applyImportedMethodSelection();
+        startButton.setEnabled(canStartSelectedCandidates());
         updatePreviewButton();
         statusLabel.setText("Imported " + preview.blockedHistoryCount()
             + " " + itemLabel + "(s); "
@@ -1169,11 +1237,13 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private String importedPreviewCounts(CoverageSweepPreview preview, boolean dedupeEndpoints) {
         return preview.dedupedEndpointCount() + " unique endpoint shape(s); "
             + (dedupeEndpoints ? "dedupe on" : "dedupe off") + "; showing "
-            + preview.candidates().size() + " row(s).";
+            + preview.candidates().size() + " row(s)."
+            + missingVariableMessage(preview.candidates());
     }
 
     private void handleImportFailure(Throwable error) {
         importedOpenApiDocument = null;
+        openApiConfigurationError = null;
         setCandidateRows(List.of());
         String message = error == null || error.getMessage() == null ? "unknown error" : error.getMessage();
         statusLabel.setText("Unable to import targets: " + message);
@@ -1205,6 +1275,11 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void startSweep() {
+        String missing = missingVariableMessage(candidateTableModel.selectedCandidates());
+        if (!missing.isEmpty() || openApiConfigurationError != null) {
+            statusLabel.setText(openApiConfigurationError == null ? missing : openApiConfigurationError);
+            return;
+        }
         if (resultsWorkspace.isRetryRunning() || sweepPreparationWorker != null) {
             statusLabel.setText("Wait for the throttled-request retry pass to finish.");
             return;
@@ -1422,7 +1497,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         startButton.setText("Start Sweep");
         stopButton.setText("Stop");
         if (!engine.isRunning() && sweepPreparationWorker == null) {
-            startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
+            startButton.setEnabled(canStartSelectedCandidates());
             stopButton.setEnabled(false);
             pauseButton.setText("Pause");
             pauseButton.setEnabled(false);
@@ -1488,7 +1563,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         importButton.setEnabled(true);
         clearCandidatesButton.setEnabled(candidateTableModel.getRowCount() > 0);
         setStatusControlsEnabled(true);
-        startButton.setEnabled(!candidateTableModel.selectedCandidates().isEmpty());
+        startButton.setEnabled(canStartSelectedCandidates());
         stopButton.setEnabled(false);
         pauseButton.setEnabled(false);
         candidateTable.setEnabled(true);
@@ -1665,6 +1740,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         cachedHistoryCandidates = List.of();
         cachedHistoryPreview = null;
         importedOpenApiDocument = null;
+        openApiConfigurationError = null;
         setCandidateRows(List.of());
         startButton.setEnabled(false);
         updateModeControls();
@@ -1718,6 +1794,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         requestHeadersControl.button().setVisible(true);
         authIdentifiersButton.setVisible(authenticated);
         authIdentifiersButton.setEnabled(idle && authenticated);
+        openApiVariablesRow.setVisible(imported);
+        boolean openApi = importedOpenApiDocument == null || !importedOpenApiDocument.postman();
+        openApiParameterPolicy.setEnabled(idle && imported && openApi);
+        openApiVariablesButton.setEnabled(idle && imported && openApi);
         openApiBaseUrlLabel.setVisible(imported);
         openApiBaseUrlField.setVisible(imported);
         openApiBaseUrlField.setEnabled(idle && imported);
@@ -1739,6 +1819,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         discoveredAuthHeaders = Set.of();
         discoveredCookieNames = Set.of();
         importedOpenApiDocument = null;
+        openApiConfigurationError = null;
         openApiBaseUrlField.setText("");
         startButton.setEnabled(false);
         setCandidateActionButtonsEnabled(false);
@@ -1803,13 +1884,30 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     }
 
     private void setCandidateRows(List<CoverageSweepCandidate> candidates) {
+        setCandidateRows(candidates, false);
+    }
+
+    private void setCandidateRows(List<CoverageSweepCandidate> candidates, boolean preserveSelection) {
+        CoverageSweepCandidate focused = previewCandidate();
+        String focusedKey = focused == null ? "" : candidateIdentity(focused);
         importedControlResponses.clear();
-        candidateTableModel.setCandidates(candidates);
+        candidateTableModel.setCandidates(candidates, preserveSelection);
         if (candidates == null || candidates.isEmpty()) {
             candidateTable.clearSelection();
             return;
         }
-        candidateTable.setRowSelectionInterval(0, 0);
+        int selected = 0;
+        if (preserveSelection) {
+            for (int row = 0; row < candidates.size(); row++) {
+                if (focusedKey.equals(candidateIdentity(candidates.get(row)))) { selected = row; break; }
+            }
+        }
+        int viewRow = candidateTable.convertRowIndexToView(selected);
+        if (viewRow >= 0) candidateTable.setRowSelectionInterval(viewRow, viewRow);
+    }
+
+    private static String candidateIdentity(CoverageSweepCandidate candidate) {
+        return candidate.importKey().isEmpty() ? candidate.dedupeKey() : candidate.importKey();
     }
 
     private void updateAuthenticatedStatus(CoverageSweepPreview preview) {
@@ -1867,6 +1965,19 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             if (box.isSelected()) selected.add(String.valueOf(box.getClientProperty("identifier")));
         }
         return selected;
+    }
+
+    private boolean canStartSelectedCandidates() {
+        List<CoverageSweepCandidate> selected = candidateTableModel.selectedCandidates();
+        return openApiConfigurationError == null && !selected.isEmpty()
+            && selected.stream().allMatch(candidate -> candidate.unresolvedVariables().isEmpty());
+    }
+
+    private static String missingVariableMessage(List<CoverageSweepCandidate> candidates) {
+        Set<String> names = new java.util.TreeSet<>();
+        for (CoverageSweepCandidate candidate : candidates) names.addAll(candidate.unresolvedVariables());
+        return names.isEmpty() ? "" : " Set variables before running: " + String.join(", ", names)
+            + ". Requests remain available to inspect.";
     }
 
     private void updatePreviewButton() {
@@ -2075,10 +2186,14 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             selectionEditingEnabled = enabled;
         }
 
-        void setCandidates(List<CoverageSweepCandidate> candidates) {
+        void setCandidates(List<CoverageSweepCandidate> candidates, boolean preserveSelection) {
+            Map<String, Boolean> previous = new java.util.HashMap<>();
+            if (preserveSelection) {
+                for (Row row : rows) previous.put(candidateIdentity(row.candidate), row.selected);
+            }
             rows.clear();
             for (CoverageSweepCandidate candidate : candidates) {
-                rows.add(new Row(true, candidate));
+                rows.add(new Row(previous.getOrDefault(candidateIdentity(candidate), true), candidate));
             }
             fireTableDataChanged();
         }
@@ -2175,7 +2290,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 case 1 -> candidate.method();
                 case 2 -> candidate.host();
                 case 3 -> candidate.path();
-                case 4 -> candidate.originalResponse() == null ? "Imported" : candidate.statusCode();
+                case 4 -> !candidate.unresolvedVariables().isEmpty() ? "Variables unset"
+                    : candidate.originalResponse() == null ? "Imported" : candidate.statusCode();
                 case 5 -> candidate.contentType();
                 default -> "";
             };

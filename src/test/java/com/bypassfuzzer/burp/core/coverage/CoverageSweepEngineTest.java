@@ -13,6 +13,7 @@ import burp.api.montoya.proxy.ProxyHttpRequestResponse;
 import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.http.RequestSender;
 import com.bypassfuzzer.core.http.ConfiguredHeader;
+import com.bypassfuzzer.core.input.OpenApiImportOptions;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -907,6 +908,31 @@ class CoverageSweepEngineTest {
     }
 
     @Test
+    void parameterModesUseTheSameSourceIdentityAndDedupeGroups() {
+        String spec = """
+            openapi: 3.0.3
+            servers: [{url: https://api.example.test}]
+            paths:
+              /users/{id}:
+                get:
+                  parameters: [{name: id, in: path, example: 1}]
+              /users/{userId}:
+                get:
+                  parameters: [{name: userId, in: path, example: 2}]
+            """;
+        String identity = null;
+        for (var mode : OpenApiImportOptions.ParameterPolicy.values()) {
+            var preview = importedEngine().collectPreviewFromOpenApi(spec, "api.yaml", "", "",
+                CoverageSweepOptions.defaults(), true, new OpenApiImportOptions(mode, Map.of()));
+            assertEquals(2, preview.blockedHistoryCount());
+            assertEquals(1, preview.candidates().size(), mode.toString());
+            String current = preview.candidates().get(0).importKey();
+            if (identity != null) assertEquals(identity, current, mode.toString());
+            identity = current;
+        }
+    }
+
+    @Test
     void importsOpenApiOperationsAsMethodAwareCandidates() {
         String spec = """
             openapi: 3.0.0
@@ -936,6 +962,72 @@ class CoverageSweepEngineTest {
         assertTrue(preview.candidates().stream().anyMatch(candidate -> candidate.method().equals("GET")));
         assertTrue(preview.candidates().stream().anyMatch(candidate -> candidate.method().equals("DELETE")));
         assertTrue(preview.candidates().stream().allMatch(candidate -> candidate.path().equals("/admin/7")));
+    }
+
+    @Test
+    void sweepSendsTheSharedTenantValueForEveryImportedOperation() throws Exception {
+        String spec = """
+            openapi: 3.0.3
+            servers: [{url: https://example.com}]
+            paths:
+              /tenants/{tenantId}/users:
+                get:
+                  parameters:
+                    - {name: tenantId, in: path, required: true, example: example-tenant}
+                    - {name: X-Tenant-Id, in: header, example: '{{tenantId}}'}
+              /tenants/{tenantId}/reports:
+                get:
+                  parameters:
+                    - {name: tenantId, in: path, required: true, example: another-example}
+                    - {name: X-Tenant-Id, in: header, example: '{{tenantId}}'}
+            """;
+        ModeTrackingSender sender = new ModeTrackingSender(response(403, "text/plain", "blocked"));
+        CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,
+            new CoverageSweepProbeGenerator(),
+            uri -> request(uri.getRawPath(), uri.getRawQuery(), "GET", null, ""));
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            Set.of(403), true, 10, 1, 1, 1, Set.of(429, 503));
+        var values = new java.util.HashMap<>(Map.of("tenantId", "live-tenant"));
+        var importOptions = new OpenApiImportOptions(null, values);
+        values.put("tenantId", "changed-after-snapshot");
+        var preview = engine.collectPreviewFromOpenApi(spec, "api.yaml", "", "", options, false, importOptions);
+        CountDownLatch completed = new CountDownLatch(1);
+
+        assertEquals(2, preview.candidates().size());
+        assertTrue(preview.candidates().stream().allMatch(c -> c.path().contains("/live-tenant/")));
+        assertTrue(engine.start(preview.candidates(), options, result -> {}, completed::countDown));
+        assertTrue(completed.await(10, TimeUnit.SECONDS));
+        assertTrue(sender.automaticRequests.size() >= 2);
+        assertTrue(sender.automaticRequests.stream().allMatch(r -> "live-tenant".equals(r.headerValue("X-Tenant-Id"))));
+        assertTrue(sender.automaticRequests.stream().noneMatch(r -> r.toString().contains("{{tenantId}}")
+            || r.toString().contains("example-tenant") || r.toString().contains("changed-after-snapshot")));
+    }
+
+    @Test
+    void unresolvedTemplatesStayInspectableAndAreRejectedAtTheExecutionBoundary() {
+        String spec = """
+            openapi: 3.0.3
+            servers: [{url: 'https://{tenant}.example.test', variables: {tenant: {default: demo}}}]
+            paths:
+              /tenants/{tenantId}/users:
+                get:
+                  parameters:
+                    - {name: tenantId, in: path, required: true, schema: {type: string}}
+                    - {name: filter, in: query, required: true, schema: {type: string}}
+            """;
+        var sender = new ModeTrackingSender(response(403, "text/plain", "blocked"));
+        var engine = SweepEngineTestFactory.importedEngine(api(List.of()), sender);
+        var preview = engine.collectPreviewFromOpenApi(spec, "api.yaml", "", "",
+            CoverageSweepOptions.defaults(), true,
+            new OpenApiImportOptions(OpenApiImportOptions.ParameterPolicy.ALL_VARIABLES, Map.of()));
+        assertEquals(1, preview.candidates().size());
+        var candidate = preview.candidates().get(0);
+        assertEquals("/tenants/{{tenantId}}/users?filter={{filter}}", candidate.path());
+        assertEquals("{{tenant}}.example.test", candidate.request().headerValue("Host"));
+        assertEquals(Set.of("tenant", "tenantId", "filter"), candidate.unresolvedVariables());
+        assertFalse(engine.buildProbes(candidate, CoverageSweepOptions.defaults()).isEmpty());
+        assertFalse(engine.start(preview.candidates(), CoverageSweepOptions.defaults(), result -> {}, () -> {}));
+        assertTrue(sender.automaticRequests.isEmpty());
     }
 
     @Test

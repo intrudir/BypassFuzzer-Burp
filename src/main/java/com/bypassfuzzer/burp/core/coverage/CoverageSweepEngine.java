@@ -1,6 +1,7 @@
 package com.bypassfuzzer.burp.core.coverage;
 import com.bypassfuzzer.core.input.PostmanCollectionParser;
 import com.bypassfuzzer.core.input.OpenApiSpecParser;
+import com.bypassfuzzer.core.input.OpenApiImportOptions;
 import com.bypassfuzzer.core.input.OpenApiOperation;
 
 import burp.api.montoya.MontoyaApi;
@@ -220,8 +221,17 @@ public class CoverageSweepEngine {
                                                            String sourceUrl,
                                                            CoverageSweepOptions options,
                                                            boolean dedupeEndpoints) {
-        List<OpenApiOperation> operations = new OpenApiSpecParser().parse(
-            source, fileName, baseUrlOverride, sourceUrl);
+        return collectPreviewFromOpenApi(source, fileName, baseUrlOverride, sourceUrl,
+            options, dedupeEndpoints, OpenApiImportOptions.DEFAULT);
+    }
+
+    public CoverageSweepPreview collectPreviewFromOpenApi(String source, String fileName,
+                                                           String baseUrlOverride, String sourceUrl,
+                                                           CoverageSweepOptions options,
+                                                           boolean dedupeEndpoints,
+                                                           OpenApiImportOptions importOptions) {
+        List<OpenApiOperation> operations = new OpenApiSpecParser().parseTemplates(
+            source, fileName, baseUrlOverride, sourceUrl, importOptions);
         Map<String, CoverageSweepCandidate> deduped = new LinkedHashMap<>();
         List<CoverageSweepCandidate> imported = new ArrayList<>();
         for (OpenApiOperation operation : operations) {
@@ -288,7 +298,8 @@ public class CoverageSweepEngine {
                          CoverageSweepOptions options,
                          Consumer<AttackResult> resultCallback,
                          Runnable completionCallback) {
-        if (running || candidates == null || candidates.isEmpty()) {
+        if (running || candidates == null || candidates.isEmpty()
+            || candidates.stream().anyMatch(candidate -> !candidate.unresolvedVariables().isEmpty())) {
             return false;
         }
 
@@ -851,20 +862,32 @@ public class CoverageSweepEngine {
     }
 
     private CoverageSweepCandidate toImportedCandidate(OpenApiOperation operation) {
-        String displayUrl = normalizeUrl(operation.url());
-        if (displayUrl == null) return null;
         try {
-            URI uri = URI.create(displayUrl);
+            URI uri = OpenApiOperation.previewUri(operation.url());
+            if (normalizeUrl(uri.toString()) == null) return null;
+            boolean unresolved = !operation.unresolvedVariables().isEmpty();
             HttpRequest request = urlRequestFactory.create(uri).withMethod(operation.method());
+            if (unresolved) {
+                request = request.withPath(operation.requestTarget());
+                request = RequestHeaderUtils.upsertHeader(request, "Host", operation.authority());
+            }
             for (Map.Entry<String, String> header : operation.headers().entrySet()) {
                 request = RequestHeaderUtils.upsertHeader(request, header.getKey(), header.getValue());
             }
             if (!operation.body().isEmpty()) request = request.withBody(operation.body());
             String path = request.path() == null || request.path().isBlank()
-                ? RequestPathUtils.extractPathAndQuery(displayUrl) : request.path();
-            return new CoverageSweepCandidate(request, null, dedupeKey(request, displayUrl), displayUrl,
-                safe(request.method()), host(request, displayUrl), path, 0, 0,
-                safe(request.headerValue("Content-Type")), ZonedDateTime.now());
+                ? operation.requestTarget() : request.path();
+            String key = dedupeKey(request, uri.toString());
+            String importKey = "";
+            if (operation.source() != null) {
+                String prefix = operation.method() + "\u0000" + operation.source().server() + "\u0000";
+                importKey = prefix + operation.source().path();
+                key = prefix + normalizedPathShape(operation.source().path().replaceAll("\\{[^}/]+}", "1"));
+            }
+            return new CoverageSweepCandidate(request, null, key, operation.url(),
+                safe(request.method()), unresolved ? operation.authority() : host(request, operation.url()),
+                path, 0, 0, safe(request.headerValue("Content-Type")), ZonedDateTime.now(),
+                importKey, operation.unresolvedVariables());
         } catch (Exception e) {
             return null;
         }

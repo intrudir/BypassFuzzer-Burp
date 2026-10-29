@@ -76,7 +76,33 @@ https://victim.com/admin/info
 Blank lines, comment lines beginning with `#`, and invalid URLs are ignored. Imported targets are deduplicated and shown in the preview table before Sweep sends any requests. `View` opens the selected request and response side by side in a resizable window. The response side remains empty for imported URLs until the Control request runs because a URL list contains no stored response.
 Imported targets are unavailable in authenticated-traffic mode because they have no stored authenticated request or response.
 
-Import mode also accepts OpenAPI 3 and Swagger 2 specifications in JSON or YAML. Each documented operation becomes a candidate using its HTTP method and server/path combination. Documented path, query, header, cookie, form, and body parameters are retained, including reusable local parameter references and operation-level overrides. Examples/defaults are preferred; missing values receive type-appropriate samples so the parameter remains in the candidate request. Query arrays and objects follow their declared OpenAPI style/explode settings. Request bodies are generated from media-type examples or schemas.
+Import mode also accepts OpenAPI 3 and Swagger 2 specifications in JSON or YAML. Each documented operation becomes a candidate using its HTTP method and server/path combination. Documented path, query, header, cookie, form, and body parameters are retained, including reusable local parameter references and operation-level overrides. Examples/defaults are retained when the selected parameter mode uses source values; missing required values appear as placeholders. Use Manage Variables to fill shared values or explicitly apply generated samples. Query arrays and objects follow their declared OpenAPI style/explode settings. Request bodies are generated from media-type examples or schemas.
+
+### OpenAPI parameters and shared variables
+
+The `OpenAPI parameters` dropdown controls how parameter declarations become requests:
+
+- `Only parameters with source values` omits query/header/cookie/form parameters without examples or defaults.
+- `Include missing required parameters as empty` adds required inputs with empty values.
+- `Include missing required parameters as {{variables}}` is the default and requires managed values for missing required inputs.
+- `Include all declared parameters as empty` includes optional inputs too, retaining examples and defaults.
+- `Use {{variables}} for all declared parameters` requires managed values even when the spec supplies examples/defaults.
+
+Missing path values remain variables until configured; path segments are never silently removed. Request-body generation continues to use media examples or schemas.
+
+Open `Manage Variables...` to see the imported spec's path, query, header, cookie, server, and Swagger form variables, plus placeholders used in request bodies. New entries are blank; previously entered values are retained. Enter one `name=value` per line:
+
+```text
+tenantId=your-tenant-id
+```
+
+Names are case-sensitive. A managed value overrides every matching declared parameter, including path, query, header, cookie, and Swagger form inputs, even when the spec provides an example/default. Server variables use managed values before their declared defaults. Existing `{name}` or `{{name}}` placeholders in parameter values and request-body examples also resolve from this map. URL components are encoded after substitution; JSON body values are serialized after substitution.
+
+Fill in the tenant ID first, then click `Fill empty with examples` to populate the remaining blank values. The button uses spec examples/defaults first and generates type-appropriate samples when none are provided. It preserves values already entered, including edits made in the open dialog. Conflicting examples for a shared variable stay blank. Changes apply when you click OK; Cancel leaves the Sweep configuration unchanged.
+
+For a shared tenant ID, keep the default parameter mode and fill the listed `tenantId` entry. All imported operations declaring that name use the configured value. Use the all-variable mode to require managed values for every declared input, including inputs with spec examples/defaults.
+
+Saving variables or changing the dropdown rebuilds candidates from the retained spec without downloading it again. Changing the dropdown updates the imported rows in place, preserving checked rows and the highlighted request. Unset, empty, or cyclic variables remain visible as `{{name}}` placeholders, with `Variables unset` in the row's Status column and the missing names listed below the table. `View` and `Preview Probes` remain available to inspect these templates. Sweep cannot start while a selected request has unresolved variables; configure the values or uncheck those rows. Saving values updates the same rows to show the resolved requests. Variables and parameter settings cannot change during a Sweep, so controls, probes, and retries use the same resolved values. Values are held in memory for the current Sweep session; they are not shell environment variables and are not saved across extension reloads. These controls apply to OpenAPI/Swagger imports, not Postman, URL lists, or Proxy history.
 
 For URL imports, relative document links and redirects preserve unusual raw paths such as repeated slashes and backslashes. Relative servers—and OpenAPI's implicit `/` when no server is declared—resolve against the final document URL. An optional `OpenAPI base URL` overrides the resolved specification server.
 

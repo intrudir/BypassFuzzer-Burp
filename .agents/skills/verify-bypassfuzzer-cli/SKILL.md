@@ -36,7 +36,9 @@ Drive one real CLI mode against the helper's isolated loopback lab:
 ./.agents/skills/verify-bypassfuzzer-cli/helpers/verify.sh drive "$RUN_ID" bypass
 ```
 
-Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, and `runtime-results`. The last drives retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
+Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, `runtime-results`, and `playbooks`. The runtime-results drive covers retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
+
+The playbooks drive verifies every new shared check through a real stripping proxy and checks calibration, protocol/gating rules, YAML/flags and evidence.
 
 The Bypass drive additionally requires a blocked baseline, an emitted trusted-proxy IP header mutation, a `200` lab response marker, and a `LIKELY_BYPASS` result. IDOR requires its two control baselines first. URL Validation requires marker substitution. Sweep requires a high-signal run scoped by its URL-list input.
 

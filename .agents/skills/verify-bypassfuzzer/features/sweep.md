@@ -59,3 +59,5 @@ Preconditions:
 - User-Agent variation can change cache, content-negotiation, or bot-defense behavior. Compare against an unrandomized control and do not treat fewer `429` responses as an authorization bypass by itself.
 - Pause does not cancel already-sent requests. A pause of at least 30 seconds cold-starts the host's adaptive rate when resumed.
 - Endpoint dedupe defaults on in every mode and intentionally ignores the complete query string. Clear it when distinct query variants must each be tested.
+
+The [shared playbook/calibration recipe](playbooks.md) covers both inventories. High signal includes a Verb group; post/put requires Include state-changing methods, now exposed in every Sweep source mode. Selections remain independent per inventory. Authenticated calibration and mutations use the same stripped credential context. Fallback controls cannot replace Original or Auth verification evidence. Column order stays Payload, Host, Family, Signal, Status, Length, Content-Type.

@@ -41,3 +41,4 @@ Each feature file describes the visible behavior, all major user entry points, e
 - [Targeted authorization bypass](./bypass.md) covers context-menu routing, attack selection/options, execution, filtering, result inspection, and retry.
 - [IDOR / BOLA analysis](./idor.md) covers identifier setup, baselines, playbooks, run options, diagnostics, results, and retry.
 - [URL Validation](./url-validation.md) covers marker-driven request editing, payload contexts/settings, preview, execution, and results.
+- [Shared playbooks and calibration](./playbooks.md) covers exact shared selection, new probes, gating and fallback evidence.

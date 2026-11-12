@@ -109,3 +109,11 @@ import format, retry combination or external target behavior. Fixture response
 signals and direct self-test callbacks are verification evidence, not findings
 against a real application. Cleanup removes only the disposable instance and
 its private licensed settings; proof artifacts remain.
+
+## Shared playbooks and calibration verification (2026-11-12)
+
+The shared selector groups checks by family and pins its count and selection actions while the inventory scrolls. Bypass and both Sweep inventories use core IDs; Sweep selections remain independent. Native proof covers six added mechanisms, exact selections and previews, High signal method gating, retained fallback annotations with unchanged signals and baselines, and the selectable control exchange. Sweep retains its Payload, Host, Family, Signal column order.
+
+The full regression command is `./gradlew :test :core:test :cli:test :smokeTest --no-daemon --offline`. Packaged CLI proof includes the actual two-hop stripping proxy, protocol rules, YAML/flag precedence, preflight rejection, HEAD wire-length handling and additive evidence readback. The operating skill separates wildcard controls from baselines. Runtime/OpenAPI wire-shape verification explicitly disables calibration because dedicated playbook verification covers control traffic.
+
+Credential-free proof, final artifact hashes, native readiness and cleanup records are retained in `artifacts/verification/playbooks-20261112/`. The VM restart interrupted temporary native proof; the final pass writes directly to that durable location and uses a disposable project/profile/display. Existing user Burp state stays outside the run.

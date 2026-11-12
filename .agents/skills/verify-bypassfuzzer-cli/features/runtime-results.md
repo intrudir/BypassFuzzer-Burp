@@ -23,3 +23,5 @@ Run `verify.sh doctor <run-id>` then `verify.sh drive <run-id> runtime-results`.
 - Each CLI scan is isolated. Dashboard-style limits apply within that process; Burp's extension-wide registry and UI actions are host-specific.
 - Filtering changes exported visibility, not retained source evidence. Review raw responses before declaring a finding.
 - Protocol framing and the broader shared runtime combinations remain covered by the existing CLI/transport regression tests; one loopback drive does not prove arbitrary target behavior.
+
+Playbook/calibration metadata remains additive to schema-v1 JSONL. Readback retains it; the repository-owned operating helper separates WILDCARD controls from baselines and prints warnings and safe control references without altering the original signal. See [playbooks.md](playbooks.md).

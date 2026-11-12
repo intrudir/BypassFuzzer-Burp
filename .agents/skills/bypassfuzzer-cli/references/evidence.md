@@ -72,3 +72,5 @@ denied target is not a bypass.
 Keep raw evidence private. Without `--redact`, stored requests and configuration
 can contain credentials. With it, common credential headers are masked in stored
 files but still sent over the wire.
+
+Optional schema-v1 fields `playbookId`, `controlRole` and `calibration` describe shared checks and fallback comparisons. `WILDCARD` controls are listed separately by the helper; they never become Original/authorized/target baselines. Possible fallback and Calibration unavailable remain annotations on unchanged candidate signals. Read [playbooks.md](playbooks.md) before interpreting those annotations.

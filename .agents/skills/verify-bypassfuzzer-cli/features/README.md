@@ -11,6 +11,8 @@ The CLI is a packaged Java command with four modes. Every mode writes streaming 
 
 - [Runtime controls and retained results](./runtime-results.md) covers YAML/flag precedence, run control, traffic caps, evidence redaction, retained-result filters and exports.
 
+- [Shared playbooks and calibration](./playbooks.md) covers catalog selection, protocol requirements, new wire checks and separate fallback controls.
+
 ## Proof conventions
 
 - Use the packaged fat JAR, not an internal main-class shortcut.

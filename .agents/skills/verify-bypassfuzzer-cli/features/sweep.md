@@ -24,3 +24,5 @@ For the OpenAPI path, also run `verify.sh drive <run-id> runtime-results`; it pr
 - Exactly one input source is required.
 - High Signal uses the master's control accounting plus enabled Host probes. `all` is uncapped and rejects `--max-probes`. Retry packages replay exact saved mutations.
 - Imported API operations that can change state require `--include-state-changing` and explicit target authorization.
+
+The [shared playbook/calibration recipe](playbooks.md) covers both inventories. High signal includes a Verb group; post/put requires Include state-changing methods, now exposed in every Sweep source mode. Selections remain independent per inventory. Authenticated calibration and mutations use the same stripped credential context. Fallback controls cannot replace Original or Auth verification evidence. Column order stays Payload, Host, Family, Signal, Status, Length, Content-Type.

@@ -108,3 +108,5 @@ verify.sh cleanup <run-id>
 ```
 
 Run it from the repository root. Run IDs may contain letters, numbers, dots, underscores, and hyphens. The helper prints the absolute evidence directory on success.
+
+For shared catalog, exact selection and fallback changes, also follow [features/playbooks.md](features/playbooks.md). The packaged-CLI two-hop fixture is the repeatable wire proof; a disposable real Burp pass proves native selection, warning/viewer and Collaborator paths.

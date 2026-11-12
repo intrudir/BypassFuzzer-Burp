@@ -28,6 +28,7 @@ Debug Params
 Content-Type
 Header
 Host Parsing
+Verb
 ```
 
 `all` uses the complete shared Bypass planner and rejects `--max-probes` or
@@ -37,7 +38,7 @@ YAML `execution.maxProbes`. Its family IDs are:
 header,path,verb,param,cookie,trailingdot,trailingslash,extension,contenttype,encoding,protocol,case
 ```
 
-Use exact high-signal display names or all-payload IDs with `--families`.
+Use exact high-signal display names or all-payload IDs with `--families`. For exact check selection and calibration, read [playbooks.md](playbooks.md). High signal Verb post/put probes also require `--include-state-changing`.
 
 ## Examples
 

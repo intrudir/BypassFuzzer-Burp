@@ -252,6 +252,24 @@ class TriageTests(unittest.TestCase):
             self.assertFalse(denied["baselineComparisons"][0]["bodyEqual"])
             self.assertTrue(denied["baselineComparisons"][1]["bodyEqual"])
 
+    def test_wildcard_controls_stay_separate_and_annotations_are_visible(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root=Path(raw); rows=self.fixture(root)
+            rows[1]["controlRole"]="WILDCARD"
+            rows[2]["playbookId"]="bypass.path.api_prefix"
+            rows[2]["calibration"]={"assessment":"MATCH","annotation":"Possible fallback","controlRequestRef":rows[1]["requestRef"],"controlResponseRef":rows[1]["responseRef"]}
+            (root/"results.jsonl").write_text("".join(json.dumps(row)+"\n" for row in rows))
+            report=bf.build_triage_report(root)
+            self.assertEqual(len(report["baselines"]),1); self.assertEqual(len(report["controls"]),1)
+            self.assertEqual(len(report["candidates"][0]["baselineComparisons"]),1)
+            self.assertEqual(report["candidates"][0]["signal"],"LIKELY_BYPASS")
+            self.assertIn("Possible fallback",bf.render_triage_text(report))
+            self.assertTrue(report["candidates"][0]["calibration"]["controlRequestPath"].endswith(rows[1]["requestRef"]))
+            rows[2]["calibration"]["controlRequestRef"]="../../escape.raw"
+            (root/"results.jsonl").write_text("".join(json.dumps(row)+"\n" for row in rows))
+            with self.assertRaisesRegex(bf.BypassFuzzerError,"escapes"):
+                bf.build_triage_report(root)
+
     def test_all_and_limit(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)

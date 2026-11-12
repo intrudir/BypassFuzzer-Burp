@@ -19,3 +19,5 @@ Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> bypass`. T
 - `--target-origin` controls the socket/TLS destination; a mutated `Host` header does not silently reroute traffic.
 - A status change is a triage signal, not a final authorization verdict. Inspect the stored request and response.
 - Use only against targets for which active fuzzing is authorized.
+
+Shared checks also have a [playbook/calibration recipe](playbooks.md). Bypass exposes Playbooks… with family shortcuts and a selected-playbook count, additional API prefixes and default-on Wildcard calibration. Candidate warnings preserve the original signal and retain a selectable Fallback control exchange.

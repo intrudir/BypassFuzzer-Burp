@@ -164,6 +164,8 @@ The existing AWS publishing role needs `s3:GetObject` access to the version mani
 
 Builds embed the public S3 version manifest URL by default so BypassFuzzer can notify users when a newer release is available. Override it for custom release channels with `-PupdateManifestUrl=...`. To preview the update banner locally without changing S3, build with `-PdevLatestVersion=1.4.5`.
 
+Shared Bypass/Sweep checks and calibration are documented in [Shared bypass playbooks](docs/bypass-playbooks.md), including exact selection, HTTP/1-only probes and fallback evidence.
+
 ## CLI usage
 
 Only run active fuzzing against systems you are authorized to test. The examples below use the locally built JAR; replace `cli/build/libs/bypassfuzzer-cli.jar` with the path to a downloaded release JAR if needed.

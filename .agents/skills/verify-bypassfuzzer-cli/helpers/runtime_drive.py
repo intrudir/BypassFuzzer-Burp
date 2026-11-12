@@ -85,7 +85,7 @@ def run():
                 {'name': 'X-Object', 'in': 'header', 'required': True, 'schema': {'type': 'string'}}
             ], 'responses': {'200': {'description': 'ok'}}}}
         }}))
-        openapi_args = ['sweep', '--openapi', str(spec), '--openapi-variable', 'id=42',
+        openapi_args = ['sweep', '--no-wildcard-calibration', '--openapi', str(spec), '--openapi-variable', 'id=42',
                         '--openapi-variable', 'tenant=owned', '--openapi-variable', 'X-Object=bound',
                         '--openapi-parameter-policy', 'required-variables', '--families', 'Header',
                         '--max-probes', '2', '--retry-attempts', '0', '--protocol', 'http1']

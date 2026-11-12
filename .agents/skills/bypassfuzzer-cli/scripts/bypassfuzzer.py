@@ -19,8 +19,8 @@ MINIMUM_VERSION = (1, 4, 4)
 SCAN_COMMANDS = ("sweep", "bypass", "idor", "url-validation")
 COMMANDS = (*SCAN_COMMANDS, "results")
 REQUIRED_OPTIONS = {
-    "sweep": ("--preview", "--sweep-mode", "--openapi-variable", "--openapi-parameter-policy", "--oob-generator", "--control-file"),
-    "bypass": ("--preview", "--oob-generator", "--control-file"),
+    "sweep": ("--preview", "--sweep-mode", "--openapi-variable", "--openapi-parameter-policy", "--oob-generator", "--control-file", "--playbooks", "--list-playbooks", "--api-prefix", "--wildcard-calibration"),
+    "bypass": ("--preview", "--oob-generator", "--control-file", "--playbooks", "--list-playbooks", "--api-prefix", "--wildcard-calibration"),
     "idor": ("--id-location", "--baseline-response", "--unique-json-field"),
     "url-validation": ("--oob-generator", "--contexts"),
     "results": ("--response-regex", "--smart-repeats", "--format"),
@@ -137,7 +137,7 @@ def validate_cli(invocation: Sequence[str]) -> dict[str, Any]:
         text = result.stdout + "\n" + result.stderr
         if result.returncode != 0 or f"bypassfuzzer {command}" not in text.lower():
             raise BypassFuzzerError(f"BypassFuzzer command is unavailable or incompatible: {command}")
-        missing_options = [option for option in REQUIRED_OPTIONS[command] if option not in text]
+        missing_options = [option for option in REQUIRED_OPTIONS[command] if option not in text.replace("--[no-]", "--")]
         if missing_options:
             raise BypassFuzzerError(f"BypassFuzzer {command} lacks options: " + ", ".join(missing_options))
 
@@ -231,6 +231,9 @@ def _record_view(record: Mapping[str, Any], request_path: Path, response_path: P
         "encoding": record.get("encoding"),
         "signal": record.get("signal"),
         "retryAttempt": record.get("retryAttempt"),
+        "playbookId": record.get("playbookId"),
+        "controlRole": record.get("controlRole"),
+        "calibration": dict(record.get("calibration") or {}),
         "status": record.get("status"),
         "length": record.get("length"),
         "durationMillis": record.get("durationMillis"),
@@ -307,13 +310,24 @@ def build_triage_report(
             f"record {sequence} responseRef",
             optional=True,
         )
-        views.append(_record_view(record, request_path, response_path))
+        calibration = record.get("calibration")
+        if calibration is not None and not isinstance(calibration, dict):
+            raise BypassFuzzerError(f"Record {sequence} calibration must be an object")
+        view = _record_view(record, request_path, response_path)
+        for key in ("controlRequestRef", "controlResponseRef"):
+            if key in view["calibration"]:
+                path = _safe_reference(root, view["calibration"][key], f"record {sequence} {key}", optional=True)
+                view["calibration"][key.replace("Ref", "Path")] = None if path is None else str(path)
+        views.append(view)
 
     views.sort(key=lambda value: value["sequence"])
     baseline_groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
     baselines: list[dict[str, Any]] = []
+    controls: list[dict[str, Any]] = []
     for record, view in zip(sorted(records, key=lambda value: value["sequence"]), views):
-        if record.get("baseline") is True:
+        if record.get("controlRole") == "WILDCARD":
+            controls.append(view)
+        elif record.get("baseline") is True:
             baselines.append(view)
             baseline_groups.setdefault((view["target"], view["protocol"]), []).append(view)
 
@@ -340,6 +354,7 @@ def build_triage_report(
         "runId": run_id,
         "summary": summary,
         "baselines": baselines,
+        "controls": controls,
         "candidateCount": total_candidates,
         "displayedCandidateCount": len(displayed),
         "truncated": len(displayed) < total_candidates,
@@ -370,6 +385,9 @@ def render_triage_text(report: Mapping[str, Any]) -> str:
         lines.append(f"    request={baseline['requestPath']}")
         lines.append(f"    response={baseline['responsePath']}")
 
+    lines.append(f"Fallback controls ({len(report.get('controls', []))}):")
+    for control in report.get("controls", []):
+        lines.append(f"  #{control['sequence']} [{control['protocol']}] status={control['status']} request={control['requestPath']} response={control['responsePath']}")
     lines.append(
         f"Candidates ({report['displayedCandidateCount']} of {report['candidateCount']}):"
     )
@@ -381,6 +399,10 @@ def render_triage_text(report: Mapping[str, Any]) -> str:
         )
         lines.append(f"    request={candidate['requestPath']}")
         lines.append(f"    response={candidate['responsePath']}")
+        calibration = candidate.get("calibration", {})
+        if calibration:
+            lines.append(f"    calibration={calibration.get('assessment')} {_short(calibration.get('annotation'))}")
+            lines.append(f"    fallback request={calibration.get('controlRequestPath')} response={calibration.get('controlResponsePath')}")
         for comparison in candidate["baselineComparisons"]:
             lines.append(
                 f"    vs #{comparison['sequence']} {_short(comparison['payload'])}: "

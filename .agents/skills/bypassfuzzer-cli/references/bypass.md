@@ -17,8 +17,8 @@ header,path,verb,param,cookie,trailingdot,trailingslash,extension,contenttype,en
 ```
 
 Use a comma-separated subset when the hypothesis is narrower. `--max-probes`
-caps mutations and the planner distributes the cap across selected families
-rather than exhausting one family first.
+caps mutations and the planner distributes the cap across selected playbooks.
+Read [playbooks.md](playbooks.md) for exact selection, additional API prefixes and calibration.
 
 ## Family intent
 

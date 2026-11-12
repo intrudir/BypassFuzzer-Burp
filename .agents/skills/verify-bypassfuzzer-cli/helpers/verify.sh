@@ -35,6 +35,11 @@ doctor() {
   for feature in sweep bypass idor url-validation; do
     java -jar "$JAR" "$feature" --help | grep -q -- '--output'
   done
+  for feature in sweep bypass; do
+    for option in --playbooks --list-playbooks --api-prefix --wildcard-calibration; do
+      java -jar "$JAR" "$feature" --help | sed 's/--\[no-\]/--/g' | grep -q -- "$option"
+    done
+  done
   java -jar "$JAR" results --help | grep -q -- '--input'
   printf 'doctor=PASS\njar=%s\nversion=%s\n' "$JAR" "$(manifest_value Implementation-Version)"
 }
@@ -54,10 +59,13 @@ case "$ACTION" in
     ;;
   drive)
     FEATURE=${3:-}
-    case "$FEATURE" in sweep|bypass|idor|url-validation|runtime-results) ;; *) echo "unknown feature: $FEATURE" >&2; exit 2 ;; esac
+    case "$FEATURE" in sweep|bypass|idor|url-validation|runtime-results|playbooks) ;; *) echo "unknown feature: $FEATURE" >&2; exit 2 ;; esac
     mkdir -p "$EVIDENCE/$FEATURE"
     doctor >"$EVIDENCE/$FEATURE/doctor-before-drive.txt"
-    if test "$FEATURE" = runtime-results; then
+    if test "$FEATURE" = playbooks; then
+      python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/playbooks_drive.py" \
+        "$JAR" "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
+    elif test "$FEATURE" = runtime-results; then
       python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/runtime_drive.py" \
         "$JAR" "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
     else

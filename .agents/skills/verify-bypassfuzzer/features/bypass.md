@@ -55,3 +55,5 @@ Preconditions:
 - Collaborator is a production boundary and requires Burp Professional. Do not mock it as proof of an out-of-band interaction.
 - A successful status alone is insufficient. Inspect the mutated request and response marker/body against the blocked baseline.
 - Closing the nested tab prompts for confirmation and disposes the session; use a disposable run before testing close.
+
+Shared checks also have a [playbook/calibration recipe](playbooks.md). Bypass exposes Playbooks… with family shortcuts and a selected-playbook count, additional API prefixes and default-on Wildcard calibration. Candidate warnings preserve the original signal and retain a selectable Fallback control exchange.

@@ -10,21 +10,29 @@ import java.util.function.Supplier;
 public final class SweepPlanner {
     public List<PlannedRequest> highSignal(HttpRequestData request, Set<String> families,
         int maximum, List<Integer> ports, boolean includeControl) {
+        return highSignal(request, families, maximum, ports, includeControl, PlaybookOptions.defaults());
+    }
+    public List<PlannedRequest> highSignal(HttpRequestData request, Set<String> families,
+        int maximum, List<Integer> ports, boolean includeControl, PlaybookOptions options) {
         boolean hostEnabled = ports != null && !ports.isEmpty();
         int hostCount = hostEnabled && families.contains("Host Parsing") ? 2 +
             (int) ports.stream().filter(p -> p != null && p >= 1 && p <= 65535).count() * 3 : 0;
         var output = new ArrayList<PlannedRequest>();
         if (includeControl) output.add(PlannedRequest.baseline(request, "Control: original blocked request"));
         output.addAll(new HighSignalPlanner().plan(request, families,
-            Math.max(0, Math.max(1, maximum) + hostCount - output.size()), hostEnabled, ports));
+            Math.max(0, Math.max(1, maximum) + hostCount - output.size()), hostEnabled, ports, options));
         return List.copyOf(output);
     }
 
     public List<PlannedRequest> all(HttpRequestData request, Set<AttackFamily> families,
         Supplier<String> outOfBand, boolean includeControl) {
+        return all(request, families, outOfBand, includeControl, PlaybookOptions.defaults());
+    }
+    public List<PlannedRequest> all(HttpRequestData request, Set<AttackFamily> families,
+        Supplier<String> outOfBand, boolean includeControl, PlaybookOptions options) {
         var output = new ArrayList<PlannedRequest>();
         if (includeControl) output.add(PlannedRequest.baseline(request, "Control: original blocked request"));
-        output.addAll(new BypassPlanner(outOfBand).plan(request, families, false, Integer.MAX_VALUE));
+        output.addAll(new BypassPlanner(outOfBand).plan(request, families, false, Integer.MAX_VALUE, options));
         return List.copyOf(output);
     }
 }

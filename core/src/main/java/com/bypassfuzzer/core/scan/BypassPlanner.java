@@ -12,8 +12,6 @@ import com.bypassfuzzer.core.payloads.UrlPayloadProcessor;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -39,12 +37,21 @@ public final class BypassPlanner {
 
     public List<PlannedRequest> plan(HttpRequestData request, Set<AttackFamily> selectedFamilies,
                                      boolean fuzzExistingCookies, int maximum) {
-        Set<AttackFamily> selected = selectedFamilies == null || selectedFamilies.isEmpty()
-            ? new LinkedHashSet<>(Arrays.asList(AttackFamily.values())) : new LinkedHashSet<>(selectedFamilies);
-        Map<AttackFamily, List<PlannedRequest>> byFamily = new EnumMap<>(AttackFamily.class);
-        for (AttackFamily family : AttackFamily.values()) {
-            if (!selected.contains(family)) continue;
-            byFamily.put(family, switch (family) {
+        return plan(request, selectedFamilies, fuzzExistingCookies, maximum, PlaybookOptions.defaults());
+    }
+
+    public List<PlannedRequest> plan(HttpRequestData request, Set<AttackFamily> selectedFamilies,
+                                    boolean fuzzExistingCookies, int maximum, PlaybookOptions options) {
+        Set<String> families = selectedFamilies == null || selectedFamilies.isEmpty() ? null
+            : selectedFamilies.stream().map(AttackFamily::id).collect(java.util.stream.Collectors.toSet());
+        Set<String> selected = BypassPlaybooks.resolve(BypassPlaybooks.Inventory.BYPASS, families, options);
+        List<List<PlannedRequest>> groups = new ArrayList<>();
+        for (var descriptor : BypassPlaybooks.available(BypassPlaybooks.Inventory.BYPASS)) {
+            if (!selected.contains(descriptor.id())) continue;
+            if (descriptor.added()) groups.add(BypassPlaybooks.added(descriptor, request, options, BypassPlaybooks.Inventory.BYPASS));
+            else {
+                AttackFamily family = descriptor.family();
+                List<PlannedRequest> values = switch (family) {
                 case HEADER -> headers(request);
                 case PATH -> paths(request);
                 case VERB -> verbs(request);
@@ -57,9 +64,11 @@ public final class BypassPlanner {
                 case ENCODING -> encodings(request);
                 case PROTOCOL -> protocols(request);
                 case CASE -> cases(request);
-            });
+                };
+                groups.add(values.stream().map(p -> p.withPlaybook(descriptor.id())).toList());
+            }
         }
-        return roundRobin(byFamily, Math.max(1, maximum));
+        return BypassPlaybooks.fair(groups, Math.max(1, maximum));
     }
 
     private List<PlannedRequest> headers(HttpRequestData request) {
@@ -120,10 +129,6 @@ public final class BypassPlanner {
                 && bodyParams != null && !bodyParams.isEmpty()
                 ? RequestParameterSupport.moveBodyToQuery(request, method, bodyParams) : request.withMethod(method);
             output.add(planned(AttackFamily.VERB, "Method: " + method, mutation));
-        }
-        String original = request.method();
-        for (String method : List.of(original.toLowerCase(Locale.ROOT), title(original), alternating(original), "X" + original, original + "X")) {
-            output.add(planned(AttackFamily.VERB, "Method: " + method, request.withMethod(method)));
         }
         for (String header : OVERRIDE_HEADERS) for (String method : METHODS) {
             output.add(planned(AttackFamily.VERB, header + ": " + method, request.upsertHeader(header, method)));
@@ -266,28 +271,6 @@ public final class BypassPlanner {
 
     private PlannedRequest planned(AttackFamily family, String payload, HttpRequestData request) {
         return new PlannedRequest(family.displayName(), payload, "", request, false);
-    }
-
-    private List<PlannedRequest> roundRobin(Map<AttackFamily, List<PlannedRequest>> families, int maximum) {
-        List<PlannedRequest> output = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        int index = 0;
-        boolean added;
-        do {
-            added = false;
-            for (AttackFamily family : AttackFamily.values()) {
-                List<PlannedRequest> values = families.getOrDefault(family, List.of());
-                if (index >= values.size()) continue;
-                PlannedRequest value = values.get(index);
-                String key = family.id() + "\n" + value.request().protocol() + "\n" + value.request().method() + "\n" + value.request().rawTarget() + "\n"
-                    + value.request().headers() + "\n" + Arrays.hashCode(value.request().body());
-                if (seen.add(key)) output.add(value);
-                added = true;
-                if (output.size() >= maximum) return List.copyOf(output);
-            }
-            index++;
-        } while (added);
-        return List.copyOf(output);
     }
 
     private String rawTarget(String url) { int scheme = url.indexOf("://"); if (scheme < 0) return url; int slash = url.indexOf('/', scheme + 3); return slash < 0 ? "/" : url.substring(slash); }

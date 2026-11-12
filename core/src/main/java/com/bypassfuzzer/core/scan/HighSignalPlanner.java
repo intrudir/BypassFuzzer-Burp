@@ -12,8 +12,7 @@ import java.util.Set;
 
 /** Renders the same bundled curated Sweep inventory without a Burp dependency. */
 public final class HighSignalPlanner {
-    public static final List<String> ORDERED_FAMILIES = List.of("Matrix / Extension", "Extension / Negotiation",
-        "Path Normalization", "Encoding", "Debug Params", "Content-Type", "Header", "Host Parsing");
+    public static final List<String> ORDERED_FAMILIES = BypassPlaybooks.available(BypassPlaybooks.Inventory.HIGH_SIGNAL).stream().map(BypassPlaybooks.Descriptor::highSignalFamily).distinct().toList();
     public static final Set<String> FAMILIES = java.util.Collections.unmodifiableSet(new LinkedHashSet<>(ORDERED_FAMILIES));
     private final List<String> templates;
 
@@ -26,7 +25,26 @@ public final class HighSignalPlanner {
 
     public List<PlannedRequest> plan(HttpRequestData request, Set<String> enabledFamilies, int maximum,
                                      boolean hostPortEnabled, List<Integer> hostPorts) {
+        return plan(request, enabledFamilies, maximum, hostPortEnabled, hostPorts, PlaybookOptions.defaults());
+    }
+
+    public List<PlannedRequest> plan(HttpRequestData request, Set<String> enabledFamilies, int maximum,
+                                    boolean hostPortEnabled, List<Integer> hostPorts, PlaybookOptions options) {
         Set<String> selected = enabledFamilies == null ? FAMILIES : enabledFamilies;
+        Set<String> ids = BypassPlaybooks.resolve(BypassPlaybooks.Inventory.HIGH_SIGNAL, selected, options);
+        List<List<PlannedRequest>> groups = new ArrayList<>();
+        List<PlannedRequest> legacy = legacy(request, selected, Integer.MAX_VALUE, hostPortEnabled, hostPorts);
+        for (var descriptor : BypassPlaybooks.available(BypassPlaybooks.Inventory.HIGH_SIGNAL)) {
+            if (!ids.contains(descriptor.id())) continue;
+            if (descriptor.added()) groups.add(BypassPlaybooks.added(descriptor, request, options, BypassPlaybooks.Inventory.HIGH_SIGNAL));
+            else groups.add(legacy.stream().filter(p -> p.family().equals(descriptor.highSignalFamily()))
+                .map(p -> p.withPlaybook(descriptor.id())).toList());
+        }
+        return BypassPlaybooks.fair(groups, Math.max(0, maximum));
+    }
+
+    private List<PlannedRequest> legacy(HttpRequestData request, Set<String> selected, int maximum,
+                                       boolean hostPortEnabled, List<Integer> hostPorts) {
         List<PlannedRequest> output = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         if (hostPortEnabled && selected.contains("Host Parsing"))

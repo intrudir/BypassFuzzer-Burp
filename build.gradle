@@ -158,6 +158,18 @@ tasks.register('runSweepHarness', JavaExec) {
     }
 }
 
+tasks.register('previewWorkbench', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    group = 'verification'
+    description = 'Captures all five production Swing tabs with offline Montoya editor fixtures.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.bypassfuzzer.burp.ui.WorkbenchPreview'
+    systemProperty 'java.awt.headless', 'false'
+    systemProperty 'awt.useSystemAAFontSettings', 'on'
+    systemProperty 'swing.aatext', 'true'
+    args project.findProperty('previewOutput') ?: 'artifacts/verification/workbench'
+}
+
 tasks.register('auditOpenApiImport', JavaExec) {
     dependsOn tasks.named('testClasses')
     group = 'verification'

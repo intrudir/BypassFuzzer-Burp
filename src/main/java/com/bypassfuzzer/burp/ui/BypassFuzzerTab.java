@@ -58,12 +58,50 @@ public class BypassFuzzerTab extends JPanel {
         for (TargetedMode mode : TargetedMode.values()) {
             JTabbedPane sessionTabs = new JTabbedPane();
             modeSessionTabs.put(mode, sessionTabs);
-            tabbedPane.addTab(mode.title(), sessionTabs);
+            tabbedPane.addTab(mode.title(), createModeWorkspace(mode, sessionTabs));
         }
 
         updateBannerHost.setVisible(false);
-        add(updateBannerHost, BorderLayout.NORTH);
+        JPanel masthead = new JPanel(new BorderLayout());
+        masthead.setBorder(BorderFactory.createEmptyBorder(12, 20, 10, 20));
+        JLabel brand = WorkbenchTheme.title("BypassFuzzer");
+        brand.setFont(WorkbenchTheme.BODY.deriveFont(Font.BOLD, 19f));
+        masthead.add(brand, BorderLayout.WEST);
+        masthead.add(WorkbenchTheme.muted("Authorization testing"), BorderLayout.EAST);
+        JPanel header = new JPanel(new BorderLayout());
+        header.add(masthead, BorderLayout.NORTH);
+        header.add(updateBannerHost, BorderLayout.SOUTH);
+        add(header, BorderLayout.NORTH);
         add(tabbedPane, BorderLayout.CENTER);
+        WorkbenchTheme.apply(this);
+    }
+
+    private JPanel createModeWorkspace(TargetedMode mode, JTabbedPane sessionTabs) {
+        CardLayout layout = new CardLayout();
+        JPanel workspace = new JPanel(layout);
+        JPanel emptyState = new JPanel(new GridBagLayout());
+        emptyState.setName("emptyState" + mode.name());
+        JPanel message = new JPanel();
+        message.setLayout(new BoxLayout(message, BoxLayout.Y_AXIS));
+        message.setBorder(BorderFactory.createEmptyBorder(28, 24, 28, 24));
+        JLabel heading = WorkbenchTheme.title("Send a request to " + mode.title());
+        heading.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel instruction = WorkbenchTheme.muted("Right-click any request and choose");
+        instruction.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel menuPath = new JLabel("Send to BypassFuzzer → " + mode.title());
+        menuPath.setName("emptyMenuPath" + mode.name());
+        menuPath.setAlignmentX(Component.CENTER_ALIGNMENT);
+        message.add(heading);
+        message.add(Box.createVerticalStrut(14));
+        message.add(instruction);
+        message.add(Box.createVerticalStrut(6));
+        message.add(menuPath);
+        emptyState.add(message);
+        workspace.add(emptyState, "empty");
+        workspace.add(sessionTabs, "sessions");
+        sessionTabs.addChangeListener(event ->
+            layout.show(workspace, sessionTabs.getTabCount() == 0 ? "empty" : "sessions"));
+        return workspace;
     }
 
     public void showUpdateBanner(VersionCheckResult result) {
@@ -153,9 +191,9 @@ public class BypassFuzzerTab extends JPanel {
         );
 
         sessionTabs.setSelectedIndex(tabIndex);
-        tabbedPane.setSelectedComponent(sessionTabs);
+        tabbedPane.setSelectedComponent(sessionTabs.getParent());
         activityRegistry.register(sessionTab, () -> {
-            tabbedPane.setSelectedComponent(sessionTabs);
+            tabbedPane.setSelectedComponent(sessionTabs.getParent());
             sessionTabs.setSelectedComponent(sessionTab);
         });
         dashboardPanel.refresh();
@@ -239,6 +277,7 @@ public class BypassFuzzerTab extends JPanel {
         tabPanel.add(tabLabel);
 
         JButton closeButton = new JButton("×");
+        closeButton.putClientProperty("bypassfuzzer.close", true);
         closeButton.setPreferredSize(new Dimension(17, 17));
         closeButton.setMargin(new Insets(0, 0, 0, 0));
         closeButton.setFont(new Font("Arial", Font.BOLD, 12));

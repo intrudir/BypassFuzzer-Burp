@@ -61,23 +61,20 @@ class SessionResultsPanelTest {
 
         JTable table = resultsTable(panel);
 
-        assertEquals("Signal", table.getColumnName(3));
-        assertEquals("403 -> 200", table.getValueAt(0, 3));
+        assertEquals("Signal", table.getColumnName(4));
+        assertEquals("403 -> 200", table.getValueAt(0, 4));
         assertEquals("No response", table.getValueAt(0, 5));
         JTabbedPane viewerTabs = findTabbedPane(panel);
-        assertEquals(4, viewerTabs.getTabCount());
-        assertEquals("Request", viewerTabs.getTitleAt(0));
-        assertEquals("Response", viewerTabs.getTitleAt(1));
-        assertEquals("Original Request", viewerTabs.getTitleAt(2));
-        assertEquals("Original Response", viewerTabs.getTitleAt(3));
+        assertEquals(2, viewerTabs.getTabCount());
+        assertEquals("Probe", viewerTabs.getTitleAt(0));
+        assertEquals("Original", viewerTabs.getTitleAt(1));
 
         panel.setAuthVerificationTabsVisible(true);
-        assertEquals(6, viewerTabs.getTabCount());
-        assertEquals("Auth Verification Request", viewerTabs.getTitleAt(4));
-        assertEquals("Auth Verification Response", viewerTabs.getTitleAt(5));
+        assertEquals(3, viewerTabs.getTabCount());
+        assertEquals("Auth verification", viewerTabs.getTitleAt(2));
 
         panel.setAuthVerificationTabsVisible(false);
-        assertEquals(4, viewerTabs.getTabCount());
+        assertEquals(2, viewerTabs.getTabCount());
     }
 
     @Test

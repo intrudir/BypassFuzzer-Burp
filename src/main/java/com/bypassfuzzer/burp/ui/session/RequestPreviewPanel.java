@@ -5,6 +5,8 @@ import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.ui.editor.EditorOptions;
 import burp.api.montoya.ui.editor.HttpRequestEditor;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JDialog;
@@ -66,7 +68,7 @@ public final class RequestPreviewPanel extends JPanel {
         list.setBorder(BorderFactory.createTitledBorder("Planned requests"));
         JPanel message = new JPanel(new BorderLayout());
         message.setBorder(BorderFactory.createTitledBorder("Selected request"));
-        message.add(editor.uiComponent(), BorderLayout.CENTER);
+        message.add(WorkbenchTheme.nativeEditor(editor.uiComponent()), BorderLayout.CENTER);
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, list, message);
         split.setResizeWeight(0.42);
         split.setDividerLocation(290);
@@ -97,9 +99,11 @@ public final class RequestPreviewPanel extends JPanel {
         buttons.add(close);
         content.add(buttons, BorderLayout.SOUTH);
         dialog.setContentPane(content);
+        WorkbenchTheme.apply(dialog.getContentPane());
         dialog.pack();
         dialog.setMinimumSize(new Dimension(850, 560));
         dialog.setLocationRelativeTo(owner);
+        WorkbenchTheme.apply(dialog.getContentPane());
         dialog.setVisible(true);
         return dialog;
     }

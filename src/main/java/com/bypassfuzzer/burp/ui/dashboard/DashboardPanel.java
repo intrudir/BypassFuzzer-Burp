@@ -3,6 +3,8 @@ package com.bypassfuzzer.burp.ui.dashboard;
 import burp.api.montoya.MontoyaApi;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.AbstractCellEditor;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -48,6 +50,7 @@ public final class DashboardPanel extends JPanel {
         this.registry = registry;
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         initializeUi();
+        WorkbenchTheme.apply(this);
         applyLimits();
         refresh();
         refreshTimer = new Timer(500, event -> refresh());
@@ -102,6 +105,7 @@ public final class DashboardPanel extends JPanel {
         globalActions.add(resumeAll);
         globalActions.add(stopAll);
         globalActions.add(activitySummary);
+        header.add(WorkbenchTheme.heading("Dashboard", "Manage every scan and retry pass from one place."));
         header.add(globalActions);
 
         JPanel limits = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
@@ -203,6 +207,7 @@ public final class DashboardPanel extends JPanel {
         private ActionEditor(int actionColumn) {
             this.actionColumn = actionColumn;
             button.setHorizontalAlignment(SwingConstants.CENTER);
+            WorkbenchTheme.apply(button);
             button.addActionListener(event -> {
                 int selectedRow = modelRow;
                 fireEditingStopped();
@@ -228,6 +233,7 @@ public final class DashboardPanel extends JPanel {
     private final class ActionRenderer extends JButton implements TableCellRenderer {
         private ActionRenderer() {
             setHorizontalAlignment(SwingConstants.CENTER);
+            WorkbenchTheme.apply(this);
         }
 
         @Override

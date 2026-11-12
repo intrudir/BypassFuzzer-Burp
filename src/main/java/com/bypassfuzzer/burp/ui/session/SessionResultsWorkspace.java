@@ -22,6 +22,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.WindowConstants;
 import javax.swing.SwingWorker;
 import javax.swing.SwingUtilities;
@@ -54,7 +56,7 @@ import java.util.function.Consumer;
 public class SessionResultsWorkspace {
 
     private static final int SIDEBAR_WIDTH = 500;
-    private static final int COLLAPSED_SIDEBAR_WIDTH = 58;
+    private static final int COLLAPSED_SIDEBAR_WIDTH = 0;
 
     private final ResultFilterController filterController = new ResultFilterController();
     private final FilterPanel filterPanel;
@@ -67,6 +69,7 @@ public class SessionResultsWorkspace {
     private final JButton retryQueueButton;
     private final JLabel retryStatusLabel;
     private JPanel retryRow;
+    private JPanel toolbarActions;
     private final Map<String, DeferredRetry> throttledRetries = new LinkedHashMap<>();
     private ThrottleSettings retryThrottleSettings = new ThrottleSettings(
         Set.of(429, 503), 1, 1, 400.0, ThrottleSettings.Posture.CONSERVATIVE);
@@ -79,7 +82,8 @@ public class SessionResultsWorkspace {
     private volatile HostThrottleCoordinator retryCoordinator;
     private volatile boolean retryPaused;
     private volatile boolean retryStopRequested;
-    private boolean filtersCollapsed;
+    private boolean filtersCollapsed = true;
+    private JLabel resultSummary;
     private Runnable throttleRetryQueueChangedListener = () -> { };
     private JDialog retryQueueDialog;
     private RetryQueueTableModel retryQueueTableModel;
@@ -166,6 +170,10 @@ public class SessionResultsWorkspace {
 
     JLabel retryStatusLabel() {
         return retryStatusLabel;
+    }
+
+    public void addToolbarActions(java.awt.Component... actions) {
+        for (java.awt.Component action : actions) toolbarActions.add(action);
     }
 
     public void applyFilters() {
@@ -504,63 +512,55 @@ public class SessionResultsWorkspace {
 
     private JSplitPane buildSplitPane(boolean borderlessSidebar) {
         JScrollPane filterScrollPane = new JScrollPane(filterPanel);
-        filterScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         filterScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         filterScrollPane.setMinimumSize(new Dimension(0, 100));
-        if (borderlessSidebar) {
-            filterScrollPane.setBorder(null);
-        }
-
-        JPanel expandedFilterSidebar = new JPanel(new BorderLayout());
-        JButton hideFiltersButton = new JButton("Hide Filters");
-        hideFiltersButton.setToolTipText("Hide the filter drawer and give the results table more space.");
-        expandedFilterSidebar.add(hideFiltersButton, BorderLayout.NORTH);
-        expandedFilterSidebar.add(filterScrollPane, BorderLayout.CENTER);
-
-        JPanel collapsedFilterSidebar = new JPanel(new BorderLayout());
-        JButton showFiltersButton = new JButton("<html><center>Show<br>Filters</center></html>");
-        showFiltersButton.setToolTipText("Show the filter drawer.");
-        collapsedFilterSidebar.add(showFiltersButton, BorderLayout.CENTER);
-
         JPanel filterSidebar = new JPanel(new BorderLayout());
-        filterSidebar.add(expandedFilterSidebar, BorderLayout.CENTER);
-        hideFiltersButton.addActionListener(event -> {
-            filtersCollapsed = true;
-            filterSidebar.removeAll();
-            filterSidebar.add(collapsedFilterSidebar, BorderLayout.CENTER);
-            filterSidebar.setPreferredSize(new Dimension(COLLAPSED_SIDEBAR_WIDTH, 0));
-            filterSidebar.revalidate();
-            filterSidebar.repaint();
-            splitPane.setDividerLocation(COLLAPSED_SIDEBAR_WIDTH);
-        });
-        showFiltersButton.addActionListener(event -> {
-            filtersCollapsed = false;
-            filterSidebar.removeAll();
-            filterSidebar.add(expandedFilterSidebar, BorderLayout.CENTER);
-            filterSidebar.setPreferredSize(new Dimension(SIDEBAR_WIDTH, 0));
-            filterSidebar.revalidate();
-            filterSidebar.repaint();
-            splitPane.setDividerLocation(SIDEBAR_WIDTH);
-        });
+        filterSidebar.add(filterScrollPane, BorderLayout.CENTER);
+        filterSidebar.setVisible(false);
+        filterSidebar.setMinimumSize(new Dimension(0, 0));
 
-        JPanel resultsContainer = new JPanel(new BorderLayout());
+        JButton filtersButton = new JButton("Filters");
+        filtersButton.setToolTipText("Show or hide manual result filters.");
+        filtersButton.addActionListener(event -> {
+            filtersCollapsed = !filtersCollapsed;
+            filterSidebar.setVisible(!filtersCollapsed);
+            filtersButton.setText(filtersCollapsed ? "Filters" : "Hide filters");
+            splitPane.setDividerSize(filtersCollapsed ? 0 : 6);
+            splitPane.setDividerLocation(filtersCollapsed ? COLLAPSED_SIDEBAR_WIDTH : SIDEBAR_WIDTH);
+        });
+        JPanel toolbar = new JPanel(new BorderLayout(12, 0));
+        toolbar.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
+        JPanel tools = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        JLabel title = WorkbenchTheme.title("Results");
+        title.setFont(WorkbenchTheme.BODY.deriveFont(java.awt.Font.BOLD, 19f));
+        resultSummary = WorkbenchTheme.muted("0 results");
+        tools.add(title);
+        tools.add(resultSummary);
+        toolbar.add(tools, BorderLayout.NORTH);
+        toolbarActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
+        toolbarActions.add(filterPanel.smartFilterControl());
+        toolbarActions.add(filtersButton);
+        toolbar.add(toolbarActions, BorderLayout.SOUTH);
         retryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
         retryRow.add(retryQueueButton);
         retryRow.add(retryStatusLabel);
-        resultsContainer.add(retryRow, BorderLayout.NORTH);
+        JPanel header = new JPanel(new BorderLayout());
+        header.add(toolbar, BorderLayout.NORTH);
+        header.add(retryRow, BorderLayout.SOUTH);
+        JPanel resultsContainer = new JPanel(new BorderLayout());
+        resultsContainer.add(header, BorderLayout.NORTH);
         resultsContainer.add(resultsPanel, BorderLayout.CENTER);
-
-        JSplitPane horizontalSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, filterSidebar, resultsContainer);
-        horizontalSplit.setDividerSize(6);
-        horizontalSplit.setResizeWeight(0.0);
-        if (borderlessSidebar) {
-            horizontalSplit.setBorder(null);
-        }
-        SwingUtilities.invokeLater(() -> horizontalSplit.setDividerLocation(SIDEBAR_WIDTH));
-        return horizontalSplit;
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, filterSidebar, resultsContainer);
+        split.setResizeWeight(0.0);
+        split.setMinimumSize(new Dimension(200, 200));
+        WorkbenchTheme.apply(split);
+        split.setDividerSize(0);
+        SwingUtilities.invokeLater(() -> split.setDividerLocation(0));
+        return split;
     }
 
     private void updateFilterStatus() {
+        resultSummary.setText(resultsPanel.shownResultsCount() + " / " + resultsPanel.allResultsCount() + " results");
         filterPanel.setFilterStatus(
             filterController.statusText(resultsPanel.shownResultsCount(), resultsPanel.allResultsCount())
         );
@@ -634,6 +634,7 @@ public class SessionResultsWorkspace {
         }
         refreshRetryQueueDialog();
         retryQueueDialog.setLocationRelativeTo(SwingUtilities.getWindowAncestor(splitPane));
+        WorkbenchTheme.apply(retryQueueDialog.getContentPane());
         retryQueueDialog.setVisible(true);
     }
 

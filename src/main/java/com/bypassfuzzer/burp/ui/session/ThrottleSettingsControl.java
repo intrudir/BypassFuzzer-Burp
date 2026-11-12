@@ -2,6 +2,8 @@ package com.bypassfuzzer.burp.ui.session;
 
 import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -212,6 +214,7 @@ public class ThrottleSettingsControl {
         dialog.setContentPane(content);
         dialog.setSize(620, showGlobalPause ? 430 : 260);
         dialog.setLocationRelativeTo(owner);
+        WorkbenchTheme.apply(dialog.getContentPane());
         dialog.setVisible(true);
     }
 

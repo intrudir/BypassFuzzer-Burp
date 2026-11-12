@@ -25,7 +25,7 @@ public class AttackSelectionPanel extends JPanel {
 
     public AttackSelectionPanel(FuzzerConfig config, Runnable onSelectionChanged) {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-        setBorder(BorderFactory.createTitledBorder("Attack Types"));
+        setBorder(BorderFactory.createTitledBorder("Attack families"));
 
         headerAttackCheckbox = createCheckbox("Header", config.isEnableHeaderAttack(), onSelectionChanged);
         pathAttackCheckbox = createCheckbox("Path", config.isEnablePathAttack(), onSelectionChanged);
@@ -40,26 +40,22 @@ public class AttackSelectionPanel extends JPanel {
         caseAttackCheckbox = createCheckbox("Case Variation", config.isEnableCaseAttack(), onSelectionChanged);
         cookieParamAttackCheckbox = createCheckbox("Debug Cookies", config.isEnableCookieParamAttack(), onSelectionChanged);
 
-        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        JPanel row1 = new JPanel(new GridLayout(0, 6, 12, 6));
         row1.add(headerAttackCheckbox);
         row1.add(pathAttackCheckbox);
         row1.add(verbAttackCheckbox);
         row1.add(paramAttackCheckbox);
         row1.add(cookieParamAttackCheckbox);
+
+        row1.add(trailingDotAttackCheckbox);
+        row1.add(trailingSlashAttackCheckbox);
+        row1.add(extensionAttackCheckbox);
+        row1.add(contentTypeAttackCheckbox);
+        row1.add(protocolAttackCheckbox);
+
+        row1.add(encodingAttackCheckbox);
+        row1.add(caseAttackCheckbox);
         add(row1);
-
-        JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        row2.add(trailingDotAttackCheckbox);
-        row2.add(trailingSlashAttackCheckbox);
-        row2.add(extensionAttackCheckbox);
-        row2.add(contentTypeAttackCheckbox);
-        row2.add(protocolAttackCheckbox);
-        add(row2);
-
-        JPanel row3 = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        row3.add(encodingAttackCheckbox);
-        row3.add(caseAttackCheckbox);
-        add(row3);
 
         checkAllButton = new JButton("Check All");
         checkAllButton.addActionListener(e -> setAllSelected(true));

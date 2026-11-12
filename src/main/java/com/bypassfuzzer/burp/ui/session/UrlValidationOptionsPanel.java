@@ -8,6 +8,8 @@ import com.bypassfuzzer.core.urlvalidation.UrlValidationContext;
 import com.bypassfuzzer.core.urlvalidation.UrlValidationEncoding;
 import com.bypassfuzzer.core.http.ConfiguredHeader;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -285,6 +287,7 @@ public class UrlValidationOptionsPanel extends JPanel {
     }
 
     private JPanel finalizeSection(JPanel panel) {
+        WorkbenchTheme.apply(panel);
         Dimension preferredSize = panel.getPreferredSize();
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferredSize.height));
         return panel;

@@ -4,6 +4,8 @@ import com.bypassfuzzer.core.http.ConfiguredHeader;
 import com.bypassfuzzer.core.http.ConfiguredHeaderParser;
 import com.bypassfuzzer.core.http.UserAgentMode;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -97,6 +99,7 @@ final class RequestHeadersControl {
         JPanel content = new JPanel(new BorderLayout(0, 8));
         content.add(scrollPane, BorderLayout.CENTER);
         content.add(buildUserAgentPanel(), BorderLayout.SOUTH);
+        WorkbenchTheme.apply(content);
         int result = JOptionPane.showConfirmDialog(
             parent,
             content,

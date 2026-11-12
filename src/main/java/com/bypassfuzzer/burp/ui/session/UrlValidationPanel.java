@@ -18,6 +18,8 @@ import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
 import com.bypassfuzzer.core.scan.UrlValidationPlanner;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -136,6 +138,7 @@ public class UrlValidationPanel extends JPanel {
 
         add(buildHeaderPanel(), BorderLayout.NORTH);
         add(buildCenterPanel(), BorderLayout.CENTER);
+        WorkbenchTheme.apply(this);
     }
 
     private JPanel buildHeaderPanel() {
@@ -152,7 +155,7 @@ public class UrlValidationPanel extends JPanel {
         pauseButton.setEnabled(false);
         pauseButton.addActionListener(e -> togglePause());
 
-        configButton = new JButton("Configure Attack");
+        configButton = WorkbenchTheme.primary(new JButton("Configure Attack"));
         configButton.addActionListener(e -> openConfigDialog());
 
         JButton clearButton = new JButton("Clear Results");
@@ -165,12 +168,16 @@ public class UrlValidationPanel extends JPanel {
 
         statusLabel = new JLabel("Open Configure Attack, place {INJECT} markers in the request, then run URL validation payloads.");
         actionRow.add(buttonRow, BorderLayout.WEST);
-        actionRow.add(statusLabel, BorderLayout.CENTER);
+
 
         warningLabel = createWarningLabel();
 
-        headerPanel.add(actionRow, BorderLayout.NORTH);
-        headerPanel.add(warningLabel, BorderLayout.SOUTH);
+        headerPanel.add(WorkbenchTheme.heading("URL Validation", "Test URL parsing and allow-list behavior with marked injection points."), BorderLayout.NORTH);
+        headerPanel.add(actionRow, BorderLayout.CENTER);
+        JPanel status = new JPanel(new BorderLayout(0, 4));
+        status.add(statusLabel, BorderLayout.NORTH);
+        status.add(warningLabel, BorderLayout.SOUTH);
+        headerPanel.add(status, BorderLayout.SOUTH);
         return headerPanel;
     }
 
@@ -270,7 +277,7 @@ public class UrlValidationPanel extends JPanel {
         JPanel requestButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         requestButtons.setAlignmentX(LEFT_ALIGNMENT);
 
-        startButton = new JButton("Start URL Validation");
+        startButton = WorkbenchTheme.primary(new JButton("Start URL Validation"));
         startButton.addActionListener(e -> startValidation());
         resetRequestButton = new JButton("Reset Request");
         resetRequestButton.addActionListener(e -> resetEditedRequest());
@@ -281,7 +288,7 @@ public class UrlValidationPanel extends JPanel {
         workbenchHeader.add(requestButtons);
 
         requestPanel.add(workbenchHeader, BorderLayout.NORTH);
-        requestPanel.add(requestEditor.uiComponent(), BorderLayout.CENTER);
+        requestPanel.add(WorkbenchTheme.nativeEditor(requestEditor.uiComponent()), BorderLayout.CENTER);
         return requestPanel;
     }
 
@@ -476,6 +483,7 @@ public class UrlValidationPanel extends JPanel {
         }
 
         configDialog.setLocationRelativeTo(api.userInterface().swingUtils().suiteFrame());
+        WorkbenchTheme.apply(configDialog.getContentPane());
         configDialog.setVisible(true);
         configDialog.toFront();
         configDialog.requestFocus();

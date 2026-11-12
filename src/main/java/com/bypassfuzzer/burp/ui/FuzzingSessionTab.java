@@ -102,6 +102,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         }
 
         initializeUi();
+        WorkbenchTheme.apply(this);
         if (mode == TargetedMode.BYPASS) {
             applyFilters();
         }
@@ -247,7 +248,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         JPanel topPanel = new JPanel(new BorderLayout());
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        startButton = new JButton("Start Fuzzing");
+        startButton = WorkbenchTheme.primary(new JButton("Start Fuzzing"));
         startButton.addActionListener(e -> startFuzzing());
         stopButton = new JButton("Stop");
         stopButton.setEnabled(false);
@@ -283,8 +284,11 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
 
         JPanel topRow = new JPanel(new BorderLayout());
         topRow.add(controlPanel, BorderLayout.WEST);
-        topRow.add(statusLabel, BorderLayout.CENTER);
+        topContent.add(WorkbenchTheme.heading("Bypass", request.method() + " " + request.url()));
         topContent.add(topRow);
+        JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 4));
+        statusRow.add(statusLabel);
+        topContent.add(statusRow);
 
         JPanel warningRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
         warningRow.add(warningLabel);
@@ -314,10 +318,12 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
             content.add(buttons, BorderLayout.SOUTH);
 
             optionsDialog.setContentPane(content);
+            WorkbenchTheme.apply(content);
             optionsDialog.pack();
             optionsDialog.setMinimumSize(new Dimension(520, 260));
         }
         optionsDialog.setLocationRelativeTo(api.userInterface().swingUtils().suiteFrame());
+        WorkbenchTheme.apply(optionsDialog.getContentPane());
         optionsDialog.setVisible(true);
     }
 

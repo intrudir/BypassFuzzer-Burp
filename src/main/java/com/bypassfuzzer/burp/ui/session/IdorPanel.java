@@ -25,6 +25,8 @@ import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.dashboard.ActivityState;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JDialog;
@@ -175,6 +177,7 @@ public class IdorPanel extends JPanel {
         runOptionsPanel = new IdorRunOptionsPanel(DEFAULT_RUN_OPTIONS);
         add(buildTopPanel(), BorderLayout.NORTH);
         add(buildCenterPanel(), BorderLayout.CENTER);
+        WorkbenchTheme.apply(this);
     }
 
     private JPanel buildTopPanel() {
@@ -187,7 +190,7 @@ public class IdorPanel extends JPanel {
         pauseButton = new JButton("Pause");
         pauseButton.setEnabled(false);
         pauseButton.addActionListener(e -> togglePause());
-        configureButton = new JButton("Configure Attack");
+        configureButton = WorkbenchTheme.primary(new JButton("Configure Attack"));
         configureButton.addActionListener(e -> openConfigDialog());
         JButton clearButton = new JButton("Clear Results");
         clearButton.addActionListener(e -> clearResults());
@@ -214,8 +217,9 @@ public class IdorPanel extends JPanel {
 
         JPanel topRow = new JPanel(new BorderLayout());
         topRow.add(controlPanel, BorderLayout.WEST);
-        topRow.add(statusLabel, BorderLayout.CENTER);
+        topContent.add(WorkbenchTheme.heading("IDOR", "Compare authorized and target identifiers across request locations."));
         topContent.add(topRow);
+        topContent.add(statusLabel);
 
         JPanel warningRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
         warningRow.add(warningLabel);
@@ -230,10 +234,12 @@ public class IdorPanel extends JPanel {
             configDialog = new JDialog(api.userInterface().swingUtils().suiteFrame(), "Configure IDOR Attack", false);
             configDialog.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
             configDialog.setContentPane(buildConfigDialogContent());
+            WorkbenchTheme.apply(configDialog.getContentPane());
             configDialog.pack();
             configDialog.setMinimumSize(new Dimension(950, 700));
         }
         configDialog.setLocationRelativeTo(api.userInterface().swingUtils().suiteFrame());
+        WorkbenchTheme.apply(configDialog.getContentPane());
         configDialog.setVisible(true);
     }
 
@@ -298,7 +304,7 @@ public class IdorPanel extends JPanel {
         configRequestEditor.setRequest(originalRequest);
         JPanel editorPanel = new JPanel(new BorderLayout());
         editorPanel.setBorder(javax.swing.BorderFactory.createTitledBorder("Original request"));
-        editorPanel.add(configRequestEditor.uiComponent(), BorderLayout.CENTER);
+        editorPanel.add(WorkbenchTheme.nativeEditor(configRequestEditor.uiComponent()), BorderLayout.CENTER);
         editorPanel.setPreferredSize(new Dimension(950, 390));
         content.add(editorPanel, BorderLayout.CENTER);
         authorizedIdentifierField.getDocument().addDocumentListener(new DocumentListener() {
@@ -313,7 +319,7 @@ public class IdorPanel extends JPanel {
         });
         updateResponseFieldsLabel();
 
-        startButton = new JButton("Start IDOR Analysis");
+        startButton = WorkbenchTheme.primary(new JButton("Start IDOR Analysis"));
         startButton.addActionListener(e -> startAnalysis());
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> configDialog.setVisible(false));
@@ -394,8 +400,10 @@ public class IdorPanel extends JPanel {
         saveButton.addActionListener(e -> saveDebugInfoToFile(dialog, debugInfo, authorizedIdentifier, targetIdentifier));
         closeButton.addActionListener(e -> dialog.dispose());
 
+        WorkbenchTheme.apply(dialog.getContentPane());
         dialog.pack();
         dialog.setLocationRelativeTo(api.userInterface().swingUtils().suiteFrame());
+        WorkbenchTheme.apply(dialog.getContentPane());
         dialog.setVisible(true);
     }
 

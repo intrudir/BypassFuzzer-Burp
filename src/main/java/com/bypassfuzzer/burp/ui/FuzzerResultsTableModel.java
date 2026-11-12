@@ -29,7 +29,7 @@ public class FuzzerResultsTableModel extends AbstractTableModel {
             new Class<?>[]{Integer.class, String.class, String.class, String.class, String.class, Integer.class, Integer.class, String.class}
         ),
         COVERAGE_SWEEP(
-            new String[]{"#", "Target", "Family", "Signal", "Payload", "Status", "Length", "Content-Type"},
+            new String[]{"#", "Payload", "Host", "Family", "Signal", "Status", "Length", "Content-Type"},
             new Class<?>[]{Integer.class, String.class, String.class, String.class, String.class, Object.class, Integer.class, String.class}
         );
 
@@ -121,16 +121,31 @@ public class FuzzerResultsTableModel extends AbstractTableModel {
             };
             case COVERAGE_SWEEP -> switch (columnIndex) {
                 case 0 -> resultIds.getOrDefault(result, 0);
-                case 1 -> emptyToDash(result.getTargetLabel());
-                case 2 -> emptyToDash(result.getPayloadFamily());
-                case 3 -> emptyToDash(result.getPayloadEncoding());
-                case 4 -> displayPayload(result);
+                case 1 -> displayPayload(result);
+                case 2 -> sweepHost(result);
+                case 3 -> emptyToDash(result.getPayloadFamily());
+                case 4 -> emptyToDash(result.getPayloadEncoding());
                 case 5 -> result.getResponse() == null ? "No response" : result.getStatusCode();
                 case 6 -> result.getContentLength();
                 case 7 -> result.getContentType();
                 default -> "";
             };
         };
+    }
+
+    private static String sweepHost(AttackResult result) {
+        String host = result.getRequestHost();
+        if (host != null && !host.isBlank()) return host;
+        String target = result.getTargetLabel();
+        if (target == null) return "-";
+        try {
+            int methodSeparator = target.indexOf(' ');
+            String url = methodSeparator < 0 ? target : target.substring(methodSeparator + 1);
+            String parsed = java.net.URI.create(url).getHost();
+            return parsed == null ? "-" : parsed;
+        } catch (IllegalArgumentException ignored) {
+            return "-";
+        }
     }
 
     @Override

@@ -7,6 +7,8 @@ import com.bypassfuzzer.burp.core.attacks.AttackResult;
 import com.bypassfuzzer.burp.core.filter.ResultHighlighter;
 import com.bypassfuzzer.burp.ui.FuzzerResultsTableModel;
 
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
+
 import javax.swing.AbstractAction;
 import javax.swing.JComponent;
 import javax.swing.JMenuItem;
@@ -100,7 +102,11 @@ public class SessionResultsPanel extends JPanel {
         this.viewerLayout = viewerLayout == null ? ViewerLayout.BELOW_TABLE : viewerLayout;
         this.tableLayout = tableLayout == null ? TableLayout.DEFAULT : tableLayout;
         this.tableModel = new FuzzerResultsTableModel(toModelLayout(this.tableLayout));
-        this.resultsTable = new JTable(tableModel);
+        this.resultsTable = new JTable(tableModel) {
+            @Override public boolean getScrollableTracksViewportWidth() {
+                return getParent() == null || getParent().getWidth() >= getMinimumSize().width;
+            }
+        };
         this.requestViewer = api.userInterface().createHttpRequestEditor();
         this.responseViewer = api.userInterface().createHttpResponseEditor();
         this.originalRequestViewer = this.tableLayout == TableLayout.COVERAGE_SWEEP
@@ -112,6 +118,7 @@ public class SessionResultsPanel extends JPanel {
         this.verificationResponseViewer = this.tableLayout == TableLayout.COVERAGE_SWEEP
             ? api.userInterface().createHttpResponseEditor() : null;
         initializeUi();
+        WorkbenchTheme.apply(this);
     }
 
     public void addResult(AttackResult result, boolean passesFilter) {
@@ -191,26 +198,36 @@ public class SessionResultsPanel extends JPanel {
         configurePopupHandling();
         configureCopyAction();
         configureColumns();
+        for (int column = 0; column < resultsTable.getColumnCount(); column++) {
+            String name = resultsTable.getColumnName(column);
+            int minimum = switch (name) {
+                case "#" -> 44;
+                case "Status" -> 84;
+                case "Length" -> 76;
+                case "Payload", "Variant" -> 180;
+                case "Playbook" -> 180;
+                default -> 100;
+            };
+            resultsTable.getColumnModel().getColumn(column).setMinWidth(minimum);
+        }
 
         JScrollPane tableScrollPane = new JScrollPane(resultsTable);
 
         viewerTabs = new JTabbedPane();
-        viewerTabs.addTab("Request", requestViewer.uiComponent());
-        viewerTabs.addTab("Response", responseViewer.uiComponent());
+        viewerTabs.addTab("Probe", exchange(requestViewer.uiComponent(), responseViewer.uiComponent()));
         if (originalRequestViewer != null && originalResponseViewer != null) {
-            viewerTabs.addTab("Original Request", originalRequestViewer.uiComponent());
-            viewerTabs.addTab("Original Response", originalResponseViewer.uiComponent());
+            viewerTabs.addTab("Original", exchange(originalRequestViewer.uiComponent(), originalResponseViewer.uiComponent()));
         }
 
         int splitOrientation = viewerLayout == ViewerLayout.RIGHT_OF_TABLE
             ? JSplitPane.HORIZONTAL_SPLIT
             : JSplitPane.VERTICAL_SPLIT;
         JSplitPane splitPane = new JSplitPane(splitOrientation, tableScrollPane, viewerTabs);
-        splitPane.setResizeWeight(0.5);
+        splitPane.setResizeWeight(0.52);
         if (viewerLayout == ViewerLayout.RIGHT_OF_TABLE) {
-            SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.5));
+            SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.52));
         } else {
-            SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.5));
+            SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.52));
         }
         add(splitPane, BorderLayout.CENTER);
     }
@@ -221,26 +238,39 @@ public class SessionResultsPanel extends JPanel {
             return;
         }
 
-        Component requestComponent = verificationRequestViewer.uiComponent();
-        Component responseComponent = verificationResponseViewer.uiComponent();
-        boolean currentlyVisible = viewerTabs.indexOfComponent(requestComponent) >= 0;
-        if (visible == currentlyVisible) {
-            return;
-        }
-
+        int existing = viewerTabs.indexOfTab("Auth verification");
+        if (visible == (existing >= 0)) return;
         if (visible) {
-            viewerTabs.addTab("Auth Verification Request", requestComponent);
-            viewerTabs.addTab("Auth Verification Response", responseComponent);
+            viewerTabs.addTab("Auth verification", exchange(
+                verificationRequestViewer.uiComponent(), verificationResponseViewer.uiComponent()));
         } else {
-            viewerTabs.remove(requestComponent);
-            viewerTabs.remove(responseComponent);
+            viewerTabs.removeTabAt(existing);
         }
         viewerTabs.revalidate();
         viewerTabs.repaint();
     }
 
+    private JPanel exchange(Component request, Component response) {
+        JPanel requestPanel = new JPanel(new BorderLayout(0, 8));
+        requestPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 8));
+        requestPanel.add(WorkbenchTheme.muted("Request"), BorderLayout.NORTH);
+        requestPanel.add(WorkbenchTheme.nativeEditor(request), BorderLayout.CENTER);
+        JPanel responsePanel = new JPanel(new BorderLayout(0, 8));
+        responsePanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 8));
+        responsePanel.add(WorkbenchTheme.muted("Response"), BorderLayout.NORTH);
+        responsePanel.add(WorkbenchTheme.nativeEditor(response), BorderLayout.CENTER);
+        requestPanel.setMinimumSize(new java.awt.Dimension(120, 240));
+        responsePanel.setMinimumSize(new java.awt.Dimension(120, 240));
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, requestPanel, responsePanel);
+        split.setResizeWeight(0.5);
+        SwingUtilities.invokeLater(() -> split.setDividerLocation(0.5));
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(split, BorderLayout.CENTER);
+        return panel;
+    }
+
     private void configureRenderer() {
-        resultsTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+        DefaultTableCellRenderer renderer = new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value,
                                                            boolean isSelected, boolean hasFocus,
@@ -253,18 +283,31 @@ public class SessionResultsPanel extends JPanel {
                 if (!isSelected) {
                     Color rowColor = result == null ? null : highlighter.colorFor(result);
                     component.setBackground(rowColor != null ? rowColor : table.getBackground());
-                    component.setForeground(table.getForeground());
+                    component.setForeground(rowColor != null ? WorkbenchTheme.EDITOR : table.getForeground());
                 }
 
                 if (tableLayout == TableLayout.IDOR && result != null) {
                     applyIdorCellStyling(table, component, value, column, isSelected, result);
-                } else if (column == 3 || column == 4 || column == 5 || column == 6) {
-                    setHorizontalAlignment(SwingConstants.CENTER);
+                } else {
+                    String name = table.getColumnName(column);
+                    if (name.equals("Status") || name.equals("Length") || name.equals("#"))
+                        setHorizontalAlignment(SwingConstants.RIGHT);
+                    if (name.equals("Payload")) setFont(WorkbenchTheme.MONO);
+                    if (name.equals("Status") && result != null) {
+                        if (result.getResponse() == null) setForeground(WorkbenchTheme.WARNING);
+                        else if (result.getStatusCode() >= 200 && result.getStatusCode() < 300)
+                            setForeground(WorkbenchTheme.POSITIVE);
+                    }
                 }
-
+                setBorder(javax.swing.BorderFactory.createCompoundBorder(
+                    javax.swing.BorderFactory.createMatteBorder(0, isSelected && column == 0 ? 3 : 0, 0, 0,
+                        WorkbenchTheme.ACCENT), javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8)));
+                setToolTipText(result == null ? null : result.getTargetLabel());
                 return component;
             }
-        });
+        };
+        resultsTable.setDefaultRenderer(Object.class, renderer);
+        resultsTable.setDefaultRenderer(Integer.class, renderer);
     }
 
     private void applyIdorCellStyling(JTable table,
@@ -347,7 +390,15 @@ public class SessionResultsPanel extends JPanel {
     }
 
     private void configureColumns() {
-        if (tableLayout == TableLayout.URL_VALIDATION || tableLayout == TableLayout.COVERAGE_SWEEP) {
+        if (tableLayout == TableLayout.COVERAGE_SWEEP) {
+            int[] widths = {46, 250, 180, 140, 180, 96, 86, 160};
+            for (int i = 0; i < widths.length; i++) {
+                resultsTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+            }
+            resultsTable.getColumnModel().getColumn(0).setMaxWidth(60);
+            return;
+        }
+        if (tableLayout == TableLayout.URL_VALIDATION) {
             resultsTable.getColumnModel().getColumn(0).setPreferredWidth(30);
             resultsTable.getColumnModel().getColumn(0).setMaxWidth(50);
             resultsTable.getColumnModel().getColumn(1).setPreferredWidth(120);
@@ -376,14 +427,12 @@ public class SessionResultsPanel extends JPanel {
             return;
         }
 
-        resultsTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-        resultsTable.getColumnModel().getColumn(0).setMaxWidth(50);
-        resultsTable.getColumnModel().getColumn(1).setPreferredWidth(60);
-        resultsTable.getColumnModel().getColumn(1).setMaxWidth(80);
-        resultsTable.getColumnModel().getColumn(2).setPreferredWidth(300);
-        resultsTable.getColumnModel().getColumn(3).setPreferredWidth(60);
-        resultsTable.getColumnModel().getColumn(4).setPreferredWidth(80);
-        resultsTable.getColumnModel().getColumn(5).setPreferredWidth(150);
+        int[] widths = {46, 140, 420, 100, 100, 220};
+        for (int i = 0; i < widths.length; i++) {
+            resultsTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+        }
+        resultsTable.getColumnModel().getColumn(0).setMaxWidth(60);
+
     }
 
     private void initializeRowSorter() {

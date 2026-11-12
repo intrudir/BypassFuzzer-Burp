@@ -33,6 +33,38 @@ import static org.mockito.ArgumentMatchers.eq;
 class BypassFuzzerTabTest {
 
     @Test
+    void emptyGuidanceMatchesEachModeAndReturnsAfterClosingItsLastRequest() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            BypassFuzzerTab tab = new BypassFuzzerTab(api());
+            JTabbedPane navigation = findTabbedPane(tab);
+            try (MockedStatic<JOptionPane> dialogs = mockStatic(JOptionPane.class)) {
+                dialogs.when(() -> JOptionPane.showConfirmDialog(any(),
+                    eq("Close this fuzzing session?"), eq("Confirm Close"), eq(JOptionPane.YES_NO_OPTION)))
+                    .thenReturn(JOptionPane.YES_OPTION);
+                for (TargetedMode mode : TargetedMode.values()) {
+                    JPanel emptyState = findNamedComponent(tab, "emptyState" + mode.name(), JPanel.class);
+                    JLabel path = findNamedComponent(tab, "emptyMenuPath" + mode.name(), JLabel.class);
+                    assertTrue(emptyState.isVisible());
+                    assertEquals("Send to BypassFuzzer → " + mode.title(), path.getText());
+
+                    tab.loadRequest(request("/users/123", "", "GET", null, ""), mode);
+                    JTabbedPane sessions = findTabbedPane((JPanel) navigation.getSelectedComponent());
+                    assertFalse(emptyState.isVisible());
+                    tab.loadRequest(request("/users/456", "", "GET", null, ""), mode);
+                    ((JButton) ((JPanel) sessions.getTabComponentAt(0)).getComponent(1)).doClick();
+                    assertEquals(1, sessions.getTabCount());
+                    assertFalse(emptyState.isVisible());
+                    ((JButton) ((JPanel) sessions.getTabComponentAt(0)).getComponent(1)).doClick();
+                    assertEquals(0, sessions.getTabCount());
+                    assertTrue(emptyState.isVisible());
+                }
+            } finally {
+                tab.cleanup();
+            }
+        });
+    }
+
+    @Test
     void startsWithDashboardSweepAndTargetedModeTabs() {
         BypassFuzzerTab tab = new BypassFuzzerTab(api());
         JTabbedPane tabs = findTabbedPane(tab);
@@ -52,14 +84,14 @@ class BypassFuzzerTabTest {
 
         tab.loadRequest(request("/users/123", "", "GET", null, ""), TargetedMode.IDOR);
 
-        JTabbedPane idorSessions = (JTabbedPane) topLevelTabs.getComponentAt(3);
+        JTabbedPane idorSessions = findTabbedPane((JPanel) topLevelTabs.getComponentAt(3));
         assertEquals("IDOR", topLevelTabs.getTitleAt(topLevelTabs.getSelectedIndex()));
         assertEquals(1, idorSessions.getTabCount());
         assertEquals("GET /users/123", idorSessions.getTitleAt(0));
         assertTrue(idorSessions.getComponentAt(0) instanceof FuzzingSessionTab);
 
-        assertEquals(0, ((JTabbedPane) topLevelTabs.getComponentAt(2)).getTabCount());
-        assertEquals(0, ((JTabbedPane) topLevelTabs.getComponentAt(4)).getTabCount());
+        assertEquals(0, findTabbedPane((JPanel) topLevelTabs.getComponentAt(2)).getTabCount());
+        assertEquals(0, findTabbedPane((JPanel) topLevelTabs.getComponentAt(4)).getTabCount());
     }
 
     @Test
@@ -70,7 +102,7 @@ class BypassFuzzerTabTest {
             try (MockedStatic<JOptionPane> dialogs = mockStatic(JOptionPane.class)) {
                 for (TargetedMode mode : TargetedMode.values()) {
                     tab.loadRequest(request("/long/path/123", "", "GET", null, ""), mode);
-                    JTabbedPane sessions = (JTabbedPane) topLevelTabs.getSelectedComponent();
+                    JTabbedPane sessions = findTabbedPane((JPanel) topLevelTabs.getSelectedComponent());
                     JPanel header = (JPanel) sessions.getTabComponentAt(0);
                     JLabel label = (JLabel) header.getComponent(0);
                     String newTitle = mode.title() + " account 123";
@@ -94,7 +126,7 @@ class BypassFuzzerTabTest {
         SwingUtilities.invokeAndWait(() -> {
             BypassFuzzerTab tab = new BypassFuzzerTab(api());
             tab.loadRequest(request("/users/123", "", "GET", null, ""), TargetedMode.IDOR);
-            JTabbedPane sessions = (JTabbedPane) findTabbedPane(tab).getSelectedComponent();
+            JTabbedPane sessions = findTabbedPane((JPanel) findTabbedPane(tab).getSelectedComponent());
             JLabel label = (JLabel) ((JPanel) sessions.getTabComponentAt(0)).getComponent(0);
             try (MockedStatic<JOptionPane> dialogs = mockStatic(JOptionPane.class)) {
                 dialogs.when(() -> JOptionPane.showInputDialog(any(), eq("Tab name:"),
@@ -117,7 +149,7 @@ class BypassFuzzerTabTest {
             for (TargetedMode mode : TargetedMode.values()) {
                 tab.loadRequest(request("/users/123", "", "GET", null, ""), mode);
                 tab.loadRequest(request("/users/456", "", "GET", null, ""), mode);
-                JTabbedPane sessions = (JTabbedPane) findTabbedPane(tab).getSelectedComponent();
+                JTabbedPane sessions = findTabbedPane((JPanel) findTabbedPane(tab).getSelectedComponent());
                 assertEquals(1, sessions.getSelectedIndex());
 
                 JLabel firstTitle = (JLabel) ((JPanel) sessions.getTabComponentAt(0)).getComponent(0);

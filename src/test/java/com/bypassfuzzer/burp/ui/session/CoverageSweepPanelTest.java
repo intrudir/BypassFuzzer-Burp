@@ -401,12 +401,9 @@ class CoverageSweepPanelTest {
         assertEquals(3, mode.getItemCount());
         assertEquals("Clear Candidates", clearCandidates.getText());
         assertSame(mode.getParent(), clearCandidates.getParent());
-        assertNotSame(load.getParent(), clearCandidates.getParent());
         assertTrue(payloadSet.isVisible());
         assertTrue(dedupeOnEndpoint.isVisible());
         assertTrue(dedupeOnEndpoint.isSelected());
-        assertSame(requestHeaders.getParent(), authIdentifiers.getParent());
-        assertNotSame(requestHeaders.getParent(), throttle.getParent());
         assertTrue(requestHeaders.isVisible());
         assertFalse(authIdentifiers.isVisible());
         assertTrue(load.isVisible());
@@ -416,10 +413,6 @@ class CoverageSweepPanelTest {
         assertFalse(clearCandidates.isEnabled());
         assertFalse(applyBaseUrl.isVisible());
         assertTrue(field(panel, "pullResponsesLabel", javax.swing.JLabel.class).isVisible());
-        Component pullResponsesSpacer = field(panel, "pullResponsesSpacer", Component.class);
-        assertTrue(pullResponsesSpacer.isVisible());
-        assertTrue(pullResponsesSpacer.getPreferredSize().width >= 16);
-        assertSame(load, firstVisibleComponent(load.getParent()));
 
         mode.setSelectedIndex(1);
 
@@ -434,8 +427,6 @@ class CoverageSweepPanelTest {
         assertFalse(clearCandidates.isEnabled());
         assertFalse(applyBaseUrl.isVisible());
         assertFalse(field(panel, "pullResponsesLabel", javax.swing.JLabel.class).isVisible());
-        assertFalse(pullResponsesSpacer.isVisible());
-        assertSame(load, firstVisibleComponent(load.getParent()));
 
         mode.setSelectedIndex(2);
 
@@ -453,7 +444,6 @@ class CoverageSweepPanelTest {
         assertTrue(applyBaseUrl.isVisible());
         assertFalse(applyBaseUrl.isEnabled());
         assertFalse(field(panel, "pullResponsesLabel", javax.swing.JLabel.class).isVisible());
-        assertFalse(pullResponsesSpacer.isVisible());
         assertFalse(checkbox(panel, "status401CheckBox").isVisible());
         assertFalse(checkbox(panel, "status403CheckBox").isVisible());
         assertFalse(checkbox(panel, "status3xxCheckBox").isVisible());
@@ -474,14 +464,14 @@ class CoverageSweepPanelTest {
         assertFalse(verify.isVisible());
         assertTrue(skip.isSelected());
         assertFalse(skip.isVisible());
-        assertEquals(4, viewerTabs.getTabCount());
+        assertEquals(2, viewerTabs.getTabCount());
 
         mode.setSelectedIndex(1);
         assertTrue(verify.isVisible());
         assertTrue(skip.isVisible());
         assertTrue(skip.isEnabled());
         assertTrue(currentOptions(panel).skipLikelyPublicEndpoints());
-        assertEquals(6, viewerTabs.getTabCount());
+        assertEquals(3, viewerTabs.getTabCount());
 
         verify.doClick();
         assertFalse(skip.isEnabled());
@@ -493,7 +483,7 @@ class CoverageSweepPanelTest {
 
         mode.setSelectedIndex(0);
         assertFalse(skip.isVisible());
-        assertEquals(4, viewerTabs.getTabCount());
+        assertEquals(2, viewerTabs.getTabCount());
     }
 
     @Test
@@ -1231,8 +1221,8 @@ class CoverageSweepPanelTest {
         assertTrue(panel.exportResultsToTsv(output));
 
         String tsv = Files.readString(output);
-        assertTrue(tsv.startsWith("#\tTarget\tFamily\tSignal\tPayload\tStatus\tLength\tContent-Type"));
-        assertTrue(tsv.contains("GET /admin\tMatrix / Extension\t403 -> 200\tpayload with unsafe whitespace\t200"));
+        assertTrue(tsv.startsWith("#\tPayload\tHost\tFamily\tSignal\tStatus\tLength\tContent-Type"));
+        assertTrue(tsv.contains("payload with unsafe whitespace\texample.com\tMatrix / Extension\t403 -> 200\t200"));
         assertFalse(tsv.contains("payload\twith"));
     }
 

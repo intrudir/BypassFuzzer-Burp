@@ -61,6 +61,12 @@ public class FilterPanel extends JPanel {
         } : filterChangeListener;
     }
 
+    /** One shared control, placed in the results toolbar. */
+    JCheckBox smartFilterControl() {
+        smartFilterCheckbox.setText("Smart filter");
+        return smartFilterCheckbox;
+    }
+
     public String selectedHighlightColor() {
         return (String) highlightColorFilter.getSelectedItem();
     }

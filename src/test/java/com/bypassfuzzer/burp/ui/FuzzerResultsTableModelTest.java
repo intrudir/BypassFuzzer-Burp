@@ -77,13 +77,16 @@ class FuzzerResultsTableModelTest {
     }
 
     @Test
-    void coverageSweepTargetColumnRetainsFullTargetText() {
+    void coverageSweepPayloadComesFirstAndHostIsParsedFromTarget() {
         FuzzerResultsTableModel model = new FuzzerResultsTableModel(FuzzerResultsTableModel.TableLayout.COVERAGE_SWEEP);
         String target = "GET https://dfyql-ro.sports.yahoo.com/v2/contestsFilteredWeb?lang=en-US&region=US&device=desktop&sport=mlb";
         model.addResult(new AttackResult("Coverage Sweep", "control", target,
             "Unauthenticated Control", "LIKELY PUBLIC", null, null), true);
 
-        assertEquals(target, model.getValueAt(0, 1));
+        assertEquals("Payload", model.getColumnName(1));
+        assertEquals("control", model.getValueAt(0, 1));
+        assertEquals("Host", model.getColumnName(2));
+        assertEquals("dfyql-ro.sports.yahoo.com", model.getValueAt(0, 2));
     }
 
     @Test
@@ -95,9 +98,9 @@ class FuzzerResultsTableModelTest {
         model.addResult(new AttackResult("Coverage Sweep", payload, "target", family, signal,
             null, null), true);
 
-        assertEquals(family, model.getValueAt(0, 2));
-        assertEquals(signal, model.getValueAt(0, 3));
-        assertEquals(payload, model.getValueAt(0, 4));
+        assertEquals(family, model.getValueAt(0, 3));
+        assertEquals(signal, model.getValueAt(0, 4));
+        assertEquals(payload, model.getValueAt(0, 1));
     }
 
     @Test

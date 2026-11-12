@@ -563,7 +563,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             result.getTargetLabel(), result.getPayload(), result.getPayloadFamily(),
             result.getPayloadEncoding(), result.getThrottleRetryAttempt(),
             result.getRequest().toString(), result.getRequest().url(), result.getRequest().method(),
-            retryHttpMode(result.getRequest()), result.getPayload()
+            retryHttpMode(result.getRequest()), result.getPayload(), result.getEvidenceMetadata().playbookId(), result.getEvidenceMetadata().controlRole()
         );
     }
 

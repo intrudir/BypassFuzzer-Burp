@@ -649,6 +649,21 @@ class CoverageSweepPanelTest {
     }
 
     @Test
+    void retryExportsPreservePlaybookAndControlMetadata() throws Exception {
+        var panel=new CoverageSweepPanel(api(List.of()));
+        var method=CoverageSweepPanel.class.getDeclaredMethod("toRetryPackageEntry",AttackResult.class);method.setAccessible(true);
+        var request=request("/api/v1/admin","tenant=42","GET",null,"");
+        for(var role:List.of(com.bypassfuzzer.core.scan.ControlRole.NONE,com.bypassfuzzer.core.scan.ControlRole.WILDCARD)) {
+            var result=new AttackResult("Coverage Sweep","owned probe",request,null).withEvidenceMetadata(new AttackResult.EvidenceMetadata(
+                "bypass.header.forwarded",role,com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.UNAVAILABLE,null,null));
+            var entry=(com.bypassfuzzer.core.input.RetryPackageEntry)method.invoke(panel,result);
+            var gson=new com.google.gson.Gson();var restored=gson.fromJson(gson.toJson(entry),com.bypassfuzzer.core.input.RetryPackageEntry.class);
+            assertEquals("bypass.header.forwarded",restored.playbookId());assertEquals(role,restored.controlRole());
+            assertEquals(request.toString(),restored.requestRaw());assertEquals(role,restored.planned().controlRole());
+        }
+    }
+
+    @Test
     void importsRetryQueueJsonEntriesAsRegularSweepCandidates() throws Exception {
         Path retryPackage = tempDir.resolve("bypassfuzzer-retry-queue.json");
         Files.writeString(retryPackage, """

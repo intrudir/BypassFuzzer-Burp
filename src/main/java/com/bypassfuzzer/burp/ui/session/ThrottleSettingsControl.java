@@ -13,10 +13,12 @@ import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import java.awt.Color;
+import java.awt.BorderLayout;
 import java.awt.Dialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -209,9 +211,13 @@ public class ThrottleSettingsControl {
         closeButton.addActionListener(e -> dialog.dispose());
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttonRow.add(closeButton);
-        content.add(buttonRow);
 
-        dialog.setContentPane(content);
+        JScrollPane settingsScroll = new JScrollPane(content);
+        settingsScroll.setBorder(BorderFactory.createEmptyBorder());
+        JPanel dialogContent = new JPanel(new BorderLayout());
+        dialogContent.add(settingsScroll, BorderLayout.CENTER);
+        dialogContent.add(buttonRow, BorderLayout.SOUTH);
+        dialog.setContentPane(dialogContent);
         dialog.setSize(620, showGlobalPause ? 430 : 260);
         dialog.setLocationRelativeTo(owner);
         WorkbenchTheme.apply(dialog.getContentPane());

@@ -24,6 +24,19 @@ For a human-visible Burp check, use a disposable Burp project, go to `Extensions
 
 Do not automate or reconfigure a Burp process that this verification run did not start. In particular, do not load or unload the JAR in an already-running interactive Burp session. Burp's project, license, extension, and proxy state are shared user state; the repository does not provide a supported isolated GUI launcher. Use the repository harness for unattended verification and reserve the live Burp check for an explicitly disposable project.
 
+For a disposable native launch, isolate Burp's `--data-dir`, Java preferences
+(`-Djava.util.prefs.userRoot=<private-directory>`), Java temporary files
+(`-Djava.io.tmpdir=<private-directory>`), and the project itself. `--data-dir`
+alone does not isolate the other locations. Leave pre-existing Burp temporary
+files untouched. Reuse existing licensed settings only under authorization
+already established for the session; exclude them from evidence and delete the
+private settings copy after verification.
+
+When Collaborator verification is authorized, require a fresh native payload,
+a direct self-test callback from the verification host, and attributable polled
+DNS/HTTP interaction evidence. Availability or successful payload generation
+alone is insufficient. Keep client secret keys and licensed settings out of logs.
+
 ## Doctor
 
 Run the artifact doctor before every drive and whenever the build or Burp load looks wrong:

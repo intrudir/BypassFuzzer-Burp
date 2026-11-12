@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
+import javax.swing.JSplitPane;
+import javax.swing.SwingUtilities;
 import javax.swing.RowSorter;
 import java.awt.Component;
 import java.awt.Container;
@@ -20,11 +22,46 @@ import java.lang.reflect.Field;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SessionResultsPanelTest {
+
+    @Test
+    void shortResultsWorkspaceReservesReadableNativeEditorSpace() throws Exception {
+        SessionResultsPanel[] panels = new SessionResultsPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            panels[0] = new SessionResultsPanel(api(), new ResultHighlighter(), () -> { },
+                SessionResultsPanel.ViewerLayout.BELOW_TABLE,
+                SessionResultsPanel.TableLayout.URL_VALIDATION);
+            // Burp constructs inactive tabs before their final visible layout.
+            panels[0].setSize(1200, 60);
+            panels[0].doLayout();
+        });
+        SwingUtilities.invokeAndWait(() -> {
+            panels[0].setSize(1200, 430);
+            panels[0].doLayout();
+            panels[0].addNotify();
+        });
+        SwingUtilities.invokeAndWait(() -> { });
+        SwingUtilities.invokeAndWait(() -> {
+            SessionResultsPanel panel = panels[0];
+            JSplitPane split = (JSplitPane) panel.getComponent(0);
+            split.doLayout();
+            assertTrue(split.getBottomComponent().getHeight() >= 320,
+                "Native message toolbars must leave room to read the message");
+            assertTrue(split.getTopComponent().getHeight() >= 70,
+                "Result rows must remain visible alongside the message");
+            // Subsequent user choices survive resize events.
+            split.setDividerLocation(130);
+            split.setSize(1200, 480);
+            split.doLayout();
+            assertTrue(split.getDividerLocation() >= 130);
+            panel.removeNotify();
+        });
+    }
 
     @Test
     void urlValidationTableSortsStringMetadataColumnsWithoutTypeErrors() throws Exception {

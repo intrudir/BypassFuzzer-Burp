@@ -13,7 +13,10 @@ public final class RequestPathUtils {
 
     public static String extractPath(String url) {
         try {
-            URI uri = new URI(url);
+            // Query markers and raw fuzz values need not be valid URI syntax;
+            // they must not hide an otherwise valid path in session titles.
+            int queryStart = url.indexOf('?');
+            URI uri = new URI(queryStart < 0 ? url : url.substring(0, queryStart));
             String path = uri.getRawPath();
             return path == null || path.isEmpty() ? "/" : path;
         } catch (URISyntaxException e) {

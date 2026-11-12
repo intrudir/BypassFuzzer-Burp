@@ -47,7 +47,7 @@ xvfb-run -a -s '-screen 0 1600x1200x24' ./gradlew :test :previewWorkbench :shado
 
 ## Practical limits and follow-up polish
 
-The preview runs the production Swing panels under Xvfb, with Montoya editors replaced by text fixtures. No scan traffic was sent. Burp itself was not launched, so native editor syntax coloring, toolbar appearance and host theme integration must be checked when loading the JAR in Burp. Production editor internals deliberately retain Burp's own settings. Browser checks do not apply to this native application.
+The original preview ran the production Swing panels under Xvfb with Montoya editors replaced by text fixtures and sent no scan traffic. The subsequent native Burp pass below covers the real editor and host integration. Production editor internals retain Burp's own settings. Browser checks do not apply to this native application.
 
 P3: the detailed existing run-summary strings can truncate in smaller windows; their counters and underlying run behavior are unchanged. Long identifiers and payloads can require horizontal scrolling.
 
@@ -66,3 +66,46 @@ The user's fresh-load screenshot showed a blank targeted tab. Bypass, IDOR and U
 Evidence: `artifacts/verification/workbench/bypass-empty.png`, `idor-empty.png`, and `url-validation-empty.png` (1440 × 1024 native captures). Inspected all three for text, alignment, readable contrast and consistency with the workbench style. The populated tabs and five-tab preview still work. No new assets or controls are introduced.
 
 Eight main-tab regression tests passed, including a new lifecycle check across all three modes: show the message initially, hide it when a request arrives, keep it hidden while any session remains, and restore it when the last session closes. The offline desktop preview and JAR build also passed. This follow-up ran the targeted tests; the 413-test result above records the earlier full rework verification.
+
+
+## Native Burp verification — 2026-11-12
+
+Loaded the production JAR into Burp Suite Professional 2026.9-53998 using a
+run-owned developer extension that delegates to `BurpExtender`. Montoya, message
+editors, context menus, HTTP transport and Collaborator were real. The disposable
+project used a private display, data directory, preferences and temporary files.
+Existing license settings were reused with the user's explicit authorization.
+
+Evidence is under `artifacts/verification/native-burp-20261112/`, including
+screenshots, actual Swing component snapshots, copied TSV results, loopback
+request observations, source/revision metadata and regression XML. The temporary
+driver sources are retained there for reproduction; they are not a supported
+repository GUI launcher.
+
+| Surface | Native verification |
+| --- | --- |
+| Dashboard | All four activity types visible; global limits and Pause All/Resume All exercised; only Sweep remains after targeted sessions close. |
+| Sweep | Imported an owned loopback URL through the file picker; previewed 140 exact probes; completed 140 results; exercised pause/resume; copied and read back TSV; checked Payload/Host/Family column order and paired native editors. |
+| Bypass | Routed through Repeater's Extensions → BypassFuzzer → Send to BypassFuzzer menu; completed 1,233 Header-family results, including 16 expected successful fixture responses; read back the TSV export. |
+| IDOR | Routed through the actual menu; entered controlled IDs 100/200; completed 214 baseline/playbook results and inspected native evidence. |
+| URL Validation | Routed a literal `{INJECT}` request; configured native Collaborator payloads; completed 184 probes, including 38 expected successful fixture responses; inspected substituted wire requests. |
+| Empty states | Each targeted mode showed the correct route initially, hid it with two sessions, kept it hidden after one close, and restored it after the last confirmed close. |
+| Collaborator | Production default payload helper and a separate native client each received HTTP 200 for direct self-test callbacks. The client polled DNS, DNS and HTTP interactions; Burp's Collaborator UI also displayed attributable DNS/HTTP events and the raw callback request. |
+
+The pass found and fixed three native UI issues: message viewers needed more
+reading space; divider initialization had to wait until a previously hidden tab
+was shown; and the Throttle dialog needed a fixed Close footer around scrollable
+settings. Session titles also now preserve the path when raw query markers or
+spaces are present. Regression tests cover the hidden-to-visible layout lifecycle
+and path extraction.
+
+460 regression tests passed: 325 Burp, 91 shared-core, 28 CLI and 16 loopback
+smoke tests. The Burp suite was repeated after the final layout corrections.
+The final committed artifact is reloaded for the five fresh tabs, imported Sweep
+layout and Throttle footer; its hash and results are recorded with the evidence.
+
+These runs verify the listed native paths. They do not exhaust every protocol,
+import format, retry combination or external target behavior. Fixture response
+signals and direct self-test callbacks are verification evidence, not findings
+against a real application. Cleanup removes only the disposable instance and
+its private licensed settings; proof artifacts remain.

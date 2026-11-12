@@ -35,6 +35,10 @@ import java.awt.HeadlessException;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.awt.event.HierarchyEvent;
+import java.awt.event.HierarchyListener;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -223,12 +227,38 @@ public class SessionResultsPanel extends JPanel {
             ? JSplitPane.HORIZONTAL_SPLIT
             : JSplitPane.VERTICAL_SPLIT;
         JSplitPane splitPane = new JSplitPane(splitOrientation, tableScrollPane, viewerTabs);
-        splitPane.setResizeWeight(0.52);
-        if (viewerLayout == ViewerLayout.RIGHT_OF_TABLE) {
-            SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.52));
-        } else {
-            SwingUtilities.invokeLater(() -> splitPane.setDividerLocation(0.52));
+        splitPane.setResizeWeight(viewerLayout == ViewerLayout.RIGHT_OF_TABLE ? 0.52 : 0.4);
+        // Native Burp editors include tab/search toolbars. Initialize on first show
+        // after layout so short workspaces retain readable message bodies.
+        class InitialDivider extends ComponentAdapter implements HierarchyListener {
+            private boolean initialized;
+
+            private void positionAfterLayout() {
+                SwingUtilities.invokeLater(() -> {
+                    if (initialized || !splitPane.isShowing()
+                        || splitPane.getWidth() <= 0 || splitPane.getHeight() <= 0) return;
+                    initialized = true;
+                    splitPane.removeComponentListener(this);
+                    splitPane.removeHierarchyListener(this);
+                    if (viewerLayout == ViewerLayout.RIGHT_OF_TABLE) {
+                        splitPane.setDividerLocation(0.52);
+                    } else {
+                        int available = splitPane.getHeight() - splitPane.getDividerSize();
+                        int tableMinimum = Math.min(80, available / 4);
+                        int tableHeight = Math.min((int) (available * 0.4), available - 320);
+                        splitPane.setDividerLocation(Math.max(tableMinimum, tableHeight));
+                    }
+                });
+            }
+
+            @Override public void componentResized(ComponentEvent event) { positionAfterLayout(); }
+            @Override public void hierarchyChanged(HierarchyEvent event) {
+                if ((event.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0) positionAfterLayout();
+            }
         }
+        InitialDivider initialDivider = new InitialDivider();
+        splitPane.addComponentListener(initialDivider);
+        splitPane.addHierarchyListener(initialDivider);
         add(splitPane, BorderLayout.CENTER);
     }
 

@@ -60,52 +60,55 @@ def run():
     port = server.server_port
     origin = f"http://127.0.0.1:{port}"
     scan = evidence / "scan"
-    with tempfile.TemporaryDirectory(prefix="bypassfuzzer-cli-verify-") as temporary:
-        temporary = pathlib.Path(temporary)
-        common = ["--output", str(scan), "--protocol", "http1", "--retry-attempts", "0",
-                  "--global-concurrency", "3", "--per-host-concurrency", "2", "--redact"]
-        common += ["--header", "Authorization: Bearer verification-secret"]
-        if feature == "sweep":
-            source = temporary / "urls.txt"
-            source.write_text(origin + "/private\n", encoding="utf-8")
-            args = ["sweep", "--urls", str(source), "--payload-set", "high-signal", "--max-probes", "8"] + common
-        elif feature == "bypass":
-            source = temporary / "request.raw"
-            source.write_bytes(raw_request("/private", port).encode("iso-8859-1"))
-            args = ["bypass", "--request", str(source), "--target-origin", origin,
-                    "--families", "header", "--max-probes", "300"] + common
-        elif feature == "idor":
-            source = temporary / "request.raw"
-            source.write_bytes(raw_request("/objects/alice?id=alice", port).encode("iso-8859-1"))
-            args = ["idor", "--request", str(source), "--target-origin", origin,
-                    "--authorized-id", "alice", "--target-id", "bob",
-                    "--id-location", "path:2", "--families", "idor.path.suffix_formats"] + common
-        else:
-            source = temporary / "request.raw"
-            source.write_bytes(raw_request("/redirect?next={INJECT}", port).encode("iso-8859-1"))
-            args = ["url-validation", "--request", str(source), "--target-origin", origin,
-                    "--allowed-host", "trusted.example", "--attacker-host", "127.0.0.1",
-                    "--contexts", "absolute-url", "--attacks", "domain-allow-list-bypass",
-                    "--encodings", "raw", "--max-probes", "12"] + common
-        command = ["java", "-jar", str(jar)] + args
-        (evidence / "command.json").write_text(json.dumps(command, indent=2) + "\n", encoding="utf-8")
-        result = subprocess.run(command, text=True, capture_output=True, timeout=120)
-        (evidence / "stdout.jsonl").write_text(result.stdout, encoding="utf-8")
-        (evidence / "stderr.log").write_text(result.stderr, encoding="utf-8")
-        if result.returncode != 0:
-            raise AssertionError(f"CLI exited {result.returncode}: {result.stderr}")
+    try:
+        with tempfile.TemporaryDirectory(prefix="bypassfuzzer-cli-verify-") as temporary:
+            temporary = pathlib.Path(temporary)
+            common = ["--output", str(scan), "--protocol", "http1", "--retry-attempts", "0",
+                      "--global-concurrency", "3", "--per-host-concurrency", "2", "--redact"]
+            common += ["--header", "Authorization: Bearer verification-secret"]
+            if feature == "sweep":
+                source = temporary / "urls.txt"
+                source.write_text(origin + "/private\n", encoding="utf-8")
+                args = ["sweep", "--urls", str(source), "--payload-set", "high-signal", "--max-probes", "8"] + common
+            elif feature == "bypass":
+                source = temporary / "request.raw"
+                source.write_bytes(raw_request("/private", port).encode("iso-8859-1"))
+                args = ["bypass", "--request", str(source), "--target-origin", origin,
+                        "--families", "header", "--max-probes", "300"] + common
+            elif feature == "idor":
+                source = temporary / "request.raw"
+                source.write_bytes(raw_request("/objects/alice?id=alice", port).encode("iso-8859-1"))
+                args = ["idor", "--request", str(source), "--target-origin", origin,
+                        "--authorized-id", "alice", "--target-id", "bob",
+                        "--id-location", "path:2", "--families", "idor.path.suffix_formats"] + common
+            else:
+                source = temporary / "request.raw"
+                source.write_bytes(raw_request("/redirect?next={INJECT}", port).encode("iso-8859-1"))
+                args = ["url-validation", "--request", str(source), "--target-origin", origin,
+                        "--allowed-host", "trusted.example", "--attacker-host", "127.0.0.1",
+                        "--contexts", "absolute-url", "--attacks", "domain-allow-list-bypass",
+                        "--encodings", "raw", "--max-probes", "12"] + common
+            command = ["java", "-jar", str(jar)] + args
+            (evidence / "command.json").write_text(json.dumps(command, indent=2) + "\n", encoding="utf-8")
+            result = subprocess.run(command, text=True, capture_output=True, timeout=120)
+            (evidence / "stdout.jsonl").write_text(result.stdout, encoding="utf-8")
+            (evidence / "stderr.log").write_text(result.stderr, encoding="utf-8")
+            if result.returncode != 0:
+                raise AssertionError(f"CLI exited {result.returncode}: {result.stderr}")
 
-        bad = temporary / "collaborator.yaml"
-        bad.write_text("schemaVersion: 1\nbypass:\n  collaboratorEnabled: true\n", encoding="utf-8")
-        boundary = subprocess.run(["java", "-jar", str(jar), "bypass", "--config", str(bad)],
-                                  text=True, capture_output=True, timeout=30)
-        boundary_text = f"exit={boundary.returncode}\n{boundary.stdout}{boundary.stderr}"
-        (evidence / "collaborator-boundary.log").write_text(boundary_text, encoding="utf-8")
-        if boundary.returncode != 2 or "Collaborator is not supported" not in boundary_text:
-            raise AssertionError("Collaborator configuration was not rejected at preflight")
-    server.shutdown()
-    server.server_close()
-    thread.join(timeout=5)
+            bad = temporary / "collaborator.yaml"
+            bad.write_text("schemaVersion: 1\nbypass:\n  collaboratorEnabled: true\n", encoding="utf-8")
+            boundary = subprocess.run(["java", "-jar", str(jar), "bypass", "--config", str(bad)],
+                                      text=True, capture_output=True, timeout=30)
+            boundary_text = f"exit={boundary.returncode}\n{boundary.stdout}{boundary.stderr}"
+            (evidence / "collaborator-boundary.log").write_text(boundary_text, encoding="utf-8")
+            if boundary.returncode != 2 or "Collaborator is not supported" not in boundary_text:
+                raise AssertionError("Collaborator configuration was not rejected at preflight")
+    finally:
+        (evidence / "lab-requests.json").write_text(json.dumps(observed, indent=2) + "\n", encoding="utf-8")
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
     summary = json.loads((scan / "summary.json").read_text(encoding="utf-8"))
     lines = [json.loads(line) for line in (scan / "results.jsonl").read_text(encoding="utf-8").splitlines() if line]

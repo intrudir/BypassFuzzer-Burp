@@ -36,13 +36,13 @@ Drive one real CLI mode against the helper's isolated loopback lab:
 ./.agents/skills/verify-bypassfuzzer-cli/helpers/verify.sh drive "$RUN_ID" bypass
 ```
 
-Feature IDs are `sweep`, `bypass`, `idor`, and `url-validation`. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
+Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, and `runtime-results`. The last drives retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
 
 The Bypass drive additionally requires a blocked baseline, an emitted trusted-proxy IP header mutation, a `200` lab response marker, and a `LIKELY_BYPASS` result. IDOR requires its two control baselines first. URL Validation requires marker substitution. Sweep requires a high-signal run scoped by its URL-list input.
 
 ## Evidence
 
-Evidence survives under `artifacts/verification/bypassfuzzer-cli/<RUN_ID>/`. Each feature retains `command.json`, `stdout.jsonl`, `stderr.log`, `lab-requests.json`, `assertions.json`, the CLI's complete `scan/` evidence tree, and `collaborator-boundary.log`.
+Evidence survives under `artifacts/verification/bypassfuzzer-cli/<RUN_ID>/`. Each scan-mode feature retains `command.json`, `stdout.jsonl`, `stderr.log`, `lab-requests.json`, `assertions.json`, the CLI's complete `scan/` evidence tree, and `collaborator-boundary.log`. The `runtime-results` feature retains `commands.json`, `baseline/scan/`, `controlled-scan/`, `results-*.stdout`, control transcripts, lab observations, and its own assertions.
 
 A passing proof must use the packaged CLI, observe loopback HTTP traffic, read the referenced raw evidence, and confirm output permissions and redaction. Internal planner calls alone are not CLI proof. Native HTTP/2 framing remains covered by `NettyRequestTransportTest`; run the full Gradle test suite when transport changes.
 
@@ -63,8 +63,10 @@ The live driver owns and closes its in-process loopback server. Cleanup removes 
 ```text
 verify.sh launch  <run-id>
 verify.sh doctor  <run-id>
-verify.sh drive   <run-id> <sweep|bypass|idor|url-validation>
+verify.sh drive   <run-id> <sweep|bypass|idor|url-validation|runtime-results>
 verify.sh cleanup <run-id>
 ```
 
 `helpers/live_drive.py` implements the isolated lab and black-box assertions; invoke it through `verify.sh` so paths and evidence are consistent.
+
+`helpers/runtime_drive.py` owns the runtime/results loopback lab and subprocess cleanup. Invoke it through `verify.sh drive <run-id> runtime-results`; it retains assertions, exports and command transcripts under that feature directory. Every drive performs its own doctor check, including `results --help`.

@@ -10,6 +10,7 @@ Dashboard is BypassFuzzer's master view for every open Sweep, Bypass, IDOR, and 
 - `dashboard-global-pause` uses `Pause All` and `Resume All` as a global request-admission overlay without clearing local pauses.
 - `dashboard-stop-all` stops active scans and retry passes after confirmation while retaining tabs and results.
 - `dashboard-limits` enables per-host requests/second and total in-flight caps for this Burp launch.
+- `dashboard-workbench` keeps all five modes in a shared charcoal/orange extension-local theme; empty targeted modes show their matching context-menu guidance.
 - `dashboard-update` shows the installed and available versions in a suite-wide banner when the update check finds a newer release, and lets the user dismiss the notice.
 
 ## How to get to it (user POV)

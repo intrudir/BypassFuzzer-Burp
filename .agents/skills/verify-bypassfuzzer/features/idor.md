@@ -4,6 +4,8 @@ IDOR compares an authorized identifier with a target identifier, records both ba
 
 ## Sub-features
 
+- `idor-empty-state` shows `Right-click any request and choose` and `Send to BypassFuzzer → IDOR` when no sessions exist; hides after routing a request and returns after the last confirmed session close.
+
 - `idor-route` sends a selected request through `Send to BypassFuzzer` -> `IDOR`.
 - `idor-tab-name` renames a request session from its tab header by double-click or `Rename tab...` in the right-click menu.
 - `idor-identifiers` configures `Identifier 1 (authorized)`, `Identifier 2 (target)`, and one exact path, query, form, JSON, plain-text, XML, multipart text-field, header, or cookie location above a read-only native Burp request editor. The editor searches the typed identifier live.
@@ -35,6 +37,7 @@ Preconditions:
 
 - **Automated control/engine proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" idor`. The harness proves the context-menu child, mode-specific `Configure Attack`/`Debug Info` surface, separate HTTP-send/result accounting, per-mode headers, baseline ordering, registered playbook execution, and representative mutation behavior.
 - **Configure.** Choose `Configure Attack` and require the original request to be visible below the controls in a Burp message editor. Type identifier 1 and require Burp's search to highlight matching text without leaving the dialog. Click `Find Locations` to populate the exact location dropdown, then select a location; on Burp versions with caret positioning, the editor should scroll to that slot. Choose `Preview Requests`, select a payload row in the table, and require the Burp editor below to display that generated request before choosing `Start IDOR Analysis`.
+- **Empty state.** Select the mode before sending a request and read its matching context-menu route. Send two requests: the guidance hides. Close one session: it stays hidden. Confirm closing the last session: the guidance returns.
 - **Rename the session.** Double-click its nested tab name, enter `Other user comparison`, and require the visible title to change while the same request session remains selected. Right-click the name to find `Rename tab...`.
 - **Switch sessions.** Open two IDOR request tabs. While one scans, click the other tab's title and require that session to become visible; click anywhere else in its header to switch back. The entire header should select the tab without affecting the running scan.
 - **Coverage.** For POST and GET, require no mutation-limit control. Preview a path identifier and require every eligible paired separator plus other applicable playbook rows, with both baselines first. The preview reports its complete planned count and notes that live response-guided probes may add requests after baselines.
@@ -52,6 +55,8 @@ Preconditions:
 - **Proof.** Retain the automated transcript/XML, baseline viewer screenshots, one named mutation's viewers, and any saved debug file/hash.
 
 ## Gotchas
+
+- Results use a `Probe` tab with Request and Response side by side. The shared manual filter drawer starts closed; open `Filters` before changing manual filters. The extension theme leaves native Burp editor internals and other tools unchanged.
 
 - Discovery requires an exact selectable value. Plain-text occurrences must have identifier boundaries; XML entity-derived values, CDATA, multipart files, and credential-bearing headers/cookies are not selectable.
 - A target response resembling the control is evidence to review, not an automatic authorization verdict.

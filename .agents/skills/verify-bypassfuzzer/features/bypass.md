@@ -4,6 +4,8 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 
 ## Sub-features
 
+- `bypass-empty-state` shows `Right-click any request and choose` and `Send to BypassFuzzer → Bypass` when no sessions exist; hides after routing a request and returns after the last confirmed session close.
+
 - `bypass-route` sends the selected Proxy, Sitemap, or Repeater request through `Send to BypassFuzzer` -> `Bypass`.
 - `bypass-tab-name` renames a request session from its tab header by double-click or `Rename tab...` in the right-click menu.
 - `bypass-selection` enables individual attack families or uses `Check All`/`Uncheck All`.
@@ -19,7 +21,7 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 - Choose top-level `Bypass`, then the nested tab titled `<METHOD> <path>`.
 - Double-click the nested tab name or right-click it and choose `Rename tab...`; the renamed title stays with that session.
 - Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Preview Requests`, `Start Fuzzing`, `Pause`, `Stop`, `Clear Results`, or the shared `Retry queue (n)` button in the primary action bar.
-- Use `Hide Filters`/`Show Filters`, `Enable (auto-detect patterns)`, `Enable Manual Filter`, and `Apply Manual Filters` beside the results table.
+- Use `Filters`/`Hide filters`, `Smart filter`, `Enable Manual Filter`, and `Apply Manual Filters` beside the results table.
 - Select a result to inspect its `Request` and `Response`; use the table context menu for highlights or `Copy selected rows (TSV)`.
 
 ## Driving it with verify-bypassfuzzer
@@ -32,6 +34,7 @@ Preconditions:
 
 - **Full automated proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" bypass`. The first layer clicks each `Send to BypassFuzzer` child and verifies nested mode routing. The second requires the Bypass controls and proves a `429` plus three automatic retry attempts remain visible, numbered, and deferred after exhaustion without overflowing silently. The third runs the production Header attack against an isolated lab and requires the `trusted X-Forwarded-For` bypass marker. A black-box lab transcript records baseline and mutated outcomes.
 - **Open the session manually.** Send `GET /edge/private/reports/quarterly` with `Cookie: session=lab-user` to `Bypass`. The selected top-level mode is `Bypass`, the nested title starts `GET /edge/private/reports/quarterly`, and the status identifies the same target.
+- **Empty state.** Select the mode before sending a request and read its matching context-menu route. Send two requests: the guidance hides. Close one session: it stays hidden. Confirm closing the last session: the guidance returns.
 - **Rename the session.** Double-click its nested tab name, enter `Quarterly report`, and require the visible title to change. Right-click the name to find `Rename tab...`; cancelling or entering only spaces must keep the current title.
 - **Choose scope.** Use `Uncheck All`, select `Header`, and review `Options...`. Keep Collaborator off unless Professional Collaborator is configured and explicitly in scope.
 - **Preview.** Choose `Preview Requests`, sort or select a payload row, and require the Burp request editor below the table to display that row's planned request.
@@ -41,6 +44,8 @@ Preconditions:
 - **Proof.** Retain `user-path.log`, `live-engine.log`, `live-lab-black-box.log`, copied XML, and manual screenshots when a Burp-visible surface changed.
 
 ## Gotchas
+
+- Results use a `Probe` tab with Request and Response side by side. The shared manual filter drawer starts closed; open `Filters` before changing manual filters. The extension theme leaves native Burp editor internals and other tools unchanged.
 
 - `Send to BypassFuzzer` is absent when the context has no selected request.
 - `Pause` prevents new sends but does not suppress responses already in flight.

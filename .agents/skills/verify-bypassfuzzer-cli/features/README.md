@@ -9,6 +9,8 @@ The CLI is a packaged Java command with four modes. Every mode writes streaming 
 - [IDOR / BOLA](./idor.md) covers identifier configuration, ordered baselines, and playbooks.
 - [URL Validation](./url-validation.md) covers marker substitution, contexts, attacks, and encodings with explicit or generated OOB domains.
 
+- [Runtime controls and retained results](./runtime-results.md) covers YAML/flag precedence, run control, traffic caps, evidence redaction, retained-result filters and exports.
+
 ## Proof conventions
 
 - Use the packaged fat JAR, not an internal main-class shortcut.

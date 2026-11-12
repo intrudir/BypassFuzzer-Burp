@@ -4,6 +4,8 @@ URL Validation edits a selected request around one or more `{INJECT}` markers, p
 
 ## Sub-features
 
+- `urlval-empty-state` shows `Right-click any request and choose` and `Send to BypassFuzzer → URL Validation` when no sessions exist; hides after routing a request and returns after the last confirmed session close.
+
 - `urlval-route` sends a selected request through `Send to BypassFuzzer` -> `URL Validation`.
 - `urlval-tab-name` renames a request session from its tab header by double-click or `Rename tab...` in the right-click menu.
 - `urlval-workbench` edits the exact request, places `{INJECT}` markers, and resets to the original request.
@@ -33,6 +35,7 @@ Preconditions:
 
 - **Automated user-path/live proof.** Run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" url-validation`. The harness proves mode routing, mode-specific controls and headers, separate HTTP-send/result accounting, payload generation, then runs marker mode through the production URL Validation engine against an isolated lab and requires the URL allow-list bypass marker.
 - **Set marker.** Send `GET /redirect/next?next={INJECT}` to URL Validation, choose `Configure Attack`, and confirm the Request Workbench still contains the marker in the exact request that will be sent.
+- **Empty state.** Select the mode before sending a request and read its matching context-menu route. Send two requests: the guidance hides. Close one session: it stays hidden. Confirm closing the last session: the guidance returns.
 - **Rename the session.** Double-click its nested tab name, enter `Redirect host test`, and require the visible title to change while the same request session remains selected. Right-click the name to find `Rename tab...`.
 - **Configure and preview.** Select the Absolute URL context, enter the trusted and attacker hosts used by the lab recipe, and choose `Preview Requests`. Select a `trusted@attacker`-style payload row and require the Burp editor to show it in the generated request. Confirm the preview count matches the enabled settings/encodings.
 - **Review shared execution settings.** `Request Headers...` includes synthetic/browser-like per-request User-Agent variation. `Throttle...` includes hard global/per-host in-flight caps, throttle codes, posture, and fixed/smart run-wide pauses.
@@ -42,6 +45,8 @@ Preconditions:
 - **Proof.** Retain `user-path.log`, `live-engine.log`, copied XML, preview screenshots, and one result's Request/Response viewers.
 
 ## Gotchas
+
+- Results use a `Probe` tab with Request and Response side by side. The shared manual filter drawer starts closed; open `Filters` before changing manual filters. The extension theme leaves native Burp editor internals and other tools unchanged.
 
 - Starting without an attacker host is rejected unless Collaborator payloads are enabled and available.
 - The Request Workbench is the exact active request; editing a separate Repeater copy after routing does not update it.

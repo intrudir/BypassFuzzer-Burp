@@ -19,10 +19,10 @@ validate_run_id() {
 }
 
 cleanup_active_group() {
-  if [[ -n "$ACTIVE_PGID" ]] && kill -0 "$ACTIVE_PGID" 2>/dev/null; then
+  if [[ -n "$ACTIVE_PGID" ]] && kill -0 -- "-$ACTIVE_PGID" 2>/dev/null; then
     kill -TERM -- "-$ACTIVE_PGID" 2>/dev/null || true
     for _attempt in {1..20}; do
-      if ! kill -0 "$ACTIVE_PGID" 2>/dev/null; then
+      if ! kill -0 -- "-$ACTIVE_PGID" 2>/dev/null; then
         ACTIVE_PGID=""
         return
       fi
@@ -43,7 +43,7 @@ run_logged() {
   ACTIVE_PGID=$!
   local status=0
   wait "$ACTIVE_PGID" || status=$?
-  ACTIVE_PGID=""
+  cleanup_active_group
   sed -n '1,240p' "$log_file"
   if (( status != 0 )); then
     echo "command failed with exit code $status; full transcript: $log_file" >&2
@@ -67,10 +67,11 @@ copy_results() {
   local evidence_dir="$1"
   local task="$2"
   local source_dir="$REPO_ROOT/build/test-results/$task"
+  local layer="${3:-$task}"
   if [[ -d "$source_dir" ]]; then
     mkdir -p "$evidence_dir/test-results"
-    rm -rf "$evidence_dir/test-results/$task"
-    cp -R "$source_dir" "$evidence_dir/test-results/$task"
+    rm -rf "$evidence_dir/test-results/$layer"
+    cp -R "$source_dir" "$evidence_dir/test-results/$layer"
   fi
 }
 
@@ -78,7 +79,7 @@ launch() {
   local run_id="$1"
   local evidence_dir="$REPO_ROOT/artifacts/verification/bypassfuzzer/$run_id"
   mkdir -p "$evidence_dir"
-  run_logged "$evidence_dir/launch.log" sh "$REPO_ROOT/build.sh" --no-daemon shadowJar
+  run_logged "$evidence_dir/launch.log" sh "$REPO_ROOT/build.sh" --no-daemon :shadowJar
 
   local jar_file="$REPO_ROOT/build/libs/bypassfuzzer.jar"
   [[ -f "$jar_file" ]] || { echo "missing $jar_file" >&2; exit 1; }
@@ -156,26 +157,17 @@ drive() {
 
   case "$feature" in
     dashboard)
-      run_gradle "$evidence_dir" swing-controls.log test \
-        --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.startsWithDashboardSweepAndTargetedModeTabs \
+      run_gradle "$evidence_dir" swing-controls.log :test \
+        --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.updateBannerShowsVersionDetailsAndCanBeDismissed \
         --tests com.bypassfuzzer.burp.ui.dashboard.DashboardPanelTest
       copy_results "$evidence_dir" test
       ;;
     sweep)
-      run_gradle "$evidence_dir" swing-and-engine.log test \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.modeSelectorShowsOnlyTheRelevantSourceControls \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.blockedResponsesCanClearLoadedCandidatesWithoutChangingMode \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.authenticatedModePassivelyFiltersBySelectedIdentifiersAndSafeMethods \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.authenticatedModeOffersAnonymousVerification \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.previewTableUpdatesAfterLoadingProxyHistory \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importsTargetUrlsFromTextFileIntoPreviewTable \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.importedTargetsCanClearCandidatesAndBaseUrlForFreshStart \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.probePreviewRendersExactGeneratedRequests \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.payloadSetDefaultsToHighSignalAndCanSelectAllPayloads \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.requestHeadersMenuOffersSyntheticAndBrowserLikeUserAgentRandomization \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.userAgentRandomizationOverridesFixedHeaderAtEngineBoundary \
-        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest.startAndStopButtonsReflectRunningState \
+      run_gradle "$evidence_dir" swing-and-engine.log :test \
+        --tests com.bypassfuzzer.burp.ui.session.CoverageSweepPanelTest \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsPanelTest \
+        --tests com.bypassfuzzer.burp.ui.FuzzerResultsTableModelTest \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
         --tests com.bypassfuzzer.burp.ui.session.SwingBatchDispatcherTest \
@@ -195,13 +187,12 @@ drive() {
       copy_results "$evidence_dir" test
       ;;
     bypass)
-      run_gradle "$evidence_dir" user-path.log test \
+      run_gradle "$evidence_dir" user-path.log :test \
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.requestSessionIsNestedUnderSelectedMode \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.bypassKeepsAttackTypesInlineAndMovesRunOptionsBehindButton \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
-        --tests com.bypassfuzzer.burp.core.FuzzerEngineThrottleTest \
         --tests com.bypassfuzzer.burp.core.FuzzerEngineThrottleTest \
         --tests com.bypassfuzzer.burp.core.throttle.RetryQueueTest
       copy_results "$evidence_dir" test
@@ -212,7 +203,7 @@ drive() {
         "$REPO_ROOT/src/test/vulnerable_lab/run_smoke_tests.py"
       ;;
     idor)
-      run_gradle "$evidence_dir" swing-and-engine.log test \
+      run_gradle "$evidence_dir" swing-and-engine.log :test \
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorMovesIdentifiersAndRunOptionsBehindConfigureAttack \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorAndUrlValidationDoNotReportUnsentResultRowsAsHttpRequests \
@@ -221,15 +212,16 @@ drive() {
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.aNewPrimaryRunResetsManualRetryRequestTelemetry \
         --tests com.bypassfuzzer.burp.core.idor.IdorEngineTest \
-        --tests com.bypassfuzzer.burp.core.idor.IdorEngineTest
+        --tests com.bypassfuzzer.burp.ui.session.IdorConfigureRequestEditorTest
       copy_results "$evidence_dir" test
       ;;
     url-validation)
-      run_gradle "$evidence_dir" user-path.log test \
+      run_gradle "$evidence_dir" user-path.log :test \
         --tests com.bypassfuzzer.burp.menu.ContextMenuFactoryTest \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.targetedSessionContainsOnlyItsSelectedMode \
         --tests com.bypassfuzzer.burp.ui.FuzzingSessionTabTest.idorAndUrlValidationDoNotReportUnsentResultRowsAsHttpRequests \
         --tests com.bypassfuzzer.burp.ui.session.UrlValidationOptionsPanelTest \
+        --tests com.bypassfuzzer.burp.ui.session.UrlValidationRequestPreviewTest \
         --tests com.bypassfuzzer.burp.ui.session.CentralizedExecutionControlsTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.sharedWorkspaceAlwaysExposesTheRetryQueueControl \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest.aNewPrimaryRunResetsManualRetryRequestTelemetry \

@@ -3,8 +3,8 @@
 ## Sub-features
 
 - Raw HTTP input keeps ordered duplicate headers and uses a separate `--target-origin` for routing.
-- Any subset of the twelve stable attack-family IDs can run, with a fair cap across selected families.
-- The CLI never generates Collaborator payloads.
+- Any subset of the twelve stable attack-family IDs can run through the shared Bypass planner. The default inventory is uncapped; an explicit `--max-probes` bounds selected mutations.
+- Explicit `--oob-domain` or an executable `--oob-generator` enables the shared out-of-band header inventory. The CLI does not create a Burp Collaborator client or accept a bare Collaborator-enable YAML flag.
 
 ## How to get to it (user POV)
 

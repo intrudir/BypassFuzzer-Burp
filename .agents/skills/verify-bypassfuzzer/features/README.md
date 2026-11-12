@@ -6,7 +6,7 @@ This directory is the maintained map of BypassFuzzer's user-facing Burp Suite ex
 
 - Run from the repository root with Java 17+, Python 3, `/usr/bin/burpsuite`, `setsid`, and `unzip` available.
 - Create a unique `RUN_ID`, then run `helpers/verify.sh launch <RUN_ID>` and `helpers/verify.sh doctor <RUN_ID>`.
-- Require `build/libs/bypassfuzzer.jar` with manifest title `BypassFuzzer` and the version declared in `build.gradle`.
+- Require `build/libs/bypassfuzzer.jar` with manifest title `BypassFuzzer` and the project version reported by `./gradlew --quiet printVersion`.
 - Treat any already-running Burp process as user-owned. Do not click it, change its extensions, proxy settings, project, or user configuration.
 - Use a disposable Burp project for visual checks. The unattended harness uses headless Swing controls and a test-local vulnerable lab instead of a shared Burp instance.
 - Send real HTTP mutations only to the repository's loopback vulnerable lab unless the user explicitly authorizes another target.

@@ -1,0 +1,24 @@
+# Runtime controls and retained results
+
+## Sub-features
+
+- Version-1 YAML jobs are strict; explicit flags override YAML values, and input paths resolve relative to the job file.
+- `--preview` prints planned requests without sending; `--header`, User-Agent, throttle, retry, protocol, timeout and proxy controls apply through the shared request/execution boundaries.
+- `--control-file` accepts `pause`, `resume`, `stop`; traffic caps limit physical sends during a run.
+- JSONL records reference retained raw requests/responses, with optional credential redaction, owner-only evidence permissions and a terminal summary.
+- `results` filters retained evidence by status, length, content type, host, payload, signal and response text/regex; `--smart-repeats` limits repeated patterns.
+- `results --format` supports `tsv`, `jsonl`, `hosts`, `payloads`; completed-host export uses summary metadata when available.
+
+## How to get to it (user POV)
+
+Use `java -jar cli/build/libs/bypassfuzzer-cli.jar <mode> --help` for runtime flags. After a run, use `results --input <evidence-dir> --show-status 200 --format jsonl` or select another export format.
+
+## Driving it with the CLI helper
+
+Run `verify.sh doctor <run-id>` then `verify.sh drive <run-id> runtime-results`. It reads packaged-CLI evidence through `results`, validates TSV/JSONL/host/payload exports, proves YAML/flag precedence with an offline preview, and pauses/resumes/stops a separate packaged scan against its own loopback server. Retain command transcripts, assertions, exported data, control summary and observed lab traffic.
+
+## Gotchas
+
+- Each CLI scan is isolated. Dashboard-style limits apply within that process; Burp's extension-wide registry and UI actions are host-specific.
+- Filtering changes exported visibility, not retained source evidence. Review raw responses before declaring a finding.
+- Protocol framing and the broader shared runtime combinations remain covered by the existing CLI/transport regression tests; one loopback drive does not prove arbitrary target behavior.

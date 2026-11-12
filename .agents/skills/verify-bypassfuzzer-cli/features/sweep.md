@@ -4,6 +4,8 @@
 
 - URL lists, raw requests, request manifests, OpenAPI, Postman, and retry packages define scope.
 - `high-signal` uses the bounded Sweep corpus; `all` selects shared bypass families.
+- `--sweep-mode authenticated` uses the shared anonymous-control/public-endpoint workflow with configurable credential headers/cookies; endpoint dedupe, static-asset exclusion, excluded hosts and custom Host ports are configurable.
+- Exact retry packages retain saved mutations and retry metadata; they do not regenerate a new catalog.
 - State-changing OpenAPI/Postman operations remain off unless explicitly enabled.
 
 ## How to get to it (user POV)

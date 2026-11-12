@@ -35,6 +35,7 @@ doctor() {
   for feature in sweep bypass idor url-validation; do
     java -jar "$JAR" "$feature" --help | grep -q -- '--output'
   done
+  java -jar "$JAR" results --help | grep -q -- '--input'
   printf 'doctor=PASS\njar=%s\nversion=%s\n' "$JAR" "$(manifest_value Implementation-Version)"
 }
 
@@ -53,10 +54,16 @@ case "$ACTION" in
     ;;
   drive)
     FEATURE=${3:-}
-    case "$FEATURE" in sweep|bypass|idor|url-validation) ;; *) echo "unknown feature: $FEATURE" >&2; exit 2 ;; esac
+    case "$FEATURE" in sweep|bypass|idor|url-validation|runtime-results) ;; *) echo "unknown feature: $FEATURE" >&2; exit 2 ;; esac
     mkdir -p "$EVIDENCE/$FEATURE"
-    python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/live_drive.py" \
-      "$JAR" "$EVIDENCE/$FEATURE" "$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
+    doctor >"$EVIDENCE/$FEATURE/doctor-before-drive.txt"
+    if test "$FEATURE" = runtime-results; then
+      python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/runtime_drive.py" \
+        "$JAR" "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
+    else
+      python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/live_drive.py" \
+        "$JAR" "$EVIDENCE/$FEATURE" "$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
+    fi
     printf 'drive=PASS\nfeature=%s\nevidence=%s\n' "$FEATURE" "$EVIDENCE/$FEATURE"
     ;;
   cleanup)

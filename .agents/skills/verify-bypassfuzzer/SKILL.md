@@ -18,7 +18,7 @@ RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 ./.agents/skills/verify-bypassfuzzer/helpers/verify.sh launch "$RUN_ID"
 ```
 
-The command runs `sh build.sh --no-daemon shadowJar` and requires `build/libs/bypassfuzzer.jar`. Readiness is the successful build plus a manifest whose `Implementation-Title` is `BypassFuzzer` and whose `Implementation-Version` matches `build.gradle`.
+The command runs `sh build.sh --no-daemon :shadowJar` and requires `build/libs/bypassfuzzer.jar`. Readiness is the successful build plus a manifest whose `Implementation-Title` is `BypassFuzzer` and whose `Implementation-Version` matches `./gradlew --quiet printVersion`.
 
 For a human-visible Burp check, use a disposable Burp project, go to `Extensions` -> `Installed` -> `Add`, choose extension type `Java`, and select the absolute path to `build/libs/bypassfuzzer.jar`. It is ready when the extension output contains `BypassFuzzer extension loaded successfully!` and the suite shows the `BypassFuzzer` tab with `Dashboard`, `Sweep`, `Bypass`, `IDOR`, and `URL Validation`.
 

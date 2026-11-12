@@ -7,6 +7,19 @@ import burp.api.montoya.http.message.responses.HttpResponse;
  * Represents the result of a single attack attempt.
  */
 public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
+    public record EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
+        com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse) {
+        public static EvidenceMetadata empty() { return new EvidenceMetadata("", com.bypassfuzzer.core.scan.ControlRole.NONE,
+            com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED, null, null); }
+        public String annotation() { return calibration == com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.MATCH ? "Possible fallback" :
+            calibration == com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.UNAVAILABLE ? "Calibration unavailable" : ""; }
+    }
+    private final EvidenceMetadata evidenceMetadata;
+    public EvidenceMetadata getEvidenceMetadata() { return evidenceMetadata; }
+    public AttackResult withEvidenceMetadata(EvidenceMetadata metadata) {
+        return new AttackResult(attackType,payload,targetLabel,payloadFamily,payloadEncoding,request,response,originalRequest,originalResponse,
+            verificationRequest,verificationResponse,throttleRetryAttempt,statusCode,contentLength,contentType,timestamp,evidenceOnDisk,metadata);
+    }
     private final String attackType;
     private final String payload;
     private final String targetLabel;
@@ -67,7 +80,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
             response != null ? response.statusCode() : 0,
             response != null ? response.body().length() : 0,
             response != null ? extractContentType(response) : "",
-            System.currentTimeMillis(), false);
+            System.currentTimeMillis(), false, EvidenceMetadata.empty());
     }
 
     private AttackResult(String attackType, String payload, String targetLabel, String payloadFamily,
@@ -75,7 +88,8 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
                          HttpRequest originalRequest, HttpResponse originalResponse,
                          HttpRequest verificationRequest, HttpResponse verificationResponse,
                          int throttleRetryAttempt, int statusCode, int contentLength,
-                         String contentType, long timestamp, boolean evidenceOnDisk) {
+                         String contentType, long timestamp, boolean evidenceOnDisk, EvidenceMetadata metadata) {
+        this.evidenceMetadata = metadata;
         this.attackType = attackType;
         this.payload = payload;
         this.targetLabel = targetLabel == null ? "" : targetLabel;
@@ -109,7 +123,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
             original.verificationRequest,
             original.verificationResponse,
             attempt
-        );
+        ).withEvidenceMetadata(original.evidenceMetadata);
     }
 
     /**
@@ -123,7 +137,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
             attackType, payload, targetLabel, payloadFamily, payloadEncoding,
             tempFileCopy(request), tempFileCopy(response),
             originalRequest, originalResponse, verificationRequest, verificationResponse,
-            throttleRetryAttempt, statusCode, contentLength, contentType, timestamp, true);
+            throttleRetryAttempt, statusCode, contentLength, contentType, timestamp, true, evidenceMetadata);
     }
 
     public boolean isEvidenceOnDisk() {

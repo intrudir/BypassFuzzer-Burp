@@ -17,6 +17,10 @@ import java.util.Set;
  */
 public class FuzzerConfig {
 
+    private com.bypassfuzzer.core.scan.PlaybookOptions playbookOptions = com.bypassfuzzer.core.scan.PlaybookOptions.defaults();
+    public com.bypassfuzzer.core.scan.PlaybookOptions getPlaybookOptions() { return playbookOptions; }
+    public void setPlaybookOptions(com.bypassfuzzer.core.scan.PlaybookOptions value) { playbookOptions = value; }
+
     // Attack types
     private boolean enableHeaderAttack = true;
     private boolean enablePathAttack = true;

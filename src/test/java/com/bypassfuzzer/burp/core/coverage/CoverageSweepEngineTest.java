@@ -38,6 +38,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class CoverageSweepEngineTest {
+    // Keep legacy classification/retry assertions independent of additional control traffic.
+    private static CoverageSweepOptions withoutCalibration(CoverageSweepOptions o) {
+        var families=o.familySelection();
+        var hs=families.highSignalPlaybooks(); var full=families.bypassPlaybooks();
+        var selected=new CoverageSweepFamilySelection(families.highSignalFamilies(),families.bypassFamilies(),
+            new com.bypassfuzzer.core.scan.PlaybookOptions(hs.selected(),hs.apiPrefixes(),false,hs.includeStateChanging()),
+            new com.bypassfuzzer.core.scan.PlaybookOptions(full.selected(),full.apiPrefixes(),false,full.includeStateChanging()));
+        return new CoverageSweepOptions(o.statuses(),o.inScopeOnly(),o.maxCandidates(),o.maxProbesPerCandidate(),o.concurrency(),o.perHostConcurrency(),
+            o.throttleStatusCodes(),o.mode(),o.authSelection(),o.excludeStaticAssets(),o.verifyUnauthenticatedAccess(),o.skipLikelyPublicEndpoints(),
+            o.hostPortProbePorts(),o.requestHeaders(),o.payloadSet(),o.posture(),selected,o.pauseMode(),o.fixedPauseMillis(),o.userAgentMode(),o.userAgentRandomizationSeed());
+    }
+
 
     @Test
     void automaticSweepSendRetainsHttp500Response() throws Exception {
@@ -204,11 +216,12 @@ class CoverageSweepEngineTest {
             Map.of("Host", "example.com:8443"), "");
         CoverageSweepCandidate candidate = candidate(original, 403);
         ModeTrackingSender sender = new ModeTrackingSender(response(403, "text/plain", "blocked"));
-        CoverageSweepOptions options = new CoverageSweepOptions(
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(
             Set.of(403), true, 100, 1, 1, 1, Set.of(),
             CoverageSweepMode.BLOCKED_RESPONSES, CoverageSweepAuthSelection.defaults(),
-            true, true, List.of(0)
-        );
+            true, true, List.of(0), List.of(), CoverageSweepPayloadSet.HIGH_SIGNAL, ThrottleSettings.Posture.RIDE_HARD,
+            new CoverageSweepFamilySelection(Set.of("Host Parsing"), Set.of())
+        ));
         List<AttackResult> results = new ArrayList<>();
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,
             new CoverageSweepProbeGenerator());
@@ -463,9 +476,11 @@ class CoverageSweepEngineTest {
         assertEquals(List.of("10.0.0.1", "127.0.0.1"),
             com.bypassfuzzer.burp.testsupport.HeaderRequestTestFactory.values(
                 forwarded.request(), "X-Forwarded-For"));
-        assertEquals(List.of("Bearer stable", "Bearer A"),
+        assertEquals(List.of("Bearer A"),
             com.bypassfuzzer.burp.testsupport.HeaderRequestTestFactory.values(
                 authorization.request(), "Authorization"));
+        assertFalse(forwarded.request().hasHeader("Authorization"));
+        assertEquals("theme=light", forwarded.request().headerValue("Cookie"));
     }
 
     @Test
@@ -476,9 +491,9 @@ class CoverageSweepEngineTest {
         CoverageSweepCandidate candidate = new CoverageSweepCandidate(originalRequest, originalResponse, "key",
             originalRequest.url(), "GET", "example.com", "/account", 200, 13,
             "application/json", ZonedDateTime.now());
-        CoverageSweepOptions options = new CoverageSweepOptions(Set.of(), true, 100, 2, 1, 0,
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(Set.of(), true, 100, 2, 1, 0,
             Set.of(429), CoverageSweepMode.AUTHENTICATED_TRAFFIC,
-            new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of(), false));
+            new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of(), false)));
         List<AttackResult> results = new ArrayList<>();
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
             new StaticSender(response(200, "application/json", "probe")), new CoverageSweepProbeGenerator());
@@ -616,13 +631,13 @@ class CoverageSweepEngineTest {
 
     private static CoverageSweepOptions authenticatedOptions(boolean verify, boolean skip,
                                                                CoverageSweepPayloadSet payloadSet) {
-        CoverageSweepOptions defaults = CoverageSweepOptions.defaults();
-        return new CoverageSweepOptions(Set.of(), true, 100, 1, 1, 1, Set.of(429),
+        CoverageSweepOptions defaults = withoutCalibration(CoverageSweepOptions.defaults());
+        return withoutCalibration(new CoverageSweepOptions(Set.of(), true, 100, 1, 1, 1, Set.of(429),
             CoverageSweepMode.AUTHENTICATED_TRAFFIC,
             new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of(), false),
             true, verify, skip, List.of(), List.of(), payloadSet, defaults.posture(),
             defaults.familySelection(), defaults.pauseMode(), defaults.fixedPauseMillis(),
-            defaults.userAgentMode(), defaults.userAgentRandomizationSeed());
+            defaults.userAgentMode(), defaults.userAgentRandomizationSeed()));
     }
 
     @Test
@@ -665,9 +680,9 @@ class CoverageSweepEngineTest {
         CoverageSweepCandidate candidate = new CoverageSweepCandidate(originalRequest,
             response(200, "application/json", "authenticated"), "key", originalRequest.url(), "GET",
             "example.com", "/account", 200, 13, "application/json", ZonedDateTime.now());
-        CoverageSweepOptions options = new CoverageSweepOptions(Set.of(), true, 100, 1, 1, 0,
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(Set.of(), true, 100, 1, 1, 0,
             Set.of(429), CoverageSweepMode.AUTHENTICATED_TRAFFIC,
-            new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of(), false), true, true);
+            new CoverageSweepAuthSelection(Set.of("Authorization"), Set.of(), false), true, true));
         List<AttackResult> results = new ArrayList<>();
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()),
             new SequenceSender(List.of(
@@ -731,15 +746,15 @@ class CoverageSweepEngineTest {
             )),
             new CoverageSweepProbeGenerator()
         );
-        CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(),
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(),
             true,
             100,
             2,
             1,
             0,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
-        );
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
+        ));
         List<AttackResult> results = new ArrayList<>();
 
         assertTrue(engine.start(List.of(importedCandidate), options, results::add, () -> { }));
@@ -786,7 +801,7 @@ class CoverageSweepEngineTest {
             25,
             1,
             0,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
         );
 
         CoverageSweepPreview preview = new CoverageSweepEngine(api, new StaticSender(response(403, "text/plain", "blocked")), new CoverageSweepProbeGenerator())
@@ -1036,7 +1051,7 @@ class CoverageSweepEngineTest {
         List<CoverageSweepProbe> probes = new CoverageSweepEngine(api(List.of()), new StaticSender(response(403, "text/plain", "blocked")), new CoverageSweepProbeGenerator())
             .buildProbes(candidate, CoverageSweepOptions.defaults());
 
-        assertEquals(182, probes.size());
+        assertEquals(208, probes.size());
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users;.json")));
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users;.html")));
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users;.xml")));
@@ -1075,7 +1090,7 @@ class CoverageSweepEngineTest {
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users?debug=true")));
         assertTrue(probes.stream().anyMatch(probe -> probe.request().path().equals("/admin/users?admin=true")));
         assertFalse(probes.stream().anyMatch(probe -> probe.request().path().contains("jsessionid")));
-        assertTrue(probes.stream().allMatch(probe -> "GET".equals(probe.request().method())));
+        assertTrue(probes.stream().allMatch(probe -> Set.of("GET", "get", "head", "options").contains(probe.request().method())));
         assertFalse(probes.stream().anyMatch(probe -> probe.request().hasHeader("X-Original-URL")));
         assertFalse(probes.stream().anyMatch(probe -> probe.request().hasHeader("X-Rewrite-URL")));
         assertTrue(probes.stream().anyMatch(probe -> probe.family().equals("Content-Type")
@@ -1171,15 +1186,15 @@ class CoverageSweepEngineTest {
             new CoverageSweepProbeGenerator()
         );
         List<AttackResult> results = new ArrayList<>();
-        CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(),
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(),
             true,
             100,
             2,
             1,
             0,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
-        );
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
+        ));
 
         assertTrue(engine.start(List.of(candidate(request("/something", "", "GET", null, ""), 403)), options, results::add, () -> { }));
         for (int i = 0; i < 50 && engine.isRunning(); i++) {
@@ -1199,13 +1214,13 @@ class CoverageSweepEngineTest {
         );
         List<AttackResult> results = new ArrayList<>();
         CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(),
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(),
             true,
             100,
             1,
             1,
             0,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
         );
 
         assertTrue(engine.start(List.of(candidate(request("/something", "", "GET", null, ""), 403)),
@@ -1232,8 +1247,8 @@ class CoverageSweepEngineTest {
         );
         List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
         CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(), true, 100, 1, 1, 0,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(), true, 100, 1, 1, 0,
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
         );
 
         assertTrue(engine.start(List.of(candidate(request("/unstable", "", "POST", null, ""), 403)),
@@ -1261,10 +1276,10 @@ class CoverageSweepEngineTest {
             new CoverageSweepProbeGenerator()
         );
         List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
-        CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(), true, 100, 2, 1, 1,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
-        );
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(), true, 100, 2, 1, 1,
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
+        ));
 
         assertTrue(engine.start(List.of(candidate(request("/limited", "", "GET", null, ""), 403)),
             options, results::add, () -> { }));
@@ -1293,10 +1308,10 @@ class CoverageSweepEngineTest {
             new CoverageSweepProbeGenerator()
         );
         List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
-        CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(), true, 100, 2, 1, 1,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
-        );
+        CoverageSweepOptions options = withoutCalibration(new CoverageSweepOptions(
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(), true, 100, 2, 1, 1,
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
+        ));
 
         assertTrue(engine.start(List.of(candidate(request("/limited", "", "GET", null, ""), 403)),
             options, results::add, () -> { }));
@@ -1319,13 +1334,13 @@ class CoverageSweepEngineTest {
         );
         List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
         CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(),
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(),
             true,
             100,
             1,
             2,
             2,
-            CoverageSweepOptions.defaults().throttleStatusCodes()
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
         );
 
         assertTrue(engine.start(List.of(
@@ -1347,8 +1362,8 @@ class CoverageSweepEngineTest {
         CoverageSweepEngine engine = new CoverageSweepEngine(
             api(List.of()), sender, new CoverageSweepProbeGenerator());
         CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(), true, 100, 1, 2, 2,
-            CoverageSweepOptions.defaults().throttleStatusCodes());
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(), true, 100, 1, 2, 2,
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes());
         List<CoverageSweepCandidate> candidates = java.util.stream.IntStream.range(0, 8)
             .mapToObj(index -> candidate(request("/candidate-" + index, "", "GET", null, ""), 403))
             .toList();
@@ -1394,8 +1409,8 @@ class CoverageSweepEngineTest {
         };
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender, generator);
         CoverageSweepOptions options = new CoverageSweepOptions(
-            CoverageSweepOptions.defaults().statuses(), true, 100, 1, 2, 2,
-            CoverageSweepOptions.defaults().throttleStatusCodes());
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(), true, 100, 1, 2, 2,
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes());
         List<CoverageSweepCandidate> candidates = java.util.stream.IntStream.range(0, 20)
             .mapToObj(index -> candidate(request("/candidate-" + index, "", "GET", null, ""), 403))
             .toList();

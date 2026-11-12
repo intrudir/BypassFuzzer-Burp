@@ -31,6 +31,7 @@ public final class BurpScanAdapter {
     private final ThreadLocal<Exchange> lastExchange = new ThreadLocal<>();
     private volatile Exchange authorizedControl;
     private volatile Exchange targetControl;
+    private final java.util.Map<String,Exchange> fallbackControls = new java.util.concurrent.ConcurrentHashMap<>();
     private final ScanEngine engine;
 
     public BurpScanAdapter(HttpRequest original, RequestSender sender, ScanOptions options) {
@@ -97,9 +98,11 @@ public final class BurpScanAdapter {
         boolean targetBaseline = event.planned().payload().equals("idor.baseline.target");
         Exchange originalEvidence = authorizedControl;
         Exchange targetEvidence = targetControl;
-        if (event.planned().baseline()) {
-            if (targetBaseline) targetControl = new Exchange(request, response);
-            else authorizedControl = new Exchange(request, response);
+        switch (event.planned().controlRole()) {
+            case WILDCARD -> fallbackControls.put(event.planned().request().protocol() + "\n" + event.planned().request().toRaw(), new Exchange(request, response));
+            case TARGET -> targetControl = new Exchange(request, response);
+            case ORIGINAL, AUTHORIZED -> authorizedControl = new Exchange(request, response);
+            default -> { }
         }
         String attackType = switch (event.mode()) {
             case "idor" -> "IDOR";
@@ -113,6 +116,9 @@ public final class BurpScanAdapter {
             originalEvidence == null ? null : originalEvidence.response(),
             targetEvidence == null ? null : targetEvidence.request(),
             targetEvidence == null ? null : targetEvidence.response());
+        Exchange fallback = event.fallbackControl() == null ? null : fallbackControls.get(event.fallbackControl().request().protocol() + "\n" + event.fallbackControl().request().toRaw());
+        result = result.withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.planned().playbookId(), event.planned().controlRole(), event.calibration(),
+            fallback == null ? null : fallback.request(), fallback == null ? null : fallback.response()));
         return event.retryAttempt() > 0 ? AttackResult.throttleRetryOf(result, response, event.retryAttempt()) : result;
     }
 

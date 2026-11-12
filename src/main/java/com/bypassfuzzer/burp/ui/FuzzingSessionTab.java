@@ -440,6 +440,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
                     List<RequestPreviewPanel.Row> rows = get();
                     String note = collaboratorPreview
                         ? " (collaborator-preview.invalid is a placeholder)" : "";
+                    if (options.playbookOptions().wildcardCalibration()) note += " — Calibration controls use fresh runtime sibling paths for GET/HEAD; preview sends no traffic.";
                     RequestPreviewPanel.open(api, FuzzingSessionTab.this, "Bypass Request Preview",
                         "Up to " + BYPASS_PREVIEW_LIMIT + " planned requests; showing " + rows.size() + note,
                         rows);
@@ -462,9 +463,9 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
             .collect(Collectors.toSet());
         var planned = new BypassPlanner(() -> collaboratorPreview
             ? "collaborator-preview.invalid" : "").plan(adapter.fromMontoya(request), selected,
-            options.fuzzExistingCookies(), BYPASS_PREVIEW_LIMIT);
+            options.fuzzExistingCookies(), BYPASS_PREVIEW_LIMIT, options.playbookOptions());
         return planned.stream().map(item -> new RequestPreviewPanel.Row("Attack", item.family(),
-            item.payload(), "", item.encoding(), headers.reconcileMutation(request,
+            item.payload(), item.playbookId(), item.request().protocol().name() + (item.playbookId().equals("bypass.header.hop_by_hop_auth") ? " (HTTP/1 only)" : ""), headers.reconcileMutation(request,
                 adapter.toMontoya(request, item.request())))).toList();
     }
 

@@ -279,7 +279,7 @@ public class CoverageSweepEngine {
         if (effective.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC) {
             HttpRequest anonymousRequest = stripAuthentication(candidate.request(), effective.authSelection());
             return reconcileProbes(generateProbes(anonymousRequest, effective, false),
-                anonymousRequest, headerPolicy, effective);
+                anonymousRequest, headerPolicy.withoutAuthentication(effective.authSelection().headerNames(), effective.authSelection().cookieNames()), effective);
         }
         return reconcileProbes(generateProbes(candidate.request(), effective, true),
             candidate.request(), headerPolicy, effective);
@@ -530,14 +530,14 @@ public class CoverageSweepEngine {
         var execution = new com.bypassfuzzer.core.scan.SweepWorkflow.Options(
             options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC,
             options.verifyUnauthenticatedAccess(), options.skipLikelyPublicEndpoints(),
-            options.authSelection().headerNames(), options.authSelection().cookieNames());
+            options.authSelection().headerNames(), options.authSelection().cookieNames(), options.playbookOptions().wildcardCalibration(), options.throttleStatusCodes());
         var input = new com.bypassfuzzer.core.scan.SweepWorkflow.Candidate<>(candidate.request(),
             candidate.originalResponse(), candidate.method() + " " + candidate.displayUrl(),
             new com.bypassfuzzer.core.scan.SweepClassifier.Baseline(candidate.statusCode(), candidate.contentLength(), candidate.contentType()));
         workflow.execute(input, execution, policy.shared(), () -> buildProbes(candidate, options).stream()
             .map(probe -> new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(), probe.family(),
                 probe.request(), probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_2 ? HttpProtocol.HTTP_2
-                    : probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_1 ? HttpProtocol.HTTP_1 : HttpProtocol.AUTO)).toList(),
+                    : probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_1 ? HttpProtocol.HTTP_1 : HttpProtocol.AUTO, probe.playbookId(), probe.controlRole())).toList(),
             probe -> sendScheduled(probe.request(), () -> requestSender.sendWithOptionalMode(probe.request(),
                 coreRequests.httpMode(probe.protocol()), this::awaitSendAdmission)), this::canContinue,
             new com.bypassfuzzer.core.scan.SweepWorkflow.Observer<HttpRequest, HttpResponse>() {
@@ -548,7 +548,8 @@ public class CoverageSweepEngine {
                     AttackResult result = new AttackResult(event.attackType(), event.probe().label(), event.target(),
                         event.probe().family(), event.signal(), event.probe().request(), event.response(),
                         event.originalRequest(), event.originalResponse(), event.verificationRequest(), event.verificationResponse())
-                        .copyEvidenceToTempFile();
+                        .withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.probe().playbookId(), event.probe().controlRole(),
+                            event.calibration(), event.fallbackRequest(), event.fallbackResponse())).copyEvidenceToTempFile();
                     if (resultCallback != null) resultCallback.accept(result);
                     // The master's anonymous verification control is evidence, not deferred mutation work.
                     if (!event.probe().family().equals("Unauthenticated Control") && isRetryableResponse(event.response(), options))
@@ -770,7 +771,7 @@ public class CoverageSweepEngine {
             .map(probe -> {
                 HttpRequest reconciled = headerPolicy.reconcileMutation(baseline, probe.request());
                 return new CoverageSweepProbe(
-                    probe.label(), probe.family(), reconciled, probe.httpMode());
+                    probe.label(), probe.family(), reconciled, probe.httpMode(), probe.playbookId(), probe.controlRole());
             })
             .toList();
     }

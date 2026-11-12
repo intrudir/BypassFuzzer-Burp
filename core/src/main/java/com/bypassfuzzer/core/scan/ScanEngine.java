@@ -5,6 +5,7 @@ import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
 import com.bypassfuzzer.core.http.HttpResponseData;
 import com.bypassfuzzer.core.http.RequestTransport;
+import com.bypassfuzzer.core.http.RequestAccess;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -101,8 +102,8 @@ public final class ScanEngine {
                             else if (targetControl && !isComparableIdorTargetStatus(status)) signal = "TARGET_BASELINE_INCONCLUSIVE";
                         }
                         publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, 0), records, findings, throttled, errors);
-                        if (targetControl) target = outcome.response;
-                        else if (authorized == null) authorized = outcome.response;
+                        if (item.controlRole() == ControlRole.TARGET) target = outcome.response;
+                        else if ((item.controlRole() == ControlRole.ORIGINAL || item.controlRole() == ControlRole.AUTHORIZED) && authorized == null) authorized = outcome.response;
                     }
                     boolean idor = "idor".equals(mode);
                     boolean authorizedValid = authorized != null && authorized.statusCode() >= 200
@@ -114,6 +115,31 @@ public final class ScanEngine {
                         plan = new ArrayList<>(afterBaselines);
                     }
                     if (idor && !targetComparable && postBaselinePlanner == null) continue;
+                    final Map<HttpProtocol,PlannedRequest> wildcardControls = new java.util.EnumMap<>(HttpProtocol.class);
+                    final Map<HttpProtocol,HttpResponseData> wildcardResponses = new java.util.EnumMap<>(HttpProtocol.class);
+                    if (options.wildcardCalibration() && (mode.equals("bypass") || mode.equals("sweep"))
+                        && WildcardCalibration.eligible(base.method()) && !stopped) {
+                        HttpRequestData seed = plan.stream().filter(p -> p.controlRole() == ControlRole.ORIGINAL)
+                            .map(PlannedRequest::request).findFirst().orElse(base);
+                        var controlProtocols = new java.util.LinkedHashSet<HttpProtocol>();
+                        plan.stream().filter(p -> !p.baseline()).forEach(p -> controlProtocols.add(p.request().protocol()));
+                        for (var controlProtocol : controlProtocols) {
+                            if (stopped) break;
+                            PlannedRequest fallback = new PlannedRequest("Calibration", "Wildcard sibling control", "",
+                                WildcardCalibration.control(seed.withProtocol(controlProtocol), RequestAccess.CORE),
+                                true, ProbeIntent.STANDARD, "", "", "", ControlRole.WILDCARD);
+                            wildcardControls.put(controlProtocol, fallback);
+                            Outcome calibration = send(transport, fallback, 0);
+                            for (int attempt = 0;; attempt++) {
+                                String controlSignal = calibration.error != null || calibration.response == null ? "CALIBRATION_UNAVAILABLE" :
+                                    options.throttleStatusCodes().contains(calibration.response.statusCode()) ? "THROTTLED" : "CALIBRATION_CONTROL";
+                                publish(events, new ScanEvent(mode, input.targetLabel(), fallback, calibration.response, calibration.error, controlSignal, attempt), records, findings, throttled, errors);
+                                if (attempt >= options.retryAttempts() || stopped || !(calibration.response == null || "THROTTLED".equals(controlSignal))) break;
+                                calibration = send(transport, fallback, attempt + 1);
+                            }
+                            if (calibration.response != null) wildcardResponses.put(controlProtocol, calibration.response);
+                        }
+                    }
                     final HttpResponseData authorizedBaseline = authorized;
                     final HttpResponseData targetBaseline = target;
                     List<Future<?>> pending = new ArrayList<>();
@@ -125,13 +151,19 @@ public final class ScanEngine {
                             Outcome outcome = send(transport, item, 0);
                             if (stopped && outcome.response == null) return;
                             String signal = classify(mode, item, authorizedBaseline, targetBaseline, outcome);
-                            publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, 0), records, findings, throttled, errors);
+                            publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, 0,
+                                !wildcardControls.containsKey(item.request().protocol()) ? WildcardCalibration.Assessment.DISABLED : WildcardCalibration.compare(item.request().method(),
+                                    SweepClassifier.response(wildcardResponses.get(item.request().protocol())), SweepClassifier.response(outcome.response), options.throttleStatusCodes()),
+                                wildcardControls.get(item.request().protocol()), wildcardResponses.get(item.request().protocol())), records, findings, throttled, errors);
                             if (retryable(item.request().method()) && options.retryAttempts() > 0) {
                                 for (int attempt = 1; attempt <= options.retryAttempts() && !stopped
                                     && (outcome.error != null || "THROTTLED".equals(signal)); attempt++) {
                                     outcome = send(transport, item, attempt);
                                     signal = classify(mode, item, authorizedBaseline, targetBaseline, outcome);
-                                    publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, attempt), records, findings, throttled, errors);
+                                    publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, attempt,
+                                !wildcardControls.containsKey(item.request().protocol()) ? WildcardCalibration.Assessment.DISABLED : WildcardCalibration.compare(item.request().method(),
+                                    SweepClassifier.response(wildcardResponses.get(item.request().protocol())), SweepClassifier.response(outcome.response), options.throttleStatusCodes()),
+                                wildcardControls.get(item.request().protocol()), wildcardResponses.get(item.request().protocol())), records, findings, throttled, errors);
                                 }
                             }
                         }));

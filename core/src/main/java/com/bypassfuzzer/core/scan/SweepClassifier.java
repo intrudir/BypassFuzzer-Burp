@@ -4,9 +4,11 @@ import com.bypassfuzzer.core.http.HttpResponseData;
 
 public final class SweepClassifier {
 
-    public record Response(int statusCode, int contentLength, String contentType) { }
+    public record Response(int statusCode, int contentLength, String contentType, Long declaredLength) {
+        public Response(int statusCode, int contentLength, String contentType) { this(statusCode, contentLength, contentType, null); }
+    }
     public static Response response(HttpResponseData value) {
-        return value == null ? null : new Response(value.statusCode(), value.bodyLength(), value.firstHeader("Content-Type").orElse(""));
+        return value == null ? null : new Response(value.statusCode(), value.bodyLength(), value.firstHeader("Content-Type").orElse(""), WildcardCalibration.contentLength(value.firstHeader("Content-Length").orElse("")));
     }
     public record Baseline(int statusCode, int contentLength, String contentType) { }
 

@@ -197,14 +197,14 @@ public class FuzzerEngine {
             ScanDefaults.BYPASS_RETRIES, true, config.throttleSettings().posture() ==
                 com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.CONSERVATIVE
                 ? "conservative" : "ride-hard", config.throttleSettings().pauseMode().name().toLowerCase(),
-            config.throttleSettings().fixedPauseMillis(), false);
+            config.throttleSettings().fixedPauseMillis(), true, config.getPlaybookOptions().wildcardCalibration());
         com.bypassfuzzer.burp.http.BurpScanAdapter current = new com.bypassfuzzer.burp.http.BurpScanAdapter(
             request, requestSender, options, coordinator, mutation -> headers.reconcileMutation(request, mutation));
         scanAdapter = current;
         try {
             current.run("bypass", base -> {
                 List<PlannedRequest> planned = planner.plan(base, enabled,
-                    config.isEnableFuzzExistingCookies(), Integer.MAX_VALUE);
+                    config.isEnableFuzzExistingCookies(), Integer.MAX_VALUE, config.getPlaybookOptions());
                 plannedPayloads.set(planned.size());
                 return planned;
             }, result -> {

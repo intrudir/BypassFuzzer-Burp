@@ -124,7 +124,7 @@ public class FuzzerResultsTableModel extends AbstractTableModel {
                 case 1 -> displayPayload(result);
                 case 2 -> sweepHost(result);
                 case 3 -> emptyToDash(result.getPayloadFamily());
-                case 4 -> emptyToDash(result.getPayloadEncoding());
+                case 4 -> emptyToDash(result.getPayloadEncoding()) + annotation(result);
                 case 5 -> result.getResponse() == null ? "No response" : result.getStatusCode();
                 case 6 -> result.getContentLength();
                 case 7 -> result.getContentType();
@@ -258,11 +258,14 @@ public class FuzzerResultsTableModel extends AbstractTableModel {
 
     private String displayPayload(AttackResult result) {
         if (result == null || result.getThrottleRetryAttempt() <= 0) {
-            return result == null ? "" : result.getPayload();
+            return result == null ? "" : result.getPayload() + annotation(result);
         }
         return result.getPayload() + " [throttle retry #" + result.getThrottleRetryAttempt() + "]";
     }
 
+    private String annotation(AttackResult result) {
+        String note = result.getEvidenceMetadata().annotation(); return note.isEmpty() ? "" : " ⚠ " + note;
+    }
     private String emptyToDash(String value) {
         return value == null || value.isBlank() ? "-" : value;
     }

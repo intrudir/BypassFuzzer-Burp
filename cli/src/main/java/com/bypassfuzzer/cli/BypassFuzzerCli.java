@@ -104,9 +104,33 @@ public final class BypassFuzzerCli implements Runnable {
         @Option(names = "--fixed-pause-ms", description = "Run-wide throttle pause duration.") Long fixedPauseMillis;
     }
 
+    static class PlaybookFlags {
+        @Option(names = "--playbooks", split = ",", description = "Exact shared playbook IDs; see --list-playbooks.") List<String> selected;
+        @Option(names = "--list-playbooks", description = "List available playbooks without sending traffic.") boolean list;
+        @Option(names = "--api-prefix", description = "Additional API path prefix; repeatable.") List<String> prefixes;
+        @Option(names = "--wildcard-calibration", negatable = true, description = "Calibrate GET/HEAD wildcard fallback responses (default: enabled).") Boolean calibration;
+        com.bypassfuzzer.core.scan.PlaybookOptions options(YamlJob job, String mode, boolean unsafe) {
+            List<String> ids = selected != null ? selected : job.strings(mode, "playbooks");
+            return new com.bypassfuzzer.core.scan.PlaybookOptions(ids == null ? null : new LinkedHashSet<>(ids),
+                first(prefixes, job.strings(mode, "apiPrefixes"), List.of()), first(calibration, job.bool(mode, "wildcardCalibration"), true), unsafe);
+        }
+        int listing(com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory inventory) {
+            for (var item : com.bypassfuzzer.core.scan.BypassPlaybooks.available(inventory))
+                System.out.printf("%s\t%s\t%s\tdefault=on\t%s%n", item.id(), item.label(),
+                    inventory == com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.BYPASS ? item.family().id() : item.highSignalFamily(),
+                    item.http1Only() ? "HTTP/1 only" : "any protocol");
+            return 0;
+        }
+    }
+
     abstract static class BaseCommand implements Callable<Integer> {
         @Spec CommandSpec spec;
         @Mixin CommonOptions common = new CommonOptions();
+        protected com.bypassfuzzer.core.scan.PlaybookOptions playbookOptions(YamlJob job, String mode) {
+            if (this instanceof Bypass bypass) return bypass.playbooks.options(job, mode, false);
+            if (this instanceof Sweep sweep) return sweep.playbooks.options(job, mode, first(sweep.includeStateChanging, job.bool("execution", "includeStateChanging"), false));
+            return com.bypassfuzzer.core.scan.PlaybookOptions.defaults();
+        }
 
         protected YamlJob job() {
             try { return YamlJob.load(common.config); }
@@ -137,7 +161,7 @@ public final class BypassFuzzerCli implements Runnable {
             String pauseMode = first(common.pauseMode, job.string("execution", "pauseMode"), "off");
             long fixedPause = first(common.fixedPauseMillis, job.longValue("execution", "fixedPauseMillis"), 30_000L);
             ExecutionOptions execution = new ExecutionOptions(output, HttpProtocol.parse(protocol), Duration.ofSeconds(timeout),
-                global, perHost, new LinkedHashSet<>(throttle), redact, retries, posture, pauseMode, fixedPause);
+                global, perHost, new LinkedHashSet<>(throttle), redact, retries, posture, pauseMode, fixedPause, playbookOptions(job, mode).wildcardCalibration());
             return new CommonResolved(execution, proxy, insecure, connectTimeout, max, headers, uaMode, uaSeed);
         }
 
@@ -155,15 +179,22 @@ public final class BypassFuzzerCli implements Runnable {
             try { prepare(requests, resolved); prepared = requests; }
             catch (Exception exception) { throw new CommandLine.ParameterException(spec.commandLine(), exception.getMessage(), exception); }
             var policy = headerPolicy(resolved);
+            var mutationPolicy = this instanceof Sweep sweep && sweep.workflowOptions(job).authenticated()
+                ? policy.withoutAuthentication(sweep.workflowOptions(job).authHeaders(), sweep.workflowOptions(job).authCookies()) : policy;
             Function<HttpRequestData, List<PlannedRequest>> finalPlanner = base -> {
                 var plan = new ArrayList<>(planner.apply(base));
                 if (mode.equals("bypass") && plan.stream().noneMatch(PlannedRequest::baseline))
                     plan.add(0, PlannedRequest.baseline(base, "Original request"));
-                return plan.stream().map(item -> item.withRequest(policy.reconcileMutation(base, item.request().withSyncedContentLength()))).toList();
+                return plan.stream().map(item -> item.withRequest(mutationPolicy.reconcileMutation(base, item.request().withSyncedContentLength()))).toList();
             };
             ScanEngine.PostBaselinePlanner finalPostPlanner = postBaselinePlanner == null ? null : (base, authorized, target) ->
                 postBaselinePlanner.plan(base, authorized, target).stream()
-                    .map(item -> item.withRequest(policy.reconcileMutation(base, item.request().withSyncedContentLength()))).toList();
+                    .map(item -> item.withRequest(mutationPolicy.reconcileMutation(base, item.request().withSyncedContentLength()))).toList();
+            if ((mode.equals("bypass") || mode.equals("sweep")) && resolved.options.protocol() == HttpProtocol.HTTP_2) {
+                var selected = playbookOptions(job, mode).selected();
+                if (selected == null || selected.contains("bypass.header.hop_by_hop_auth"))
+                    System.err.println("Unsupported with forced HTTP/2: bypass.header.hop_by_hop_auth (HTTP/1 only; skipped)");
+            }
             if (common.preview) {
                 if (this instanceof Sweep sweep && first(sweep.retryPackage, job.path("input", "retryPackage")) != null) {
                     try {
@@ -174,8 +205,12 @@ public final class BypassFuzzerCli implements Runnable {
                     } catch (Exception error) { throw inputError(error); }
                     return 0;
                 }
-                for (var base : prepared) for (var item : finalPlanner.apply(base))
-                    System.out.printf("=== %s ===%n%s%n", item.payload(), item.request().toRaw());
+                if ((mode.equals("bypass") || mode.equals("sweep")) && playbookOptions(job, mode).wildcardCalibration())
+                    System.out.println("=== Runtime-generated wildcard sibling calibration controls: one per GET/HEAD seed, protocol and credential context; no traffic in preview ===");
+                for (var base : prepared) for (var protocol : resolved.options.protocol() == HttpProtocol.BOTH ? List.of(HttpProtocol.HTTP_1, HttpProtocol.HTTP_2) : List.of(resolved.options.protocol()))
+                    for (var item : finalPlanner.apply(base.withProtocol(protocol)))
+                        System.out.printf("=== %s [%s; %s%s] ===%n%s%n", item.payload(), item.playbookId(), item.request().protocol(),
+                            item.playbookId().equals("bypass.header.hop_by_hop_auth") ? "; HTTP/1 only" : "", item.request().toRaw());
                 return 0;
             }
             String runId = timestamp() + "-" + UUID.randomUUID().toString().substring(0, 8);
@@ -256,6 +291,7 @@ public final class BypassFuzzerCli implements Runnable {
 
     @Command(name = "sweep", mixinStandardHelpOptions = true, description = "Run Coverage Sweep from URLs, requests, API files, or retry packages.")
     static final class Sweep extends BaseCommand {
+        @Mixin PlaybookFlags playbooks = new PlaybookFlags();
         @Option(names = "--urls") Path urls;
         @Option(names = "--request") Path request;
         @Option(names = "--target-origin") String targetOrigin;
@@ -282,8 +318,9 @@ public final class BypassFuzzerCli implements Runnable {
         @Option(names = "--families", split = ",") List<String> families;
 
         @Override public Integer call() {
-            YamlJob job = job(); CommonResolved common = common(job, "sweep");
+            YamlJob job = job();
             try {
+                CommonResolved common = common(job, "sweep");
                 boolean unsafe = first(includeStateChanging, job.bool("execution", "includeStateChanging"), false);
                 var workflow = workflowOptions(job);
                 boolean staticAssets = first(excludeStaticAssets, job.bool("sweep", "excludeStaticAssets"), true);
@@ -291,6 +328,26 @@ public final class BypassFuzzerCli implements Runnable {
                 if (candidates < 1) throw new IllegalArgumentException("max-candidates must be positive");
                 Set<String> excluded = new LinkedHashSet<>(first(excludedHosts, job.strings("sweep", "excludeHosts"), List.of()));
                 boolean replay = first(retryPackage, job.path("input", "retryPackage")) != null;
+                PayloadSet set = PayloadSet.parse(first(payloadSet, job.string("sweep", "payloadSet"), "high-signal"));
+                if (!replay && set == PayloadSet.ALL && (this.common.maxProbes != null || job.integer("execution", "maxProbes") != null))
+                    throw new IllegalArgumentException("Sweep all payloads is uncapped, like Burp. Remove --max-probes/execution.maxProbes or choose high-signal/selected families.");
+                if (playbooks.list) return playbooks.listing(set == PayloadSet.HIGH_SIGNAL ? com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.HIGH_SIGNAL : com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.BYPASS);
+                var playbookOptions = playbooks.options(job, "sweep", unsafe);
+                List<String> configuredFamilies = families != null ? families : job.strings("sweep", "families");
+                Function<HttpRequestData, List<PlannedRequest>> planner;
+                if (set == PayloadSet.HIGH_SIGNAL) {
+                    Set<String> selected = configuredFamilies == null ? HighSignalPlanner.FAMILIES : new LinkedHashSet<>(configuredFamilies);
+                    for (String family : selected) if (!HighSignalPlanner.FAMILIES.contains(family)) throw new IllegalArgumentException("Unknown high-signal family: " + family);
+                    List<Integer> ports = hostPorts != null ? hostPorts : integers(job.strings("sweep", "hostPorts"), List.of(0));
+                    for (int port : ports) if (port < 0 || port > 65535) throw new IllegalArgumentException("Host port must be between 0 and 65535");
+                    com.bypassfuzzer.core.scan.BypassPlaybooks.resolve(com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.HIGH_SIGNAL, selected, playbookOptions);
+                    planner = value -> new SweepPlanner().highSignal(value, selected, common.maxProbes, ports, !workflow.authenticated(), playbookOptions);
+                } else {
+                    Set<AttackFamily> selected = attackFamilies(configuredFamilies);
+                    var domain = outOfBand(job);
+                    com.bypassfuzzer.core.scan.BypassPlaybooks.resolve(com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.BYPASS, selected.stream().map(AttackFamily::id).collect(java.util.stream.Collectors.toSet()), playbookOptions);
+                    planner = value -> new SweepPlanner().all(value, selected, domain, !workflow.authenticated(), playbookOptions);
+                }
                 List<HttpRequestData> inputs = sweepInputs(job, unsafe).stream()
                     .filter(r -> replay || excluded.stream().noneMatch(h -> h.equalsIgnoreCase(r.origin().host())))
                     .filter(r -> replay || !staticAssets || !com.bypassfuzzer.core.scan.SweepCandidateRules.staticAsset(r.rawTarget(), ""))
@@ -299,22 +356,6 @@ public final class BypassFuzzerCli implements Runnable {
                 if (!replay) inputs = com.bypassfuzzer.core.scan.SweepCandidateRules.select(inputs, candidates,
                     first(dedupe, job.bool("sweep", "dedupeEndpoints"), true));
                 if (inputs.isEmpty()) throw new IllegalArgumentException("No candidates match the Sweep configuration");
-                PayloadSet set = PayloadSet.parse(first(payloadSet, job.string("sweep", "payloadSet"), "high-signal"));
-                if (!replay && set == PayloadSet.ALL && (this.common.maxProbes != null || job.integer("execution", "maxProbes") != null))
-                    throw new IllegalArgumentException("Sweep all payloads is uncapped, like Burp. Remove --max-probes/execution.maxProbes or choose high-signal/selected families.");
-                List<String> configuredFamilies = families != null ? families : job.strings("sweep", "families");
-                Function<HttpRequestData, List<PlannedRequest>> planner;
-                if (set == PayloadSet.HIGH_SIGNAL) {
-                    Set<String> selected = configuredFamilies == null ? HighSignalPlanner.FAMILIES : new LinkedHashSet<>(configuredFamilies);
-                    for (String family : selected) if (!HighSignalPlanner.FAMILIES.contains(family)) throw new IllegalArgumentException("Unknown high-signal family: " + family);
-                    List<Integer> ports = hostPorts != null ? hostPorts : integers(job.strings("sweep", "hostPorts"), List.of(0));
-                    for (int port : ports) if (port < 0 || port > 65535) throw new IllegalArgumentException("Host port must be between 0 and 65535");
-                    planner = value -> new SweepPlanner().highSignal(value, selected, common.maxProbes, ports, !workflow.authenticated());
-                } else {
-                    Set<AttackFamily> selected = attackFamilies(configuredFamilies);
-                    var domain = outOfBand(job);
-                    planner = value -> new SweepPlanner().all(value, selected, domain, !workflow.authenticated());
-                }
                 return execute("sweep", inputs, planner, common, job);
             } catch (Exception exception) { throw inputError(exception); }
         }
@@ -327,7 +368,7 @@ public final class BypassFuzzerCli implements Runnable {
                 first(verifyUnauthenticated, job.bool("sweep", "verifyUnauthenticatedAccess"), true),
                 first(skipPublic, job.bool("sweep", "skipLikelyPublicEndpoints"), true),
                 new LinkedHashSet<>(first(authHeaders, job.strings("sweep", "authHeaders"), List.of("Authorization"))),
-                new LinkedHashSet<>(first(authCookies, job.strings("sweep", "authCookies"), List.of())));
+                new LinkedHashSet<>(first(authCookies, job.strings("sweep", "authCookies"), List.of())), playbooks.options(job, "sweep", false).wildcardCalibration(), common(job, "sweep").options.throttleStatusCodes());
         }
 
         private List<HttpRequestData> sweepInputs(YamlJob job, boolean unsafe) throws Exception {
@@ -375,18 +416,23 @@ public final class BypassFuzzerCli implements Runnable {
 
     @Command(name = "bypass", mixinStandardHelpOptions = true, description = "Run targeted authorization-bypass attack families.")
     static final class Bypass extends BaseCommand {
+        @Mixin PlaybookFlags playbooks = new PlaybookFlags();
         @Option(names = "--request") Path request;
         @Option(names = "--target-origin") String targetOrigin;
         @Option(names = "--families", split = ",") List<String> families;
         @Option(names = "--fuzz-existing-cookies", negatable = true) Boolean fuzzExistingCookies;
         @Override public Integer call() {
-            YamlJob job = job(); CommonResolved common = common(job, "bypass");
+            YamlJob job = job();
             try {
-                List<HttpRequestData> input = loader().raw(first(request, job.path("input", "request")), first(targetOrigin, job.string("input", "targetOrigin")));
+                CommonResolved common = common(job, "bypass");
+                if (playbooks.list) return playbooks.listing(com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.BYPASS);
+                var playbookOptions = playbooks.options(job, "bypass", false);
                 Set<AttackFamily> selected = attackFamilies(families != null ? families : job.strings("bypass", "families"));
+                com.bypassfuzzer.core.scan.BypassPlaybooks.resolve(com.bypassfuzzer.core.scan.BypassPlaybooks.Inventory.BYPASS, selected.stream().map(AttackFamily::id).collect(java.util.stream.Collectors.toSet()), playbookOptions);
+                List<HttpRequestData> input = loader().raw(first(request, job.path("input", "request")), first(targetOrigin, job.string("input", "targetOrigin")));
                 boolean fuzzCookies = first(fuzzExistingCookies, job.bool("bypass", "fuzzExistingCookies"), true);
                 var domains = outOfBand(job);
-                return execute("bypass", input, value -> new BypassPlanner(domains).plan(value, selected, fuzzCookies, common.maxProbes), common, job);
+                return execute("bypass", input, value -> new BypassPlanner(domains).plan(value, selected, fuzzCookies, common.maxProbes, playbookOptions), common, job);
             } catch (Exception exception) { throw inputError(exception); }
         }
     }

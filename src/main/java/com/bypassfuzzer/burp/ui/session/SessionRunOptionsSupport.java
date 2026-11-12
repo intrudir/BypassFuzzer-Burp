@@ -41,7 +41,8 @@ public final class SessionRunOptionsSupport {
             runOptionsPanel.fixedPauseMillis(),
             runOptionsPanel.requestHeaders(),
             runOptionsPanel.userAgentMode(),
-            runOptionsPanel.userAgentRandomizationSeed()
+            runOptionsPanel.userAgentRandomizationSeed(),
+            attackSelectionPanel.playbookOptions()
         );
     }
 }

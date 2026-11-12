@@ -8,7 +8,13 @@ import java.util.Set;
 public record ScanOptions(HttpProtocol protocol, Duration requestTimeout, int globalConcurrency,
                           int perHostConcurrency, Set<Integer> throttleStatusCodes, int retryAttempts,
                           boolean retryStateChanging, String posture, String pauseMode,
-                          long fixedPauseMillis, boolean implicitBaseline) {
+                          long fixedPauseMillis, boolean implicitBaseline, boolean wildcardCalibration) {
+    public ScanOptions(HttpProtocol protocol, Duration requestTimeout, int globalConcurrency,
+                       int perHostConcurrency, Set<Integer> throttleStatusCodes, int retryAttempts,
+                       boolean retryStateChanging, String posture, String pauseMode, long fixedPauseMillis, boolean implicitBaseline) {
+        this(protocol, requestTimeout, globalConcurrency, perHostConcurrency, throttleStatusCodes, retryAttempts,
+             retryStateChanging, posture, pauseMode, fixedPauseMillis, implicitBaseline, true);
+    }
     public ScanOptions(HttpProtocol protocol, Duration requestTimeout, int globalConcurrency,
                        int perHostConcurrency, Set<Integer> throttleStatusCodes, int retryAttempts,
                        boolean retryStateChanging, String posture, String pauseMode, long fixedPauseMillis) {

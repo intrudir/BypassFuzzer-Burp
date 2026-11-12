@@ -40,14 +40,14 @@ public final class SweepExecutor {
         var quarantined = new AtomicInteger();
         Function<SweepWorkflow.Probe<HttpRequestData>, HttpResponseData> send = probe -> throttle.send(probe.request(), () -> {
             sent.incrementAndGet();
-            try { return transport.send(probe.request(), execution.requestTimeout()); }
+            try { return transport.send(probe.request().withProtocol(probe.protocol()), execution.requestTimeout()); }
             catch (Exception error) { errors.incrementAndGet(); return null; }
         });
         java.util.function.Consumer<SweepWorkflow.Result<HttpRequestData, HttpResponseData>> emit = result -> {
             try {
-                boolean baseline = result.probe().family().equals("Control") || result.probe().family().equals("Unauthenticated Control");
+                boolean baseline = result.probe().controlRole() != ControlRole.NONE;
                 evidence.write("sweep", result.target(), new PlannedRequest(result.probe().family(), result.probe().label(), "",
-                    result.probe().request(), baseline), result.response(), null, result.signal(), 0);
+                    result.probe().request(), baseline, ProbeIntent.STANDARD, "", "", result.probe().playbookId(), result.probe().controlRole()), result.response(), null, result.signal(), 0, result.calibration(), result.fallbackRequest());
                 if (result.signal().startsWith(SweepClassifier.BYPASS_PREFIX)
                     || result.signal().startsWith(SweepClassifier.LIKELY_UNAUTHENTICATED_BYPASS_PREFIX)) findings.incrementAndGet();
                 if (!result.probe().family().equals("Unauthenticated Control") && retryable(result.response(), execution)) queue.add(new Retry(result, 0));
@@ -79,7 +79,7 @@ public final class SweepExecutor {
                     workflow.execute(candidate, options, policy, () -> {
                         var input = options.authenticated() ? workflow.stripAuthentication(base, options.authHeaders(), options.authCookies()) : base;
                         return planner.apply(input).stream().map(p -> new SweepWorkflow.Probe<>(p.payload(), p.family(), p.request(),
-                            p.baseline() ? HttpProtocol.AUTO : p.request().protocol())).toList();
+                            p.request().protocol(), p.playbookId(), p.controlRole())).toList();
                     }, send, control::continuing, new SweepWorkflow.Observer<HttpRequestData, HttpResponseData>() {
                         public void planned(int count) { planned.addAndGet(count); }
                         public void completed() { completed.incrementAndGet(); }
@@ -107,14 +107,15 @@ public final class SweepExecutor {
                 var r = retry.result();
                 var response = send.apply(r.probe());
                 try { evidence.write("sweep", r.target(), new PlannedRequest(r.probe().family(), r.probe().label(), "",
-                    r.probe().request(), false), response, null, r.signal(), attempt); }
+                    r.probe().request(), r.probe().controlRole()!=ControlRole.NONE, ProbeIntent.STANDARD,"","",r.probe().playbookId(),r.probe().controlRole()), response, null, r.signal(), attempt,
+                    r.fallbackRequest()==null ? WildcardCalibration.Assessment.DISABLED : WildcardCalibration.compare(r.probe().request().method(), SweepClassifier.response(r.fallbackResponse()), SweepClassifier.response(response),execution.throttleStatusCodes()),r.fallbackRequest()); }
                 catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
                 boolean again = retryable(response, execution);
                 if (again) queue.add(new Retry(r, attempt));
                 return again;
             }, quarantined::addAndGet, System.err::println);
         evidence.retryPackage(queue.stream().map(r -> evidence.retryEntry(new PlannedRequest(r.result().probe().family(),
-            r.result().probe().label(), "", r.result().probe().request(), false), r.attempt())).toList());
+            r.result().probe().label(), "", r.result().probe().request(), r.result().probe().controlRole()!=ControlRole.NONE, ProbeIntent.STANDARD,"","",r.result().probe().playbookId(),r.result().probe().controlRole()), r.attempt())).toList());
         var summary = new LinkedHashMap<String, Object>();
         summary.put("schemaVersion", 1); summary.put("state", control.stopped() ? "stopped" : "completed"); summary.put("mode", "sweep");
         summary.put("startedAt", started.toString()); summary.put("finishedAt", Instant.now().toString());

@@ -18,7 +18,7 @@ public final class ScanExecutor {
         EvidenceWriter evidence, RunControl control) throws Exception {
         var settings = new ScanOptions(options.protocol(), options.requestTimeout(), options.globalConcurrency(),
             options.perHostConcurrency(), options.throttleStatusCodes(), options.retryAttempts(), true,
-            options.posture(), options.pauseMode(), options.fixedPauseMillis(), false);
+            options.posture(), options.pauseMode(), options.fixedPauseMillis(), false, false);
         var engine = new ScanEngine(settings);
         var pending = new java.util.concurrent.ConcurrentSkipListMap<Integer, com.bypassfuzzer.core.input.RetryPackageEntry>();
         for (int index = 0; index < entries.size(); index++) pending.put(index, entries.get(index));
@@ -63,7 +63,7 @@ public final class ScanExecutor {
         ScanOptions scanOptions = new ScanOptions(options.protocol(), options.requestTimeout(),
             options.globalConcurrency(), options.perHostConcurrency(), options.throttleStatusCodes(),
             options.retryAttempts(), !"idor".equals(mode), options.posture(), options.pauseMode(),
-            options.fixedPauseMillis());
+            options.fixedPauseMillis(), true, options.wildcardCalibration());
         var engine = new ScanEngine(scanOptions);
         var pending = new java.util.concurrent.ConcurrentHashMap<String, com.bypassfuzzer.core.input.RetryPackageEntry>();
         ScanEngine.Summary summary;
@@ -71,8 +71,7 @@ public final class ScanExecutor {
         summary = engine.run(mode, inputs, planner,
             postBaselinePlanner, transport, event -> {
             try {
-                evidence.write(event.mode(), event.target(), event.planned(), event.response(),
-                    event.error(), event.signal(), event.retryAttempt());
+                evidence.write(event);
                 if (!event.planned().baseline()) {
                     String key = event.planned().family() + "\n" + event.planned().payload() + "\n" + event.planned().request().toRaw();
                     if (event.response() == null || options.throttleStatusCodes().contains(event.response().statusCode()))

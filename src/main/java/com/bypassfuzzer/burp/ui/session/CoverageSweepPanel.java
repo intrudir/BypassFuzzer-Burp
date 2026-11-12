@@ -1800,8 +1800,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         importMenuButton.setEnabled(idle && imported);
         clearCandidatesButton.setVisible(true);
         clearCandidatesButton.setEnabled(idle && candidateTableModel.getRowCount() > 0);
-        includeUnsafeMethodsCheckBox.setVisible(authenticated || imported);
-        includeUnsafeMethodsCheckBox.setEnabled(idle && (authenticated || imported));
+        includeUnsafeMethodsCheckBox.setVisible(true);
+        includeUnsafeMethodsCheckBox.setEnabled(idle);
         excludeStaticAssetsCheckBox.setVisible(authenticated);
         excludeStaticAssetsCheckBox.setEnabled(idle && authenticated);
         verifyUnauthenticatedAccessCheckBox.setVisible(authenticated);
@@ -2179,13 +2179,13 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private void showProbePreview(CoverageSweepCandidate candidate, List<CoverageSweepProbe> probes) {
         RequestPreviewPanel.open(api, this, "Sweep Probe Preview",
-            candidate.method() + " " + candidate.displayUrl() + " - " + probes.size() + " probe(s)",
+            candidate.method() + " " + candidate.displayUrl() + " - " + probes.size() + " probe(s). Wildcard calibration: fresh runtime sibling controls for GET/HEAD when enabled; preview sends no traffic.",
             buildProbePreviewRows(probes));
     }
 
     List<RequestPreviewPanel.Row> buildProbePreviewRows(List<CoverageSweepProbe> probes) {
         return probes.stream().map(probe -> new RequestPreviewPanel.Row("Probe", probe.family(),
-            probe.label(), "", probe.httpMode() == null ? "" : probe.httpMode().name(),
+            probe.label(), probe.playbookId(), probe.httpMode() == null ? "AUTO" : probe.httpMode().name() + (probe.playbookId().equals("bypass.header.hop_by_hop_auth") ? " (HTTP/1 only)" : ""),
             probe.request())).toList();
     }
 

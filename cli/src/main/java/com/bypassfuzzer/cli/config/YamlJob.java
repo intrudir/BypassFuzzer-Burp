@@ -21,8 +21,8 @@ public final class YamlJob {
         "transport", Set.of("protocol", "proxy", "insecure", "connectTimeoutSeconds", "requestTimeoutSeconds"),
         "execution", Set.of("globalConcurrency", "perHostConcurrency", "throttleStatusCodes", "retryAttempts", "maxProbes", "includeStateChanging", "headers", "userAgentMode", "userAgentSeed", "posture", "pauseMode", "fixedPauseMillis", "oobDomain", "oobGenerator", "controlFile", "trafficMaxInFlight", "trafficMaxRps"),
         "evidence", Set.of("output", "redact"),
-        "sweep", Set.of("payloadSet", "families", "mode", "authHeaders", "authCookies", "verifyUnauthenticatedAccess", "skipLikelyPublicEndpoints", "hostPorts", "maxCandidates", "excludeStaticAssets", "excludeHosts", "dedupeEndpoints"),
-        "bypass", Set.of("families", "fuzzExistingCookies"),
+        "sweep", Set.of("payloadSet", "families", "playbooks", "apiPrefixes", "wildcardCalibration", "mode", "authHeaders", "authCookies", "verifyUnauthenticatedAccess", "skipLikelyPublicEndpoints", "hostPorts", "maxCandidates", "excludeStaticAssets", "excludeHosts", "dedupeEndpoints"),
+        "bypass", Set.of("families", "fuzzExistingCookies", "playbooks", "apiPrefixes", "wildcardCalibration"),
         "idor", Set.of("authorizedId", "targetId", "location", "families", "includeMethodChanges", "uniqueJsonField", "baselineResponse"),
         "urlValidation", Set.of("marker", "allowedHost", "attackerHost", "scheme", "contexts", "attacks", "encodings")
     );

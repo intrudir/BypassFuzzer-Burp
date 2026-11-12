@@ -33,11 +33,11 @@ final class FullBypassSweepProbeGenerator {
             return payload == null ? "" : payload.replaceFirst("^https?://", "").replaceFirst("/.*$", "");
         };
         return new com.bypassfuzzer.core.scan.SweepPlanner().all(adapter.fromMontoya(request), enabled,
-            domain, includeControl).stream().map(planned -> toProbe(request, planned)).toList();
+            domain, includeControl, familySelection.bypassPlaybooks()).stream().map(planned -> toProbe(request, planned)).toList();
     }
 
     private CoverageSweepProbe toProbe(HttpRequest original, PlannedRequest planned) {
         return new CoverageSweepProbe(planned.payload(), planned.family(), adapter.toMontoya(original, planned.request()),
-            planned.baseline() ? null : adapter.httpMode(planned.request().protocol()));
+            planned.baseline() ? null : adapter.httpMode(planned.request().protocol()), planned.playbookId(), planned.controlRole());
     }
 }

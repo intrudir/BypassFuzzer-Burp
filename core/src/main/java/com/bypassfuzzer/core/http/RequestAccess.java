@@ -11,11 +11,15 @@ public interface RequestAccess<R> {
     String method(R request);
     String url(R request);
     String body(R request);
+    default R withProtocol(R request, HttpProtocol protocol) { return request; }
+    default R withPath(R request, String target) { throw new UnsupportedOperationException("Path mutation unavailable"); }
 
     RequestAccess<HttpRequestData> CORE = new RequestAccess<>() {
         public List<HttpHeader> headers(HttpRequestData r) { return r.headers(); }
         public HttpRequestData removeHeader(HttpRequestData r, String n) { return r.removeHeader(n); }
         public HttpRequestData addHeader(HttpRequestData r, String n, String v) { return r.addHeader(n, v); }
+        public HttpRequestData withProtocol(HttpRequestData r, HttpProtocol p) { return r.withProtocol(p); }
+        public HttpRequestData withPath(HttpRequestData r, String target) { return r.withRawTarget(target); }
         public String method(HttpRequestData r) { return r.method(); }
         public String url(HttpRequestData r) { return r.origin() + r.rawTarget(); }
         public String body(HttpRequestData r) { return new String(r.body(), StandardCharsets.UTF_8); }

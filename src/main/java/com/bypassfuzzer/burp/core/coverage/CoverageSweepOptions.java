@@ -112,6 +112,11 @@ public record CoverageSweepOptions(
         return posture;
     }
 
+    public com.bypassfuzzer.core.scan.PlaybookOptions playbookOptions() {
+        var selected = payloadSet == CoverageSweepPayloadSet.HIGH_SIGNAL ? familySelection.highSignalPlaybooks() : familySelection.bypassPlaybooks();
+        return new com.bypassfuzzer.core.scan.PlaybookOptions(selected.selected(), selected.apiPrefixes(), selected.wildcardCalibration(), authSelection.includeUnsafeMethods());
+    }
+
     public boolean hostPortProbesEnabled() {
         return !hostPortProbePorts.isEmpty();
     }

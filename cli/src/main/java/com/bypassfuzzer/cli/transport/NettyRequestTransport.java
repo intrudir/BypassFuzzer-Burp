@@ -144,13 +144,25 @@ public final class NettyRequestTransport implements RequestTransport {
     }
 
     private void configureH1(ChannelPipeline pipeline, CompletableFuture<HttpResponseData> response, long started) {
+        var wireHeaders = new java.util.concurrent.atomic.AtomicReference<List<HttpHeader>>();
         pipeline.addLast(new HttpClientCodec());
+        // Aggregation may synthesize Content-Length; retain the actual response headers.
+        pipeline.addLast(new io.netty.channel.ChannelInboundHandlerAdapter() {
+            @Override public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
+                if (message instanceof io.netty.handler.codec.http.HttpResponse head) {
+                    var captured = new ArrayList<HttpHeader>();
+                    head.headers().forEach(entry -> captured.add(new HttpHeader(entry.getKey(), entry.getValue())));
+                    wireHeaders.set(List.copyOf(captured));
+                }
+                context.fireChannelRead(message);
+            }
+        });
         pipeline.addLast(new HttpObjectAggregator(MAX_RESPONSE_BYTES));
         pipeline.addLast(new SimpleChannelInboundHandler<FullHttpResponse>() {
             @Override
             protected void channelRead0(ChannelHandlerContext context, FullHttpResponse message) {
                 List<HttpHeader> headers = new ArrayList<>();
-                message.headers().forEach(entry -> headers.add(new HttpHeader(entry.getKey(), entry.getValue())));
+                if (wireHeaders.get() != null) headers.addAll(wireHeaders.get());
                 byte[] body = new byte[message.content().readableBytes()];
                 message.content().getBytes(message.content().readerIndex(), body);
                 HttpProtocol protocol = message.protocolVersion().equals(HttpVersion.HTTP_1_0) ? HttpProtocol.HTTP_1_0 : HttpProtocol.HTTP_1;

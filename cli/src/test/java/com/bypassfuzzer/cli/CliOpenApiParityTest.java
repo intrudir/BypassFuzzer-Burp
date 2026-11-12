@@ -58,7 +58,7 @@ class CliOpenApiParityTest {
     @Test
     void requiredVariablesAreTheDefaultAndRejectMissingValuesBeforeSending() throws Exception {
         Path output = temporary.resolve("missing-output");
-        Run actual = run("sweep", "--openapi", specification().toString(), "--output", output.toString());
+        Run actual = run("sweep", "--no-wildcard-calibration", "--openapi", specification().toString(), "--output", output.toString());
         assertEquals(2, actual.code());
         assertTrue(actual.error().contains("Set OpenAPI variables before running"));
         assertTrue(actual.error().contains("id"));
@@ -140,7 +140,7 @@ class CliOpenApiParityTest {
         });
         server.start();
         try {
-            Run actual = run("sweep", "--openapi", specification().toString(),
+            Run actual = run("sweep", "--no-wildcard-calibration", "--openapi", specification().toString(),
                 "--base-url", "http://127.0.0.1:" + server.getAddress().getPort(),
                 "--openapi-variable", "id=42", "--openapi-variable", "tenant=org", "--openapi-variable", "X-Object=header-value",
                 "--families", "Header", "--max-probes", "2", "--retry-attempts", "0", "--protocol", "http1",

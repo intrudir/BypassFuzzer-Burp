@@ -32,6 +32,7 @@ public final class EvidenceWriter implements AutoCloseable {
     private final boolean redact;
     private final AtomicLong sequence = new AtomicLong();
     private final String runId;
+    private final Map<String, Map<String, Object>> controls = new java.util.HashMap<>();
 
     public EvidenceWriter(Path root, String runId, boolean redact, Map<String, Object> effectiveConfig) throws IOException {
         this.root = root.toAbsolutePath().normalize();
@@ -64,6 +65,18 @@ public final class EvidenceWriter implements AutoCloseable {
     public synchronized Map<String, Object> write(String mode, String targetKey, PlannedRequest planned,
                                                    HttpResponseData response, Throwable error, String signal,
                                                    int retryAttempt) throws IOException {
+        return write(mode, targetKey, planned, response, error, signal, retryAttempt,
+            com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED, null);
+    }
+
+    public synchronized Map<String, Object> write(com.bypassfuzzer.core.scan.ScanEvent event) throws IOException {
+        return write(event.mode(), event.target(), event.planned(), event.response(), event.error(), event.signal(), event.retryAttempt(),
+            event.calibration(), event.fallbackControl() == null ? null : event.fallbackControl().request());
+    }
+
+    public synchronized Map<String, Object> write(String mode, String targetKey, PlannedRequest planned,
+        HttpResponseData response, Throwable error, String signal, int retryAttempt,
+        com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequestData fallback) throws IOException {
         long number = sequence.incrementAndGet();
         String stem = String.format("%06d", number);
         Path requestFile = requests.resolve(stem + "-request.raw");
@@ -90,6 +103,17 @@ public final class EvidenceWriter implements AutoCloseable {
         record.put("payload", planned.payload());
         record.put("encoding", planned.encoding());
         record.put("baseline", planned.baseline());
+        if (!planned.playbookId().isEmpty()) record.put("playbookId", planned.playbookId());
+        record.put("controlRole", planned.controlRole().name());
+        if (calibration != com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("assessment", calibration.name());
+            metadata.put("annotation", calibration == com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.MATCH ? "Possible fallback" :
+                calibration == com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.UNAVAILABLE ? "Calibration unavailable" : "");
+            var refs = fallback == null ? null : controls.get(fallback.protocol() + "\n" + fallback.toRaw());
+            if (refs != null) metadata.putAll(refs);
+            record.put("calibration", metadata);
+        }
         record.put("signal", signal);
         record.put("retryAttempt", retryAttempt);
         record.put("requestRef", relative(requestFile));
@@ -99,6 +123,12 @@ public final class EvidenceWriter implements AutoCloseable {
         record.put("contentType", response == null ? null : firstHeader(response, "content-type"));
         record.put("durationMillis", response == null ? null : response.durationMillis());
         record.put("error", error == null ? null : error.getClass().getSimpleName() + ": " + safeMessage(error));
+        if (planned.controlRole() == com.bypassfuzzer.core.scan.ControlRole.WILDCARD) {
+            Map<String, Object> refs = new LinkedHashMap<>();
+            refs.put("controlRequestRef", relative(requestFile));
+            refs.put("controlResponseRef", responseRef);
+            controls.put(planned.request().protocol() + "\n" + planned.request().toRaw(), refs);
+        }
         String line = gson.toJson(record);
         jsonl.write(line);
         jsonl.newLine();
@@ -118,13 +148,13 @@ public final class EvidenceWriter implements AutoCloseable {
         var request = planned.request();
         return new com.bypassfuzzer.core.input.RetryPackageEntry(request.targetLabel(), planned.payload(),
             planned.family(), planned.encoding(), attempt, rawRequest(request),
-            request.origin() + request.rawTarget(), request.method(), request.protocol().name(), planned.payload());
+            request.origin() + request.rawTarget(), request.method(), request.protocol().name(), planned.payload(), planned.playbookId(), planned.controlRole());
     }
 
     public synchronized void retryPackage(java.util.List<com.bypassfuzzer.core.input.RetryPackageEntry> entries) throws IOException {
         if (redact) entries = entries.stream().map(entry -> new com.bypassfuzzer.core.input.RetryPackageEntry(
             entry.targetLabel(), entry.payload(), entry.payloadFamily(), entry.payloadEncoding(), entry.retryAttempt(),
-            rawRequest(entry.planned().request()), entry.url(), entry.method(), entry.httpMode(), entry.payloadLabel())).toList();
+            rawRequest(entry.planned().request()), entry.url(), entry.method(), entry.httpMode(), entry.payloadLabel(), entry.playbookId(), entry.controlRole())).toList();
         writeJsonAtomic(root.resolve("retry-queue.json"), new com.bypassfuzzer.core.input.RetryPackage(
             "1", "bypassfuzzer-retry-queue", entries));
     }

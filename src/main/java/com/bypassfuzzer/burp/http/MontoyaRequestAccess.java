@@ -13,6 +13,7 @@ public final class MontoyaRequestAccess implements RequestAccess<HttpRequest> {
     }
     public HttpRequest removeHeader(HttpRequest r, String n) { return r.withRemovedHeader(n); }
     public HttpRequest addHeader(HttpRequest r, String n, String v) { return r.withAddedHeader(n, v); }
+    public HttpRequest withPath(HttpRequest r, String target) { return r.withPath(target); }
     public String method(HttpRequest r) { return r.method(); }
     public String url(HttpRequest r) { return r.url(); }
     public String body(HttpRequest r) { return r.bodyToString(); }

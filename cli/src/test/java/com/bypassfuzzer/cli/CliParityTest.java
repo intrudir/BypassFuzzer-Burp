@@ -17,12 +17,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class CliParityTest {
     @TempDir Path temporary;
     private record Run(int code, String output) { }
+    private static String[] legacyArgs(String[] args) {
+        if (args.length == 0 || !(args[0].equals("bypass") || args[0].equals("sweep"))) return args;
+        var legacy = new java.util.ArrayList<String>(java.util.List.of(args));
+        legacy.add("--no-wildcard-calibration"); return legacy.toArray(String[]::new);
+    }
     private Run run(String... args) {
         var bytes = new ByteArrayOutputStream();
         PrintStream saved = System.out;
         try {
             System.setOut(new PrintStream(bytes, true, StandardCharsets.UTF_8));
-            return new Run(new CommandLine(new BypassFuzzerCli()).execute(args), bytes.toString(StandardCharsets.UTF_8));
+            return new Run(new CommandLine(new BypassFuzzerCli()).execute(legacyArgs(args)), bytes.toString(StandardCharsets.UTF_8));
         } finally { System.setOut(saved); }
     }
     private Path request(String name, String path, String headers) throws IOException {
@@ -184,7 +189,7 @@ class CliParityTest {
             Files.writeString(control, "pause");
             Path file = request("pause.raw", "/private", "");
             Path output = temporary.resolve("pause-out");
-            Future<Integer> run = worker.submit(() -> new CommandLine(new BypassFuzzerCli()).execute("bypass",
+            Future<Integer> run = worker.submit(() -> new CommandLine(new BypassFuzzerCli()).execute("bypass", "--no-wildcard-calibration",
                 "--request", file.toString(), "--target-origin", origin(server), "--families", "header",
                 "--max-probes", "1", "--control-file", control.toString(), "--output", output.toString()));
             Thread.sleep(300);
@@ -207,7 +212,7 @@ class CliParityTest {
         try {
             Path control = temporary.resolve("resume.txt"); Files.writeString(control, "pause");
             Path file = request("resume.raw", "/private", "");
-            Future<Integer> run = worker.submit(() -> new CommandLine(new BypassFuzzerCli()).execute("bypass",
+            Future<Integer> run = worker.submit(() -> new CommandLine(new BypassFuzzerCli()).execute("bypass", "--no-wildcard-calibration",
                 "--request", file.toString(), "--target-origin", origin(server), "--protocol", "http1",
                 "--families", "header", "--max-probes", "2", "--control-file", control.toString(),
                 "--traffic-max-rps", "5", "--output", temporary.resolve("resume-out").toString()));

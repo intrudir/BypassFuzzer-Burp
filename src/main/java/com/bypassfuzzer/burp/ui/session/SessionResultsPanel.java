@@ -81,6 +81,8 @@ public class SessionResultsPanel extends JPanel {
     private final HttpResponseEditor responseViewer;
     private final HttpRequestEditor originalRequestViewer;
     private final HttpResponseEditor originalResponseViewer;
+    private final HttpRequestEditor fallbackRequestViewer;
+    private final HttpResponseEditor fallbackResponseViewer;
     private final HttpRequestEditor verificationRequestViewer;
     private final HttpResponseEditor verificationResponseViewer;
     private JTabbedPane viewerTabs;
@@ -111,6 +113,8 @@ public class SessionResultsPanel extends JPanel {
                 return getParent() == null || getParent().getWidth() >= getMinimumSize().width;
             }
         };
+        this.fallbackRequestViewer = api.userInterface().createHttpRequestEditor();
+        this.fallbackResponseViewer = api.userInterface().createHttpResponseEditor();
         this.requestViewer = api.userInterface().createHttpRequestEditor();
         this.responseViewer = api.userInterface().createHttpResponseEditor();
         this.originalRequestViewer = this.tableLayout == TableLayout.COVERAGE_SWEEP
@@ -156,6 +160,8 @@ public class SessionResultsPanel extends JPanel {
     public void clear() {
         tableModel.clear();
         displayedResult = null;
+        fallbackRequestViewer.setRequest(null); fallbackResponseViewer.setResponse(null);
+        int fallback = viewerTabs.indexOfTab("Fallback control"); if (fallback >= 0) viewerTabs.removeTabAt(fallback);
         requestViewer.setRequest(null);
         responseViewer.setResponse(null);
         if (originalRequestViewer != null) {
@@ -332,7 +338,8 @@ public class SessionResultsPanel extends JPanel {
                 setBorder(javax.swing.BorderFactory.createCompoundBorder(
                     javax.swing.BorderFactory.createMatteBorder(0, isSelected && column == 0 ? 3 : 0, 0, 0,
                         WorkbenchTheme.ACCENT), javax.swing.BorderFactory.createEmptyBorder(0, 8, 0, 8)));
-                setToolTipText(result == null ? null : result.getTargetLabel());
+                setToolTipText(result == null ? null : result.getTargetLabel() + " | " + result.getEvidenceMetadata().playbookId()
+                    + " | " + result.getEvidenceMetadata().annotation());
                 return component;
             }
         };
@@ -496,6 +503,12 @@ public class SessionResultsPanel extends JPanel {
         }
         displayedResult = result;
 
+        int fallbackTab = viewerTabs.indexOfTab("Fallback control");
+        boolean hasFallback = result.getEvidenceMetadata().fallbackRequest() != null;
+        if (hasFallback && fallbackTab < 0) viewerTabs.addTab("Fallback control", exchange(fallbackRequestViewer.uiComponent(), fallbackResponseViewer.uiComponent()));
+        if (!hasFallback && fallbackTab >= 0) viewerTabs.removeTabAt(fallbackTab);
+        fallbackRequestViewer.setRequest(result.getEvidenceMetadata().fallbackRequest());
+        fallbackResponseViewer.setResponse(result.getEvidenceMetadata().fallbackResponse());
         requestViewer.setRequest(result.getRequest());
         responseViewer.setResponse(result.getResponse());
         if (originalRequestViewer != null) {

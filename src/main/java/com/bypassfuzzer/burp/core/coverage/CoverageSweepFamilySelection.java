@@ -10,11 +10,16 @@ import java.util.Set;
 /** Enabled payload families for each of Sweep's two payload inventories. */
 public record CoverageSweepFamilySelection(
     Set<String> highSignalFamilies,
-    Set<AttackType> bypassFamilies
+    Set<AttackType> bypassFamilies,
+    com.bypassfuzzer.core.scan.PlaybookOptions highSignalPlaybooks,
+    com.bypassfuzzer.core.scan.PlaybookOptions bypassPlaybooks
 ) {
 
     public static final List<String> HIGH_SIGNAL_FAMILIES = com.bypassfuzzer.core.scan.HighSignalPlanner.ORDERED_FAMILIES;
 
+    public CoverageSweepFamilySelection(Set<String> highSignalFamilies, Set<AttackType> bypassFamilies) {
+        this(highSignalFamilies, bypassFamilies, com.bypassfuzzer.core.scan.PlaybookOptions.defaults(), com.bypassfuzzer.core.scan.PlaybookOptions.defaults());
+    }
     public CoverageSweepFamilySelection {
         highSignalFamilies = highSignalFamilies == null
             ? Set.copyOf(HIGH_SIGNAL_FAMILIES)

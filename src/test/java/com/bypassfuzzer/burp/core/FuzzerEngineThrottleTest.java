@@ -36,16 +36,16 @@ class FuzzerEngineThrottleTest {
             request("/admin", "", "GET", null, ""), results::add, completed::countDown));
         assertTrue(completed.await(10, TimeUnit.SECONDS));
 
-        assertEquals(4, sender.sendCount);
-        assertEquals(4, results.size(), "initial 429 plus all three retry responses must be visible");
-        assertEquals(List.of(0, 1, 2, 3),
+        assertEquals(5, sender.sendCount);
+        assertEquals(5, results.size(), "initial 429 plus all three retry responses must be visible");
+        assertEquals(List.of(0, 0, 1, 2, 3),
             results.stream().map(AttackResult::getThrottleRetryAttempt).toList());
         assertTrue(results.stream().allMatch(result -> result.getStatusCode() == 429));
 
         FuzzerProgress progress = engine.progress();
         assertEquals(1, progress.plannedPayloads());
-        assertEquals(4, progress.httpRequestsSent());
-        assertEquals(4, progress.resultsRecorded());
+        assertEquals(5, progress.httpRequestsSent());
+        assertEquals(5, progress.resultsRecorded());
         assertEquals(1, progress.automaticRetriesPending(),
             "the exhausted payload must remain available to the shared manual retry workspace");
         assertEquals(0, progress.automaticRetriesRejected());
@@ -66,6 +66,7 @@ class FuzzerEngineThrottleTest {
         config.setEnableCaseAttack(false);
         config.setEnableTrailingDotAttack(true);
         config.setEnableCollaboratorPayloads(false);
+        config.setPlaybookOptions(new com.bypassfuzzer.core.scan.PlaybookOptions(null,List.of(),false,false));
         config.setConcurrency(1);
         config.setPerHostConcurrency(1);
         config.setThrottleStatusCodes(Set.of(429));

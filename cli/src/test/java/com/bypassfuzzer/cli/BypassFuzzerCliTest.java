@@ -41,7 +41,7 @@ class BypassFuzzerCliTest {
             Path yaml = temporary.resolve("job.yaml");
             Files.writeString(yaml, "schemaVersion: 1\ntransport:\n  protocol: http2\nevidence:\n  redact: true\n", StandardCharsets.UTF_8);
             Path output = temporary.resolve("evidence");
-            int code = new CommandLine(new BypassFuzzerCli()).execute("bypass",
+            int code = new CommandLine(new BypassFuzzerCli()).execute("bypass", "--no-wildcard-calibration",
                 "--config", yaml.toString(), "--request", request.toString(), "--target-origin",
                 "http://127.0.0.1:" + server.getAddress().getPort(), "--protocol", "http1",
                 "--families", "header", "--max-probes", "5", "--retry-attempts", "0",
@@ -63,7 +63,7 @@ class BypassFuzzerCliTest {
     void collaboratorYamlIsRejectedBeforeRun() throws Exception {
         Path yaml = temporary.resolve("bad.yaml");
         Files.writeString(yaml, "schemaVersion: 1\nbypass:\n  collaborator: true\n", StandardCharsets.UTF_8);
-        int code = new CommandLine(new BypassFuzzerCli()).execute("bypass", "--config", yaml.toString());
+        int code = new CommandLine(new BypassFuzzerCli()).execute("bypass", "--no-wildcard-calibration", "--config", yaml.toString());
         assertEquals(2, code);
     }
 

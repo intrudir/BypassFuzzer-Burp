@@ -1134,7 +1134,7 @@ class CoverageSweepPanelTest {
         String preview = rows.stream().map(row -> row.family() + " - " + row.payload() + "\n"
             + row.request()).collect(java.util.stream.Collectors.joining("\n"));
 
-        assertEquals(182, rows.size());
+        assertEquals(208, rows.size());
         assertSame(probes.get(0).request(), rows.get(0).request());
         assertTrue(preview.contains("Matrix / Extension - Path suffix ;.json"));
         assertTrue(preview.contains("GET /admin/users;.json HTTP/1.1"));

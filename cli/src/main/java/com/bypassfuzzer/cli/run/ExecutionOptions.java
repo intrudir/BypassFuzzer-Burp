@@ -9,7 +9,13 @@ import java.util.Set;
 public record ExecutionOptions(Path outputDirectory, HttpProtocol protocol, Duration requestTimeout,
                                int globalConcurrency, int perHostConcurrency,
                                Set<Integer> throttleStatusCodes, boolean redact, int retryAttempts,
-                               String posture, String pauseMode, long fixedPauseMillis) {
+                               String posture, String pauseMode, long fixedPauseMillis, boolean wildcardCalibration) {
+    public ExecutionOptions(Path outputDirectory, HttpProtocol protocol, Duration requestTimeout, int globalConcurrency,
+                            int perHostConcurrency, Set<Integer> throttleStatusCodes, boolean redact, int retryAttempts,
+                            String posture, String pauseMode, long fixedPauseMillis) {
+        this(outputDirectory, protocol, requestTimeout, globalConcurrency, perHostConcurrency, throttleStatusCodes,
+            redact, retryAttempts, posture, pauseMode, fixedPauseMillis, true);
+    }
     public ExecutionOptions {
         if (outputDirectory == null) throw new IllegalArgumentException("Output directory is required");
         protocol = protocol == null ? HttpProtocol.AUTO : protocol;

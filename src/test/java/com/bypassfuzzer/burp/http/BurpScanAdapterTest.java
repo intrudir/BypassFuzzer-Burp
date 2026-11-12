@@ -41,7 +41,7 @@ class BurpScanAdapterTest {
         when(api.http().sendRequest(any(HttpRequest.class))).thenReturn(exchange);
         when(exchange.response()).thenReturn(response);
         ScanOptions options = new ScanOptions(HttpProtocol.AUTO, Duration.ofSeconds(1),
-            1, 1, Set.of(429, 503), 0, false, "ride-hard", "off", 30_000, false);
+            1, 1, Set.of(429, 503), 0, false, "ride-hard", "off", 30_000, false, false);
         List<AttackResult> results = new ArrayList<>();
 
         new BurpScanAdapter(original, new MontoyaRequestSender(api), options).run(scanMode,

@@ -33,8 +33,35 @@ public record SessionRunOptions(
     long fixedPauseMillis,
     List<ConfiguredHeader> requestHeaders,
     UserAgentMode userAgentMode,
-    long userAgentRandomizationSeed
+    long userAgentRandomizationSeed,
+    com.bypassfuzzer.core.scan.PlaybookOptions playbookOptions
 ) {
+
+    public SessionRunOptions(    boolean headerAttack,
+        boolean pathAttack,
+        boolean verbAttack,
+        boolean paramAttack,
+        boolean trailingDotAttack,
+        boolean trailingSlashAttack,
+        boolean extensionAttack,
+        boolean contentTypeAttack,
+        boolean encodingAttack,
+        boolean protocolAttack,
+        boolean caseAttack,
+        boolean collaboratorPayloads,
+        boolean cookieParamAttack,
+        boolean fuzzExistingCookies,
+        int concurrency,
+        int perHostConcurrency,
+        Set<Integer> throttleStatusCodes,
+        ThrottleSettings.Posture posture,
+        ThrottleSettings.PauseMode pauseMode,
+        long fixedPauseMillis,
+        List<ConfiguredHeader> requestHeaders,
+        UserAgentMode userAgentMode,
+        long userAgentRandomizationSeed) {
+        this(headerAttack, pathAttack, verbAttack, paramAttack, trailingDotAttack, trailingSlashAttack, extensionAttack, contentTypeAttack, encodingAttack, protocolAttack, caseAttack, collaboratorPayloads, cookieParamAttack, fuzzExistingCookies, concurrency, perHostConcurrency, throttleStatusCodes, posture, pauseMode, fixedPauseMillis, requestHeaders, userAgentMode, userAgentRandomizationSeed, com.bypassfuzzer.core.scan.PlaybookOptions.defaults());
+    }
 
     public SessionRunOptions {
         concurrency = Math.max(1, concurrency);
@@ -126,11 +153,12 @@ public record SessionRunOptions(
             fixedPauseMillis,
             requestHeaders,
             userAgentMode,
-            userAgentRandomizationSeed
+            userAgentRandomizationSeed, playbookOptions
         );
     }
 
     public void applyTo(FuzzerConfig config) {
+        config.setPlaybookOptions(playbookOptions);
         config.setEnableHeaderAttack(headerAttack);
         config.setEnablePathAttack(pathAttack);
         config.setEnableVerbAttack(verbAttack);

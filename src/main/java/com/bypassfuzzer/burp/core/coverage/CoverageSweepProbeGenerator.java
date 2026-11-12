@@ -40,12 +40,12 @@ public class CoverageSweepProbeGenerator {
             if (includeControl) values.add(PlannedRequest.baseline(base, "Control: original blocked request"));
             values.addAll(planner.plan(base, options.familySelection().highSignalFamilies(),
                 Math.max(0, Math.max(1, options.maxProbesPerCandidate()) + hostCount - values.size()),
-                options.hostPortProbesEnabled(), options.hostPortProbePorts()));
+                options.hostPortProbesEnabled(), options.hostPortProbePorts(), options.playbookOptions()));
             planned = values;
         } else planned = new com.bypassfuzzer.core.scan.SweepPlanner().highSignal(base,
             options.familySelection().highSignalFamilies(), options.maxProbesPerCandidate(),
-            options.hostPortProbePorts(), includeControl);
+            options.hostPortProbePorts(), includeControl, options.playbookOptions());
         return planned.stream().map(p -> new CoverageSweepProbe(p.payload(), p.family(),
-            adapter.toMontoya(request, p.request()), p.baseline() ? null : adapter.httpMode(p.request().protocol()))).toList();
+            adapter.toMontoya(request, p.request()), p.baseline() ? null : adapter.httpMode(p.request().protocol()), p.playbookId(), p.controlRole())).toList();
     }
 }

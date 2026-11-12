@@ -17,7 +17,7 @@ public final class CoverageSweepClassifier {
         if (response == null) return null;
         String type = response.headers().stream().filter(h -> h.name().equalsIgnoreCase("Content-Type"))
             .map(h -> h.value()).findFirst().orElse("");
-        return new SweepClassifier.Response(response.statusCode(), response.body() == null ? 0 : response.body().length(), type);
+        return new SweepClassifier.Response(response.statusCode(), response.body() == null ? 0 : response.body().length(), type, com.bypassfuzzer.core.scan.WildcardCalibration.contentLength(response.headers().stream().filter(h -> h.name().equalsIgnoreCase("Content-Length")).map(h -> h.value()).findFirst().orElse("")));
     }
     public static boolean isInteresting(CoverageSweepCandidate c, HttpResponse control, HttpResponse probe) {
         return SweepClassifier.isInteresting(baseline(c), toCore(control), toCore(probe));

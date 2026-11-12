@@ -70,6 +70,72 @@ class CoverageSweepPanelTest {
     Path tempDir;
 
     @Test
+    void configurationFitsItsViewportInEverySourceMode() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
+            try {
+                JPanel column = field(panel, "configurationPanel", JPanel.class);
+                javax.swing.JScrollPane scroll = (javax.swing.JScrollPane) SwingUtilities.getAncestorOfClass(
+                    javax.swing.JScrollPane.class, column);
+                JComboBox<?> modes = field(panel, "modeComboBox", JComboBox.class);
+                for (int mode : List.of(2, 0, 1, 2)) {
+                    modes.setSelectedIndex(mode);
+                    scroll.setSize(280, 600);
+                    for (int pass = 0; pass < 3; pass++) layoutTree(scroll);
+                    assertEquals(scroll.getViewport().getWidth(), column.getWidth());
+                    for (Component group : column.getComponents()) {
+                        if (!group.isVisible()) continue;
+                        assertTrue(group.getX() + group.getWidth() <= column.getWidth());
+                        for (Component control : ((Container) group).getComponents()) {
+                            if (!control.isVisible()) continue;
+                            assertTrue(control.getX() + control.getWidth() <= group.getWidth(),
+                                control.getClass().getSimpleName() + " clipped in mode " + mode);
+                        }
+                    }
+                }
+                JCheckBox unsafe = field(panel, "includeUnsafeMethodsCheckBox", JCheckBox.class);
+                assertTrue(unsafe.getFontMetrics(unsafe.getFont()).stringWidth(unsafe.getText()) + 28 <= unsafe.getWidth(),
+                    "state-changing method label must fit without an ellipsis");
+                JComboBox<?> policies = field(panel, "openApiParameterPolicy", JComboBox.class);
+                for (int index = 0; index < policies.getItemCount(); index++) {
+                    policies.setSelectedIndex(index);
+                    JLabel rendered = (JLabel) ((javax.swing.ListCellRenderer) policies.getRenderer())
+                        .getListCellRendererComponent(new javax.swing.JList(), policies.getSelectedItem(), -1, false, false);
+                    assertTrue(rendered.getPreferredSize().width < policies.getWidth());
+                }
+            } catch (Exception error) { throw new RuntimeException(error); }
+            finally { panel.cleanup(); }
+        });
+    }
+
+    private static void layoutTree(Container container) {
+        container.doLayout();
+        for (Component child : container.getComponents()) {
+            if (child instanceof Container nested) layoutTree(nested);
+        }
+    }
+
+    @Test
+    void sweepFailureHasAnErrorButtonAndFailedDashboardState() throws Exception {
+        CoverageSweepEngine engine = mock(CoverageSweepEngine.class);
+        when(engine.failureMessages()).thenReturn(List.of("GET http://127.0.0.1/broken — fixture failure"));
+        when(engine.failedCandidateCount()).thenReturn(1);
+        when(engine.phase()).thenReturn(CoverageSweepEngine.SweepPhase.FAILED);
+        CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
+        Method completed = CoverageSweepPanel.class.getDeclaredMethod("handleCompletion");
+        completed.setAccessible(true);
+        SwingUtilities.invokeAndWait(() -> {
+            try { completed.invoke(panel); } catch (Exception error) { throw new RuntimeException(error); }
+        });
+        SwingUtilities.invokeAndWait(() -> {});
+        assertTrue(button(panel, "runErrorsButton").isVisible());
+        assertEquals("Run errors (1)", button(panel, "runErrorsButton").getText());
+        assertTrue(field(panel, "statusLabel", JLabel.class).getText().startsWith("Failed"));
+        assertEquals(com.bypassfuzzer.burp.ui.dashboard.ActivityState.FAILED, panel.activitySnapshot().state());
+        panel.cleanup();
+    }
+
+    @Test
     void doublePortHostSweepProbesAreEnabledByDefault() throws Exception {
         CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()));
         HostPortsControl hostPorts = field(panel, "hostPortsControl", HostPortsControl.class);
@@ -611,6 +677,44 @@ class CoverageSweepPanelTest {
         button(panel, "loadButton").doClick();
 
         assertEquals(3, table.getRowCount());
+    }
+
+    @Test
+    void invalidApiPrefixesAreReportedBeforeStartingAndKeepControlsUsable() throws Exception {
+        Path targets = tempDir.resolve("prefix-targets.txt");
+        Files.writeString(targets, "http://127.0.0.1/admin\n");
+        CoverageSweepEngine engine = mock(CoverageSweepEngine.class);
+        CoverageSweepPreview preview = new CoverageSweepPreview(1, 1,
+            List.of(candidate("http://127.0.0.1/admin", "/admin")));
+        when(engine.collectPreviewFromUrls(anyList(), any(CoverageSweepOptions.class), eq(true)))
+            .thenReturn(preview);
+        CoverageSweepPanel panel = new CoverageSweepPanel(api(List.of()), engine);
+        field(panel, "modeComboBox", JComboBox.class).setSelectedIndex(2);
+        assertTrue(panel.importTargetsFromFile(targets));
+        CoverageSweepFamilyControl families = field(panel, "payloadFamilyControl", CoverageSweepFamilyControl.class);
+        JTextField prefixes = field(families, "prefixes", JTextField.class);
+        prefixes.setText("missing-leading-slash");
+        Method estimate = CoverageSweepPanel.class.getDeclaredMethod("updateEstimate");
+        Method start = CoverageSweepPanel.class.getDeclaredMethod("startSweep");
+        estimate.setAccessible(true);
+        start.setAccessible(true);
+        SwingUtilities.invokeAndWait(() -> {
+            try { estimate.invoke(panel); start.invoke(panel); }
+            catch (Exception error) { throw new RuntimeException(error); }
+        });
+        assertTrue(field(panel, "statusLabel", JLabel.class).getText().contains("API prefixes"));
+        assertTrue(field(panel, "estimateLabel", JLabel.class).getText().startsWith("Invalid scan options"));
+        assertTrue(button(panel, "startButton").isEnabled());
+        assertTrue(button(panel, "importMenuButton").isEnabled());
+        assertTrue(field(panel, "sweepPreparationWorker", javax.swing.SwingWorker.class) == null);
+        verify(engine, org.mockito.Mockito.never()).start(anyList(), any(), any(), any());
+        prefixes.setText("/fixed");
+        SwingUtilities.invokeAndWait(() -> {
+            try { estimate.invoke(panel); } catch (Exception error) { throw new RuntimeException(error); }
+        });
+        assertFalse(field(panel, "estimateLabel", JLabel.class).getText().startsWith("Invalid"));
+        assertEquals(null, field(panel, "estimateLabel", JLabel.class).getToolTipText());
+        panel.cleanup();
     }
 
     @Test

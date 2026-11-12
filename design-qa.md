@@ -138,3 +138,22 @@ Comparison history and findings:
 Required fidelity surfaces: body/title typography and native control sizes retain the established hierarchy; spacing now separates playbook choice from scan behavior and removes the inline row; existing theme colors/tokens are reused; no image/icon assets were added or approximated; copy uses matching Hide/Show terminology and explains the optional prefix format and calibration applicability. Native captures include expanded, collapsed, settings, running, completed and shorter-window states. Browser console checks do not apply to this Swing extension.
 
 Implementation checklist: collapse/restore verified; settings retained; evidence retained; toggling during a run verified; both desktop sizes inspected; native dialogs styled consistently; focused tests passed.
+
+## Compact Sweep configuration and visible run failures (2026-11-12)
+
+final result: passed
+
+Source visual truth is the user's Sweep screenshot, retained as `artifacts/verification/sweep-import-fix-20261112/source-user.png`. This is a scoped native Swing correction: Import targets should fit the same configuration rail as Blocked responses and Authenticated traffic. The established typography, charcoal theme, orange actions, group hierarchy and results-column order remain the target.
+
+Evidence is in `artifacts/verification/sweep-import-fix-20261112/`. The source and implementation were opened together in `comparison-first.png` and `comparison-final.png`. The implementation was captured on a 1700×1100 desktop; its app content was cropped at y=188 to 679×900 for comparison with the source's first 900 pixels. Density is one captured pixel per desktop pixel; CSS sizing does not apply. The screenshot's original window and divider dimensions differ, so editor-height differences are not claimed as a measured gain. `native-release/` also contains all three source modes, scrolled Import options, a 1280×900 window, invalid-prefix state, a completed HTTPS exchange and the selectable Run errors dialog. Black space outside the smaller window is the private desktop, not application layout.
+
+Comparison history:
+
+- The source has a P1 clipping problem: long OpenAPI policy descriptions expand the configuration content beyond a rail with horizontal scrolling disabled. The implementation tracks viewport width, lets controls shrink and renders compact policy labels while preserving their enum values and full descriptions.
+- The first implementation comparison still showed a P2 truncated state-changing-method label. The revised visible label is State-changing methods, retaining Include state-changing methods as its accessible name and the existing explanatory tooltip. The final combined comparison shows the complete label and complete source, payload and execution controls.
+- The final comparison retains the existing native spacing, control sizes, theme colors, labels, dropdown affordances and results/viewer structure. No image assets, substitute icons or font-size reductions were introduced. All three source modes fit the same rail. OpenAPI options remain reachable by vertical scrolling.
+- No actionable P0/P1/P2 issues remain within this scoped layout change. Native editor internals and existing resizable divider behavior are outside the change.
+
+Live verification: a default High signal scan imported a text file containing three owned HTTP URLs with paths and completed 627/627 requests. A separate mixed HTTPS/HTTP list completed 24/24 API-prefix probes and controls, including a custom prefix; a clean rerun also completed 24/24. An invalid prefix was rejected before traffic with Import and Start still usable. The unshipped native driver deliberately injected a planner NoSuchMethodError to prove the actual engine records three failures, excludes the host from completed exports, exposes the requests/errors in the selectable Run errors dialog and resets the state on the next run. This injected error is verification evidence, not a diagnosis of the user's other VM. The original file was on that VM; its immediate-stop symptom was not reproduced by the equivalent local URL list.
+
+Validation: 332 Burp, 105 core and 30 CLI tests pass, plus packaging smoke checks. Updated tests cover all source-mode widths, compact policy labels, prefix validation and correction, visible failure state, continued execution of good candidates, failed-host accounting and recovery. Final manifests, hashes, native readiness and cleanup records are retained with the proof. Browser console checks do not apply to this Swing extension.

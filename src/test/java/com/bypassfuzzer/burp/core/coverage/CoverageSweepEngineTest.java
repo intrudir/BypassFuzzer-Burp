@@ -52,6 +52,41 @@ class CoverageSweepEngineTest {
 
 
     @Test
+    void candidateFailuresRemainVisibleAndDoNotMarkTheHostCompleteOrPreventTheNextRun() throws Exception {
+        CoverageSweepProbeGenerator generator = new CoverageSweepProbeGenerator() {
+            @Override public List<CoverageSweepProbe> buildProbes(HttpRequest request,
+                CoverageSweepOptions options, boolean includeControl) {
+                if (request.path().equals("/broken")) throw new NoSuchMethodError("fixture API mismatch");
+                return List.of(new CoverageSweepProbe("Control", "Control", request, null));
+            }
+        };
+        var engine = new CoverageSweepEngine(api(List.of()),
+            new ModeTrackingSender(response(403, "text/plain", "denied")), generator);
+        var broken = candidate(request("/broken", "", "GET", null, ""), 403);
+        var good = candidate(request("/good", "", "GET", null, ""), 403);
+        var results = Collections.synchronizedList(new ArrayList<AttackResult>());
+        var completed = new CountDownLatch(1);
+        assertTrue(engine.start(List.of(broken, good), withoutCalibration(CoverageSweepOptions.defaults()),
+            results::add, completed::countDown));
+        assertTrue(completed.await(5, TimeUnit.SECONDS));
+        assertEquals(CoverageSweepEngine.SweepPhase.FAILED, engine.phase());
+        assertEquals(1, engine.failedCandidateCount());
+        assertTrue(engine.failureMessages().get(0).contains("/broken"));
+        assertTrue(engine.failureMessages().get(0).contains("NoSuchMethodError: fixture API mismatch"));
+        assertEquals(0, engine.completedHostCount());
+        assertEquals(1, results.size(), "the other candidate must still execute");
+
+        var rerun = new CountDownLatch(1);
+        assertTrue(engine.start(List.of(good), withoutCalibration(CoverageSweepOptions.defaults()),
+            results::add, rerun::countDown));
+        assertTrue(rerun.await(5, TimeUnit.SECONDS));
+        assertEquals(CoverageSweepEngine.SweepPhase.COMPLETE, engine.phase());
+        assertTrue(engine.failureMessages().isEmpty());
+        assertEquals(0, engine.failedCandidateCount());
+        assertEquals(1, engine.completedHostCount());
+    }
+
+    @Test
     void automaticSweepSendRetainsHttp500Response() throws Exception {
         ModeTrackingSender sender = new ModeTrackingSender(response(500, "text/plain", "denied"));
         CoverageSweepEngine engine = new CoverageSweepEngine(api(List.of()), sender,

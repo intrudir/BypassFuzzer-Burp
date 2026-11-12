@@ -9,6 +9,7 @@ public enum ActivityState {
     STOPPING("Stopping"),
     STOPPED("Stopped"),
     COMPLETED("Completed"),
+    FAILED("Failed"),
     DISPOSED("Closed");
 
     private final String label;

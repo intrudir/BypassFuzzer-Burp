@@ -31,6 +31,8 @@ import com.google.gson.Gson;
 import com.bypassfuzzer.burp.ui.WorkbenchTheme;
 
 import javax.swing.BorderFactory;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.Scrollable;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -88,6 +90,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private JButton pauseButton;
     private JButton clearButton;
     private JButton previewProbesButton;
+    private JButton runErrorsButton;
     private JButton viewCandidateButton;
     private JButton exportButton;
     private JButton authIdentifiersButton;
@@ -223,6 +226,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         else if (engine.isRunning()) state = engine.isPaused() ? ActivityState.PAUSED : ActivityState.RUNNING;
         else if (stopRequested || engine.phase() == CoverageSweepEngine.SweepPhase.STOPPED) {
             state = ActivityState.STOPPED;
+        } else if (engine.phase() == CoverageSweepEngine.SweepPhase.FAILED) {
+            state = ActivityState.FAILED;
         } else if (hasStarted || engine.phase() == CoverageSweepEngine.SweepPhase.COMPLETE) {
             state = ActivityState.COMPLETED;
         } else state = ActivityState.IDLE;
@@ -258,6 +263,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         JPanel header = new JPanel(new BorderLayout());
         header.add(WorkbenchTheme.heading("Sweep", "Find authorization signals across in-scope endpoints."), BorderLayout.CENTER);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 18));
+        runErrorsButton = new JButton("Run errors");
+        runErrorsButton.setVisible(false);
+        runErrorsButton.addActionListener(e -> showRunErrors());
+        actions.add(runErrorsButton);
         actions.add(configurationToggleButton);
         actions.add(previewProbesButton);
         actions.add(startButton);
@@ -324,7 +333,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         configurationToggleButton.addActionListener(e -> toggleConfigurationPanel());
         pullResponsesLabel = new JLabel("Pull responses:");
 
-        includeUnsafeMethodsCheckBox = new JCheckBox("Include state-changing methods", false);
+        includeUnsafeMethodsCheckBox = new JCheckBox("State-changing methods", false);
+        includeUnsafeMethodsCheckBox.getAccessibleContext().setAccessibleName("Include state-changing methods");
         includeUnsafeMethodsCheckBox.setToolTipText(
             "Include POST, PUT, PATCH, DELETE, and other state-changing methods in the sweep selection.");
         includeUnsafeMethodsCheckBox.addActionListener(e -> handleUnsafeMethodsSelectionChange());
@@ -380,11 +390,28 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         excludeHostsButton.setToolTipText("Choose unique hosts to exclude from the current sweep candidates.");
         excludeHostsButton.addActionListener(e -> openExcludeHostsDialog());
 
-        openApiVariablesRow = new JPanel(new java.awt.GridLayout(0, 1, 0, 6));
+        openApiVariablesRow = new JPanel();
+        openApiVariablesRow.setLayout(new BoxLayout(openApiVariablesRow, BoxLayout.Y_AXIS));
         openApiVariablesRow.add(new JLabel("OpenAPI parameters:"));
         openApiParameterPolicy = new JComboBox<>(java.util.Arrays.stream(OpenApiImportOptions.ParameterPolicy.values())
             .filter(policy -> policy != OpenApiImportOptions.ParameterPolicy.SAMPLE_VALUES)
             .toArray(OpenApiImportOptions.ParameterPolicy[]::new));
+        openApiParameterPolicy.setRenderer((list, value, index, selected, focused) -> {
+            JLabel label = (JLabel) new DefaultListCellRenderer()
+                .getListCellRendererComponent(list, value, index, selected, focused);
+            if (value != null) {
+                label.setText(switch (value) {
+                    case SOURCE_VALUES_ONLY -> "Provided values only";
+                    case REQUIRED_EMPTY -> "Missing required: empty";
+                    case REQUIRED_VARIABLES -> "Missing required: variables";
+                    case ALL_EMPTY -> "All parameters: empty";
+                    case ALL_VARIABLES -> "All parameters: variables";
+                    case SAMPLE_VALUES -> "Examples and samples";
+                });
+                label.setToolTipText(value.toString());
+            }
+            return label;
+        });
         openApiParameterPolicy.setSelectedItem(OpenApiImportOptions.ParameterPolicy.REQUIRED_VARIABLES);
         openApiParameterPolicy.setToolTipText(
             "Choose how declared parameters without values are filled. Managed variables override examples/defaults.");
@@ -393,13 +420,18 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         });
         openApiVariablesButton = new JButton("Manage Variables...");
         openApiVariablesButton.addActionListener(e -> manageOpenApiVariables());
-        openApiVariablesRow.add(openApiParameterPolicy);
-        openApiVariablesRow.add(openApiVariablesButton);
+        for (javax.swing.JComponent control : List.of(openApiParameterPolicy, openApiVariablesButton)) {
+            control.setAlignmentX(Component.LEFT_ALIGNMENT);
+            control.setMinimumSize(new Dimension(0, control.getMinimumSize().height));
+            control.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+            openApiVariablesRow.add(Box.createVerticalStrut(6));
+            openApiVariablesRow.add(control);
+        }
 
         statusLabel = WorkbenchTheme.muted("Load in-scope Proxy history to begin.");
         estimateLabel = WorkbenchTheme.muted("No candidates loaded.");
         completedHostsLabel = WorkbenchTheme.muted("Completed hosts: 0 / 0");
-        configurationPanel = new JPanel();
+        configurationPanel = new ConfigurationColumn();
         configurationPanel.setLayout(new BoxLayout(configurationPanel, BoxLayout.Y_AXIS));
         JPanel statuses = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         statusSelectionRow = statuses;
@@ -434,8 +466,23 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         return panel;
     }
 
+    /** Keep every source mode inside the same rail, including long OpenAPI options. */
+    private static final class ConfigurationColumn extends JPanel implements Scrollable {
+        public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        public boolean getScrollableTracksViewportWidth() { return true; }
+        public boolean getScrollableTracksViewportHeight() { return false; }
+        public int getScrollableUnitIncrement(java.awt.Rectangle visible, int orientation, int direction) { return 24; }
+        public int getScrollableBlockIncrement(java.awt.Rectangle visible, int orientation, int direction) {
+            return Math.max(24, visible.height - 24);
+        }
+    }
+
     private JPanel railGroup(String title, Component... controls) {
-        JPanel group = new JPanel();
+        JPanel group = new JPanel() {
+            @Override public Dimension getMinimumSize() {
+                return new Dimension(0, super.getMinimumSize().height);
+            }
+        };
         group.setLayout(new BoxLayout(group, BoxLayout.Y_AXIS));
         group.setBorder(WorkbenchTheme.sectionBorder(title));
         group.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -443,6 +490,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             WorkbenchTheme.apply(control);
             if (control instanceof javax.swing.JComponent c) {
                 c.setAlignmentX(Component.LEFT_ALIGNMENT);
+                c.setMinimumSize(new Dimension(0, c.getMinimumSize().height));
                 c.setMaximumSize(new Dimension(Integer.MAX_VALUE, Math.max(34, c.getPreferredSize().height)));
             }
             group.add(control);
@@ -1302,7 +1350,17 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             return;
         }
 
+        CoverageSweepOptions options;
+        try {
+            options = currentOptions();
+        } catch (IllegalArgumentException error) {
+            String message = "Unable to start Sweep: " + error.getMessage();
+            statusLabel.setText(message);
+            statusLabel.setToolTipText(message);
+            return;
+        }
         stopRequested = false;
+        runErrorsButton.setVisible(false);
         loadButton.setEnabled(false);
         importButton.setEnabled(false);
         setStatusControlsEnabled(false);
@@ -1314,7 +1372,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         candidateTable.setEnabled(true);
         statusLabel.setText("Preparing selected sweep candidates...");
 
-        CoverageSweepOptions options = currentOptions();
         activePayloadSet = options.payloadSet();
         activeSkipLikelyPublicEndpoints = options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
             && options.verifyUnauthenticatedAccess() && options.skipLikelyPublicEndpoints();
@@ -1359,6 +1416,9 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                     Thread.currentThread().interrupt();
                     resultsWorkspace.setPrimaryRunActive(false);
                     updateIdleUi("Coverage sweep preparation interrupted.");
+                } catch (RuntimeException e) {
+                    resultsWorkspace.setPrimaryRunActive(false);
+                    updateIdleUi("Unable to start Sweep: " + e.getMessage());
                 } catch (ExecutionException e) {
                     resultsWorkspace.setPrimaryRunActive(false);
                     updateIdleUi("Unable to prepare coverage sweep: "
@@ -1465,7 +1525,10 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private void handleCompletion() {
         resultsWorkspace.afterPendingResults(() -> {
             resultsWorkspace.setPrimaryRunActive(false);
-            updateIdleUi((stopRequested ? "Stopped" : "Completed")
+            boolean failed = !engine.failureMessages().isEmpty();
+            runErrorsButton.setText("Run errors (" + engine.failureMessages().size() + ")");
+            runErrorsButton.setVisible(failed);
+            updateIdleUi((stopRequested ? "Stopped" : failed ? "Failed — see Run errors" : "Completed")
                 + " (" + payloadSetLabel(activePayloadSet) + "): "
                 + engine.completedMainRequestCount() + " / " + engine.plannedMainRequestCount()
                 + " generated main request(s) completed; " + totalHttpRequestsSent()
@@ -1474,11 +1537,22 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 + skippedPublicStatus()
                 + (engine.quarantinedRetryRequestCount() > 0
                     ? " (" + engine.quarantinedRetryRequestCount() + " pattern-throttled)" : "")
+                + (failed ? "; " + engine.failedCandidateCount() + " candidate(s) failed" : "")
                 + ".");
             updateRetryQueueButton();
             updateCompletedHostsLabel();
             userAgentRandomizationSeed = java.util.concurrent.ThreadLocalRandom.current().nextLong();
         });
+    }
+
+    private void showRunErrors() {
+        javax.swing.JTextArea details = new javax.swing.JTextArea(
+            String.join("\n\n", engine.failureMessages()), 16, 80);
+        details.setEditable(false);
+        details.setLineWrap(true);
+        details.setWrapStyleWord(true);
+        details.setCaretPosition(0);
+        JOptionPane.showMessageDialog(this, new JScrollPane(details), "Sweep run errors", JOptionPane.ERROR_MESSAGE);
     }
 
     private void updateCompletedHostsLabel() {
@@ -1574,6 +1648,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private void updateIdleUi(String message) {
         statusLabel.setText(message);
+        statusLabel.setToolTipText(message);
         startButton.setText("Start Sweep");
         stopButton.setText("Stop");
         loadButton.setEnabled(true);
@@ -1591,7 +1666,15 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     private void updateEstimate() {
         int selected = candidateTableModel.selectedCandidates().size();
-        CoverageSweepOptions options = currentOptions();
+        CoverageSweepOptions options;
+        try {
+            options = currentOptions();
+        } catch (IllegalArgumentException error) {
+            estimateLabel.setText("Invalid scan options: " + error.getMessage());
+            estimateLabel.setToolTipText(estimateLabel.getText());
+            return;
+        }
+        estimateLabel.setToolTipText(null);
         if (options.payloadSet() == CoverageSweepPayloadSet.ALL_PAYLOADS) {
             int enabled = options.familySelection().bypassFamilies().size();
             estimateLabel.setText("Selected " + selected

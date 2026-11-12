@@ -78,6 +78,9 @@ public class CoverageSweepEngine {
     private final AtomicInteger automaticRetryRequests = new AtomicInteger();
     private final AtomicInteger quarantinedRetryRequests = new AtomicInteger();
     private volatile SweepPhase phase = SweepPhase.IDLE;
+    private final AtomicInteger failedCandidates = new AtomicInteger();
+    private final java.util.concurrent.ArrayBlockingQueue<String> failures = new java.util.concurrent.ArrayBlockingQueue<>(100);
+    private final Set<String> failedSweepHosts = ConcurrentHashMap.newKeySet();
 
     public enum SweepPhase {
         IDLE,
@@ -85,6 +88,7 @@ public class CoverageSweepEngine {
         MAIN_SWEEP,
         AUTOMATIC_RETRIES,
         COMPLETE,
+        FAILED,
         STOPPED
     }
 
@@ -305,6 +309,12 @@ public class CoverageSweepEngine {
 
         CoverageSweepOptions effectiveOptions = options == null ? CoverageSweepOptions.defaults() : options;
         pauseController.reset();
+        failedCandidates.set(0);
+        failures.clear();
+        failedSweepHosts.clear();
+        sweepHosts.clear();
+        completedSweepHosts.clear();
+        pendingHostCandidates.clear();
         plannedMainRequests.set(0);
         skippedPublicEndpoints.set(0);
         completedMainRequests.set(0);
@@ -316,10 +326,12 @@ public class CoverageSweepEngine {
         runnerThread = new Thread(() -> {
             try {
                 execute(candidates, effectiveOptions, resultCallback);
+            } catch (RuntimeException | LinkageError error) {
+                if (running && !Thread.currentThread().isInterrupted()) recordFailure("Sweep setup", error);
             } finally {
                 running = false;
                 phase = Thread.currentThread().isInterrupted() || phase == SweepPhase.STOPPED
-                    ? SweepPhase.STOPPED : SweepPhase.COMPLETE;
+                    ? SweepPhase.STOPPED : failures.isEmpty() ? SweepPhase.COMPLETE : SweepPhase.FAILED;
                 if (completionCallback != null) {
                     completionCallback.run();
                 }
@@ -397,6 +409,18 @@ public class CoverageSweepEngine {
         return phase;
     }
 
+    public int failedCandidateCount() { return failedCandidates.get(); }
+
+    public List<String> failureMessages() { return List.copyOf(failures); }
+
+    private void recordFailure(String target, Throwable error) {
+        String detail = error.getClass().getSimpleName()
+            + (error.getMessage() == null ? "" : ": " + error.getMessage());
+        String message = target + " — " + detail;
+        failures.offer(message);
+        safeLogError("Coverage sweep failed: " + message);
+    }
+
     public int plannedMainRequestCount() {
         return plannedMainRequests.get();
     }
@@ -463,9 +487,6 @@ public class CoverageSweepEngine {
         });
         ConcurrentLinkedQueue<RetryTask> retryQueue = new ConcurrentLinkedQueue<>(deferredRetryQueue);
         deferredRetryQueue = retryQueue;
-        sweepHosts.clear();
-        completedSweepHosts.clear();
-        pendingHostCandidates.clear();
         for (CoverageSweepCandidate candidate : candidates) {
             String candidateHost = host(candidate.request(), candidate.displayUrl());
             sweepHosts.add(candidateHost);
@@ -487,13 +508,16 @@ public class CoverageSweepEngine {
                     CoverageSweepCandidate candidate = interleaved.get(candidateIndex);
                     try {
                         executeCandidate(candidate, options, resultCallback, retryQueue);
-                    } catch (Exception e) {
-                        safeLogError("Coverage sweep candidate failed for " + candidate.displayUrl() + ": "
-                            + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                    } catch (Exception | LinkageError error) {
+                        if (running && !Thread.currentThread().isInterrupted()) {
+                            failedCandidates.incrementAndGet();
+                            failedSweepHosts.add(host(candidate.request(), candidate.displayUrl()));
+                            recordFailure(candidate.method() + " " + candidate.displayUrl(), error);
+                        }
                     } finally {
                         String candidateHost = host(candidate.request(), candidate.displayUrl());
                         AtomicInteger remaining = pendingHostCandidates.get(candidateHost);
-                        if (remaining != null && remaining.decrementAndGet() == 0) {
+                        if (remaining != null && remaining.decrementAndGet() == 0 && !failedSweepHosts.contains(candidateHost)) {
                             completedSweepHosts.add(candidateHost);
                         }
                     }

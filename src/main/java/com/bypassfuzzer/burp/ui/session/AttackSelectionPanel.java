@@ -1,6 +1,7 @@
 package com.bypassfuzzer.burp.ui.session;
 
 import com.bypassfuzzer.burp.config.FuzzerConfig;
+import com.bypassfuzzer.burp.ui.WorkbenchTheme;
 
 import javax.swing.*;
 import java.awt.*;
@@ -81,8 +82,8 @@ public class AttackSelectionPanel extends JPanel {
         apiPrefixes.setText(String.join(", ", config.getPlaybookOptions().apiPrefixes()));
         calibration.setSelected(config.getPlaybookOptions().wildcardCalibration());
         calibration.setToolTipText("Send a fresh sibling control for GET/HEAD seeds and annotate matching responses as Possible fallback.");
-        var options = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
-        options.add(calibration); options.add(new JLabel("Additional API prefixes:")); options.add(apiPrefixes); add(options);
+        apiPrefixes.setToolTipText("Additional path prefixes for API prefix insertion, separated by commas. For example: /internal-api, /gateway");
+        apiPrefixes.getAccessibleContext().setAccessibleName("Additional API prefixes");
         syncFamiliesToSelection();
         updateSelectionState();
     }
@@ -142,6 +143,7 @@ public class AttackSelectionPanel extends JPanel {
         checkAllButton.setEnabled(enabled);
         uncheckAllButton.setEnabled(enabled);
         playbooksButton.setEnabled(enabled); apiPrefixes.setEnabled(enabled); calibration.setEnabled(enabled);
+        if (!enabled && playbooksDialog != null) playbooksDialog.setVisible(false);
     }
 
     private JCheckBox createCheckbox(String label, boolean selected, Runnable onSelectionChanged) {
@@ -178,10 +180,43 @@ public class AttackSelectionPanel extends JPanel {
         if (playbooksDialog != null) playbooksDialog.dispose();
         playbooksDialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Bypass Playbooks", Dialog.ModalityType.MODELESS);
         selector = new PlaybookSelectorPanel(selection, () -> { selection=selector.selection(); updateSelectionState(); changed.run(); });
-        playbooksDialog.add(selector);
-        var close=new JButton("Close"); close.addActionListener(e -> playbooksDialog.setVisible(false));
-        var footer=new JPanel(new FlowLayout(FlowLayout.RIGHT)); footer.add(close); playbooksDialog.add(footer,BorderLayout.SOUTH);
-        playbooksDialog.setSize(700,650); playbooksDialog.setLocationRelativeTo(this); playbooksDialog.setVisible(true);
+        JPanel content = new JPanel(new BorderLayout(0, 12));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 14, 10, 14));
+        content.add(selector, BorderLayout.CENTER);
+        var close = new JButton("Close");
+        close.addActionListener(e -> playbooksDialog.setVisible(false));
+        JPanel footer = new JPanel(new BorderLayout(0, 8));
+        footer.add(buildScanBehaviorPanel(), BorderLayout.CENTER);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        actions.add(close);
+        footer.add(actions, BorderLayout.SOUTH);
+        content.add(footer, BorderLayout.SOUTH);
+        WorkbenchTheme.apply(content);
+        playbooksDialog.setContentPane(content);
+        playbooksDialog.setMinimumSize(new Dimension(620, 520));
+        playbooksDialog.setSize(740, 720);
+        playbooksDialog.setLocationRelativeTo(this);
+        playbooksDialog.setVisible(true);
+    }
+
+    private JPanel buildScanBehaviorPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(WorkbenchTheme.sectionBorder("Scan behavior"));
+        GridBagConstraints c = new GridBagConstraints();
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 2; c.weightx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL; c.anchor = GridBagConstraints.WEST;
+        panel.add(calibration, c);
+        c.gridy++; c.insets = new Insets(0, 22, 12, 0);
+        panel.add(WorkbenchTheme.muted("Flag generic fallback pages for GET and HEAD requests."), c);
+        c.gridy++; c.gridwidth = 1; c.weightx = 0; c.insets = new Insets(0, 0, 0, 12);
+        JLabel label = new JLabel("Additional API prefixes");
+        label.setLabelFor(apiPrefixes);
+        panel.add(label, c);
+        c.gridx = 1; c.weightx = 1; c.insets = new Insets(0, 0, 0, 0);
+        panel.add(apiPrefixes, c);
+        c.gridy++; c.insets = new Insets(5, 0, 0, 0);
+        panel.add(WorkbenchTheme.muted("Optional, comma-separated. Example: /internal-api, /gateway"), c);
+        return panel;
     }
 
     private List<JCheckBox> allCheckboxes() {

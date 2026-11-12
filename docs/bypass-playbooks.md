@@ -15,7 +15,7 @@ Hop-by-hop probes require HTTP/1. AUTO uses HTTP/1 for them, forced HTTP/2 skips
 
 ## Select and preview
 
-In Burp, open Bypass → Playbooks… or Sweep → Payload Families… . Both use the same catalog-backed selector with family shortcuts, an exact count and independent Sweep inventory selections. Additional API prefixes and Wildcard calibration are available alongside those controls. Sweep keeps its Payload, Host, Family, Signal column order.
+In Burp, open Bypass → Playbooks… or Sweep → Payload Families… . Both use the same catalog-backed selector with family shortcuts, an exact count and independent Sweep inventory selections. In Bypass, Additional API prefixes and Wildcard calibration live in the Playbooks dialog’s Scan behavior section. Use Hide config / Show config in the Bypass action row to reclaim results and message-viewer space without changing the scan choices. Sweep keeps its Payload, Host, Family, Signal column order.
 
 ```sh
 java -jar cli/build/libs/bypassfuzzer-cli.jar bypass --list-playbooks

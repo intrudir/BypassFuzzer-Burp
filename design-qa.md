@@ -117,3 +117,24 @@ The shared selector groups checks by family and pins its count and selection act
 The full regression command is `./gradlew :test :core:test :cli:test :smokeTest --no-daemon --offline`. Packaged CLI proof includes the actual two-hop stripping proxy, protocol rules, YAML/flag precedence, preflight rejection, HEAD wire-length handling and additive evidence readback. The operating skill separates wildcard controls from baselines. Runtime/OpenAPI wire-shape verification explicitly disables calibration because dedicated playbook verification covers control traffic.
 
 Credential-free proof, final artifact hashes, native readiness and cleanup records are retained in `artifacts/verification/playbooks-20261112/`. The VM restart interrupted temporary native proof; the final pass writes directly to that durable location and uses a disposable project/profile/display. Existing user Burp state stays outside the run.
+
+## Bypass configuration collapse and scan-behavior grouping (2026-11-12)
+
+final result: passed
+
+Source visual truth: `artifacts/verification/bypass-hide-config-20261112/source-user.png` (1700 × 902). The user requested a scoped change to this existing native UI: hide the attack families and relocate the awkward wildcard/API-prefix row. The established charcoal/orange theme remains the visual target.
+
+Implementation evidence: `expanded-app.png`, `collapsed-app.png`, `playbooks-scan-behavior.png`, `collapsed-with-exchange.png` and `collapsed-1280-app.png` in that evidence directory. Full comparisons are `comparison-expanded.png` and `comparison-collapsed.png`; `comparison-controls.png` compares the configuration region at readable size. Source and native implementation were opened and examined in the same comparison boards.
+
+Viewport and normalization: native desktop 1700 × 1100; the app-tab region was cropped at y=128 to 1700 × 902 for comparison with the supplied screenshot. Density is one captured pixel per desktop pixel; CSS sizing does not apply. A separate 1280 × 900 window checks the shorter workspace. The source's customer URL was replaced with the same POST path on an owned loopback fixture; that customer endpoint was never contacted. The source's resizable table/editor divider differs from the app's initial divider, so height gains are measured by toggling within the same native instance rather than inferred from the source.
+
+Comparison history and findings:
+
+- The source has no config-collapse affordance, leaving the attack-family area above results. The implementation adds a neutral Hide config / Show config control beside the scan actions. The hidden state removes the whole family area while preserving the actions, status, filters and evidence.
+- The source places unrelated calibration and prefix inputs on one crowded inline row. Both now live in a pinned Scan behavior section in Playbooks, with a label-associated prefix field, format hint and GET/HEAD calibration explanation.
+- Native interaction proof confirms the table grew from 46 to 101 px and the viewers from 310 to 393 px when config was hidden. The toggle worked during an owned scan, retained all seven records and exchanges, and preserved the selected playbook, custom prefix and calibration setting after reopening.
+- No actionable P0/P1/P2 issues remain for this scoped change. Existing native editor internals and other mode layouts are unchanged.
+
+Required fidelity surfaces: body/title typography and native control sizes retain the established hierarchy; spacing now separates playbook choice from scan behavior and removes the inline row; existing theme colors/tokens are reused; no image/icon assets were added or approximated; copy uses matching Hide/Show terminology and explains the optional prefix format and calibration applicability. Native captures include expanded, collapsed, settings, running, completed and shorter-window states. Browser console checks do not apply to this Swing extension.
+
+Implementation checklist: collapse/restore verified; settings retained; evidence retained; toggling during a run verified; both desktop sizes inspected; native dialogs styled consistently; focused tests passed.

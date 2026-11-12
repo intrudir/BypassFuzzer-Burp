@@ -70,6 +70,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
     private RunOptionsPanel runOptionsPanel;
     private JButton optionsButton;
     private JButton previewButton;
+    private JButton configurationToggleButton;
     private SwingWorker<List<RequestPreviewPanel.Row>, Void> previewWorker;
     private JDialog optionsDialog;
     private SessionResultsWorkspace resultsWorkspace;
@@ -284,6 +285,12 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
 
         JPanel topRow = new JPanel(new BorderLayout());
         topRow.add(controlPanel, BorderLayout.WEST);
+        configurationToggleButton = new JButton("Hide config");
+        configurationToggleButton.setToolTipText("Show or hide attack families to give results and request/response viewers more room.");
+        configurationToggleButton.addActionListener(e -> toggleBypassConfiguration());
+        JPanel viewActions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        viewActions.add(configurationToggleButton);
+        topRow.add(viewActions, BorderLayout.EAST);
         topContent.add(WorkbenchTheme.heading("Bypass", request.method() + " " + request.url()));
         topContent.add(topRow);
         JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 4));
@@ -300,6 +307,14 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
 
         topPanel.add(topContent, BorderLayout.CENTER);
         return topPanel;
+    }
+
+    private void toggleBypassConfiguration() {
+        boolean show = !attackSelectionPanel.isVisible();
+        attackSelectionPanel.setVisible(show);
+        configurationToggleButton.setText(show ? "Hide config" : "Show config");
+        revalidate();
+        repaint();
     }
 
     private void openOptionsDialog() {

@@ -8,6 +8,9 @@ import com.bypassfuzzer.burp.session.FuzzingSessionController;
 import com.bypassfuzzer.burp.session.SessionRunOptions;
 import com.bypassfuzzer.burp.ui.dashboard.ActivitySnapshot;
 import com.bypassfuzzer.burp.ui.session.IdorPanel;
+import com.bypassfuzzer.burp.ui.session.AttackSelectionPanel;
+import com.bypassfuzzer.burp.ui.session.RunOptionsPanel;
+import com.bypassfuzzer.burp.ui.session.SessionRunOptionsSupport;
 import com.bypassfuzzer.burp.ui.session.SessionResultsWorkspace;
 import com.bypassfuzzer.burp.ui.session.UrlValidationPanel;
 import org.junit.jupiter.api.Test;
@@ -51,6 +54,38 @@ class FuzzingSessionTabTest {
         assertFalse(uiText.contains("Throttle..."));
         assertFalse(uiText.contains("Requests/second"));
         assertTrue(uiText.contains("Preview Requests"));
+    }
+
+    @Test
+    void hidingBypassConfigurationPreservesSelectionsAndRecordedEvidence() throws Exception {
+        FuzzingSessionTab tab = session(TargetedMode.BYPASS);
+        try {
+            AttackSelectionPanel selection = field(tab, "attackSelectionPanel", AttackSelectionPanel.class);
+            RunOptionsPanel options = field(tab, "runOptionsPanel", RunOptionsPanel.class);
+            SessionResultsWorkspace workspace = field(tab, "resultsWorkspace", SessionResultsWorkspace.class);
+            JButton toggle = field(tab, "configurationToggleButton", JButton.class);
+            javax.swing.JTextField prefixes = field(selection, "apiPrefixes", javax.swing.JTextField.class);
+            javax.swing.JCheckBox calibration = field(selection, "calibration", javax.swing.JCheckBox.class);
+            prefixes.setText("/gateway, /internal-api");
+            calibration.setSelected(false);
+            field(selection, "headerAttackCheckbox", javax.swing.JCheckBox.class).doClick();
+            var before = SessionRunOptionsSupport.collect(selection, options);
+            var result = new AttackResult("Bypass", "recorded probe", request("/users/alice", "", "GET", null, ""), null);
+            workspace.addResult(result);
+            toggle.doClick();
+            assertFalse(selection.isVisible());
+            assertEquals("Show config", toggle.getText());
+            assertTrue(toggle.isEnabled());
+            assertEquals(1, workspace.allResultsCount());
+            assertEquals(before, SessionRunOptionsSupport.collect(selection, options));
+            toggle.doClick();
+            assertTrue(selection.isVisible());
+            assertEquals("Hide config", toggle.getText());
+            assertEquals(before, SessionRunOptionsSupport.collect(selection, options));
+            assertFalse(visibleText(selection).contains("Wildcard calibration"));
+        } finally {
+            tab.cleanup();
+        }
     }
 
     @Test

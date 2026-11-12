@@ -9,6 +9,7 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 - `bypass-route` sends the selected Proxy, Sitemap, or Repeater request through `Send to BypassFuzzer` -> `Bypass`.
 - `bypass-tab-name` renames a request session from its tab header by double-click or `Rename tab...` in the right-click menu.
 - `bypass-selection` enables individual attack families or uses `Check All`/`Uncheck All`.
+- `bypass-config` uses `Hide config` / `Show config` in the action row to give results and message viewers more room; toggling preserves selections, scan behavior settings and recorded exchanges. The toggle remains usable during a run.
 - `bypass-preview` opens a sortable table of up to 1,000 planned requests and displays the selected request in a Burp message editor.
 - `bypass-options` uses the shared execution controls to configure fixed headers, per-request User-Agent variation, hard global/per-host concurrency caps, throttle response codes, posture, and fixed/smart pause behavior through `Options...`.
 - `bypass-run` starts, pauses/resumes, stops, clears, and reports planned payloads, actual HTTP sends, recorded results, and deferred retries separately.
@@ -20,7 +21,7 @@ Bypass opens one selected Burp request as a closeable session, runs chosen autho
 - In Burp Proxy, Sitemap, or Repeater, select a request and choose `Send to BypassFuzzer` -> `Bypass`.
 - Choose top-level `Bypass`, then the nested tab titled `<METHOD> <path>`.
 - Double-click the nested tab name or right-click it and choose `Rename tab...`; the renamed title stays with that session.
-- Use the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Preview Requests`, `Start Fuzzing`, `Pause`, `Stop`, `Clear Results`, or the shared `Retry queue (n)` button in the primary action bar.
+- Use `Hide config` / `Show config`, the inline attack-family checkboxes, `Check All`, `Uncheck All`, `Options...`, `Preview Requests`, `Start Fuzzing`, `Pause`, `Stop`, `Clear Results`, or the shared `Retry queue (n)` button in the primary action bar.
 - Use `Filters`/`Hide filters`, `Smart filter`, `Enable Manual Filter`, and `Apply Manual Filters` beside the results table.
 - Select a result to inspect its `Request` and `Response`; use the table context menu for highlights or `Copy selected rows (TSV)`.
 
@@ -37,6 +38,7 @@ Preconditions:
 - **Empty state.** Select the mode before sending a request and read its matching context-menu route. Send two requests: the guidance hides. Close one session: it stays hidden. Confirm closing the last session: the guidance returns.
 - **Rename the session.** Double-click its nested tab name, enter `Quarterly report`, and require the visible title to change. Right-click the name to find `Rename tab...`; cancelling or entering only spaces must keep the current title.
 - **Choose scope.** Use `Uncheck All`, select `Header`, and review `Options...`. Keep Collaborator off unless Professional Collaborator is configured and explicitly in scope.
+- **Reclaim workspace.** Choose `Hide config`: the attack-family area disappears and both the table and native editors grow. `Show config` restores the same choices. Open `Playbooks…` to edit Scan behavior; set a custom API prefix and calibration choice, close it, toggle config, then reopen and confirm both settings remain. During an owned run, verify the toggle still works and records stay available.
 - **Preview.** Choose `Preview Requests`, sort or select a payload row, and require the Burp request editor below the table to display that row's planned request.
 - **Review shared execution settings.** `Request Headers...` includes the same synthetic/browser-like User-Agent randomizer as Sweep. `Throttle...` includes hard global and per-host in-flight caps, throttle codes, posture, and fixed/smart run-wide pause choices.
 - **Run and inspect.** Choose `Start Fuzzing`. Require at least one result whose request contains a trusted proxy header and whose response is `200` with `X-Smoke-Bypass: trusted X-Forwarded-For`; select the row and capture both Request and Response viewers.
@@ -56,4 +58,4 @@ Preconditions:
 - A successful status alone is insufficient. Inspect the mutated request and response marker/body against the blocked baseline.
 - Closing the nested tab prompts for confirmation and disposes the session; use a disposable run before testing close.
 
-Shared checks also have a [playbook/calibration recipe](playbooks.md). Bypass exposes Playbooks… with family shortcuts and a selected-playbook count, additional API prefixes and default-on Wildcard calibration. Candidate warnings preserve the original signal and retain a selectable Fallback control exchange.
+Shared checks also have a [playbook/calibration recipe](playbooks.md). Bypass exposes Playbooks… with family shortcuts and a selected-playbook count. Its pinned Scan behavior section groups default-on Wildcard calibration with a labeled Additional API prefixes field and format hint. Candidate warnings preserve the original signal and retain a selectable Fallback control exchange.

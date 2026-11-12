@@ -14,6 +14,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ConfiguredHeaderPolicyTest {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings = "HTTP/0.9")
+    void versionlessMontoyaRequestsRemainHeaderless(String version) {
+        HttpRequest headerless = org.mockito.Mockito.mock(HttpRequest.class);
+        org.mockito.Mockito.when(headerless.httpVersion()).thenReturn(version);
+        ConfiguredHeaderPolicy policy = new ConfiguredHeaderPolicy(
+            List.of(new ConfiguredHeader("User-Agent", "Sweep-Repro-UA")),
+            com.bypassfuzzer.core.http.UserAgentMode.SYNTHETIC, 42);
+
+        org.junit.jupiter.api.Assertions.assertSame(headerless, policy.applyToBase(headerless));
+        org.junit.jupiter.api.Assertions.assertSame(headerless,
+            policy.reconcileMutation(request(), headerless));
+        org.mockito.Mockito.verify(headerless, org.mockito.Mockito.never()).withAddedHeader(
+            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.verify(headerless, org.mockito.Mockito.never()).withRemovedHeader(
+            org.mockito.ArgumentMatchers.anyString());
+    }
+
     @Test
     void replacesCapturedHeaderAndPreservesConfiguredDuplicates() {
         HttpRequest original = request(Map.entry("Authorization", "Bearer captured"),

@@ -19,6 +19,8 @@ Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> sweep`. Th
 
 For the OpenAPI path, also run `verify.sh drive <run-id> runtime-results`; it previews and sends an OpenAPI import with explicit variables against its owned lab. `CliOpenApiParityTest` compares all policy variants with the shared importer, proves YAML overrides and preflight failures, and checks enabled-operation variables on the wire.
 
+Also verify `--payload-set all --header 'User-Agent: Sweep-CLI-Repro-UA' --global-concurrency 20 --per-host-concurrency 20` against an owned protocol-aware fixture. Preview must send no traffic. Read back the persisted HTTP/0.9 request and require a versionless line without headers; header-supporting protocol probes must retain the configured UA and their responses. Keep the complete inventory enabled and require completed/planned counts to match. Fixed and randomized-UA headerless semantics are shared with Burp.
+
 ## Gotchas
 
 - Exactly one input source is required.

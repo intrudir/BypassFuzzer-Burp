@@ -27,7 +27,7 @@ public final class RequestHeaderPolicy<R> {
     public List<ConfiguredHeader> headers() { return headers; }
 
     public R applyToBase(R request) {
-        if (request == null || headers.isEmpty()) return request;
+        if (request == null || headers.isEmpty() || !access.supportsHeaders(request)) return request;
         R updated = request;
         for (var entries : byName.values()) updated = access.removeHeader(updated, entries.get(0).name());
         for (var header : headers) updated = access.addHeader(updated, header.name(), header.value());
@@ -36,6 +36,8 @@ public final class RequestHeaderPolicy<R> {
 
     public R reconcileMutation(R baseline, R request) {
         if (request == null) return null;
+        // A headerless protocol mutation must retain its wire shape, even with a fixed or randomized UA.
+        if (!access.supportsHeaders(request)) return request;
         var payloads = new LinkedHashMap<String, List<String>>();
         for (var entries : byName.values()) {
             String name = entries.get(0).name();

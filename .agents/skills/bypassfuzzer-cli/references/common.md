@@ -52,6 +52,8 @@ job can carry them. Keep input, configuration, and evidence inside the
 engagement workspace with restrictive permissions. `--redact` masks common
 credential headers only in stored evidence; the real values are still sent.
 
+Protocol-family HTTP/0.9 probes preserve a versionless, headerless request line. Configured headers and fixed or randomized User-Agent values apply only to request formats that support headers. The HTTP/0.9 probe remains in Bypass and All payloads Sweep; other protocol probes retain configured header values and intentional payload deltas.
+
 ## YAML jobs
 
 All modes accept a strict version-1 YAML job through `--config`. Flag values

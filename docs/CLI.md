@@ -92,6 +92,8 @@ The DANGEROUS IDOR families `idor.query.numeric_pivots`, `idor.path.special_iden
 
 `--protocol auto` is the default. HTTPS negotiates HTTP/2 or HTTP/1 with ALPN; cleartext auto uses HTTP/1. `http2` forces native HTTP/2 (h2c prior knowledge for cleartext), while `both` runs each applicable baseline and probe over HTTP/1.1 and HTTP/2. Protocol-family payloads may deliberately override the run protocol.
 
+HTTP/0.9 protocol-family probes retain their versionless, headerless wire format. Configured headers and User-Agent randomization are applied to header-supporting formats. The HTTP/0.9 probe remains available in Bypass and All payloads Sweep.
+
 Useful shared options include:
 
 ```text

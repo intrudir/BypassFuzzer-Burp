@@ -37,6 +37,7 @@ public final class HttpRequestTestFactory {
             new Class<?>[]{HttpRequest.class},
             (proxy, invokedMethod, args) -> switch (invokedMethod.getName()) {
                 case "httpService" -> service;
+                case "httpVersion" -> "HTTP/1.1";
                 case "path" -> pathWithQuery;
                 case "pathWithoutQuery" -> RequestPathUtils.pathWithoutQuery(pathWithQuery);
                 case "query" -> query;

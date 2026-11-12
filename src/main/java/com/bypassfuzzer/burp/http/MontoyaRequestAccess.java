@@ -8,6 +8,11 @@ import java.util.List;
 /** Montoya message access only; header and User-Agent behavior lives in core. */
 public final class MontoyaRequestAccess implements RequestAccess<HttpRequest> {
     public static final MontoyaRequestAccess INSTANCE = new MontoyaRequestAccess();
+    public boolean supportsHeaders(HttpRequest r) {
+        // Montoya reports a null version for the versionless HTTP/0.9 request line.
+        String version = r.httpVersion();
+        return version != null && !version.isBlank() && !version.equalsIgnoreCase("HTTP/0.9");
+    }
     public List<HttpHeader> headers(HttpRequest r) {
         return r.headers().stream().map(h -> new HttpHeader(h.name(), h.value())).toList();
     }

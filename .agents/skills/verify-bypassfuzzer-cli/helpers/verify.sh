@@ -17,7 +17,7 @@ manifest_value() {
 }
 
 expected_version() {
-  (cd "$ROOT" && sh build.sh --quiet printVersion)
+  (cd "$ROOT" && sh build.sh --no-daemon --quiet printVersion)
 }
 
 doctor() {

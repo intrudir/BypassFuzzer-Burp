@@ -39,6 +39,32 @@ Request-file paths are relative to the manifest. `targetOrigin` contains only sc
 
 Sweep defaults to `--payload-set high-signal`. Use `--payload-set all` for all twelve Bypass families. `--families` filters the selected inventory; all-payload IDs are `header,path,verb,param,cookie,trailingdot,trailingslash,extension,contenttype,encoding,protocol,case`. State-changing OpenAPI/Postman operations are excluded unless `--include-state-changing` is present.
 
+### OpenAPI parameter controls
+
+OpenAPI imports use the same policies and managed variables as Burp Sweep. The default is `required-variables`: missing required values stop the run before any target request is sent, instead of silently substituting generated IDs. Only enabled HTTP operations must have their variables resolved.
+
+```bash
+bypassfuzzer sweep --openapi openapi.yaml --preview \
+  --openapi-variable tenantId=123 --openapi-variable accountId=456
+```
+
+`--openapi-parameter-policy` accepts `source-values-only`, `required-empty`, `required-variables`, `all-empty`, and `all-variables`. Explicit `sample-values` retains generated-sample import behavior. Variables override matching source values; repeat `--openapi-variable NAME=VALUE` for each value. Values may contain `=`. Use `--openapi-fill-examples` for Burp's “Fill empty with examples” behavior: it fills only blank/unset values with unambiguous examples/defaults or shared generated suggestions and keeps explicit values.
+
+The same controls work in YAML; command-line variables override matching names and keep other YAML variables:
+
+```yaml
+schemaVersion: 1
+input:
+  openapi: specs/api.yaml
+  openapiParameterPolicy: required-variables
+  openapiVariables:
+    tenantId: 123
+    accountId: 456
+  openapiFillExamples: false
+```
+
+Local YAML OpenAPI paths resolve relative to the job file. HTTP(S) specification URLs remain URLs. The parameter controls require an OpenAPI input; they do not change Postman or raw-request imports.
+
 Targeted examples:
 
 ```bash
@@ -49,7 +75,7 @@ bypassfuzzer url-validation --request redirect.raw --target-origin https://app.e
   --contexts absolute-url,host-header,cors --encodings raw,intruders
 ```
 
-Collaborator is intentionally unavailable. No CLI option or YAML key enables it.
+Native Burp Collaborator client creation is host-specific. Supply an operator-controlled callback domain with `--oob-domain` or an executable `--oob-generator` for the shared out-of-band payload inventory. A bare Collaborator-enable YAML key is rejected.
 
 IDOR discovers exact identifier slots in path segments, query/form values, JSON fields, plain text, XML text/attributes, multipart text fields, selected header values, and selected cookie values. Select a slot with `--id-location` when the authorized value appears more than once. Credential-bearing and structural headers/cookies are excluded. `--preview` sends no traffic. Every applicable mutation from enabled IDOR playbooks is planned, with no numeric cap; `--max-probes` and YAML `execution.maxProbes` are rejected for IDOR. A target baseline of HTTP 500 is marked `TARGET_BASELINE_500_REVIEW` and still allows mutations after a successful authorized control; successful mutations are candidates for manual review. Execution is serial by default. For create requests, `--unique-json-field /name` gives each planned request a distinct JSON string value.
 

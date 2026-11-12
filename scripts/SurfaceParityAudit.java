@@ -77,6 +77,10 @@ public class SurfaceParityAudit {
         check("result-filter-and-export-surface", cliOptions.containsKey("results") && cliOptions.get("results")
             .containsAll(Set.of("--format", "--smart-repeats", "--response-regex", "--signal-regex", "--show-status")),
             Map.of("source", "core.filter", "proof", "CliParityTest.contentTypeSignalAndResultFiltersFollowTheBurpRules"));
+        check("openapi-parameter-controls", cliOptions.get("sweep").containsAll(Set.of(
+            "--openapi-parameter-policy", "--openapi-variable", "--openapi-fill-examples")),
+            Map.of("source", "core.input.OpenApiImportOptions",
+                "proof", "CliOpenApiParityTest compares all shared policies, YAML overrides, preflight and loopback sends"));
         check("custom-host-ports", cliOptions.get("sweep").contains("--host-ports"), Map.of(
             "burpCustomPortProbes", custom.stream().filter(p -> p.label().contains("8443")).count(),
             "cliSweepOptions", cliOptions.get("sweep")));

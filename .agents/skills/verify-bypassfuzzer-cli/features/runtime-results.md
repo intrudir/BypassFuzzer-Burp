@@ -2,6 +2,7 @@
 
 ## Sub-features
 
+- OpenAPI preview and loopback sends prove managed-variable import through the packaged CLI.
 - Version-1 YAML jobs are strict; explicit flags override YAML values, and input paths resolve relative to the job file.
 - `--preview` prints planned requests without sending; `--header`, User-Agent, throttle, retry, protocol, timeout and proxy controls apply through the shared request/execution boundaries.
 - `--control-file` accepts `pause`, `resume`, `stop`; traffic caps limit physical sends during a run.

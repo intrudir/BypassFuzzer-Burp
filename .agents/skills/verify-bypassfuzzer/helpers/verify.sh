@@ -60,7 +60,7 @@ manifest_value() {
 }
 
 expected_version() {
-  sh "$REPO_ROOT/build.sh" --quiet printVersion
+  sh "$REPO_ROOT/build.sh" --no-daemon --quiet printVersion
 }
 
 copy_results() {

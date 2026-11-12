@@ -17,6 +17,7 @@ import com.bypassfuzzer.core.scan.OutOfBandSource;
 import com.bypassfuzzer.core.http.HttpRequestData;
 import com.bypassfuzzer.core.http.HttpResponseData;
 import com.bypassfuzzer.core.http.RawHttpResponseParser;
+import com.bypassfuzzer.core.input.OpenApiImportOptions;
 import com.bypassfuzzer.core.scan.AttackFamily;
 import com.bypassfuzzer.core.scan.BypassPlanner;
 import com.bypassfuzzer.core.scan.HighSignalPlanner;
@@ -260,6 +261,9 @@ public final class BypassFuzzerCli implements Runnable {
         @Option(names = "--target-origin") String targetOrigin;
         @Option(names = "--request-manifest") Path requestManifest;
         @Option(names = "--openapi") String openapi;
+        @Option(names = "--openapi-parameter-policy", description = "source-values-only, required-empty, required-variables (default), all-empty, all-variables, or sample-values.") String openapiParameterPolicy;
+        @Option(names = "--openapi-variable", paramLabel = "NAME=VALUE", description = "Managed OpenAPI variable; repeatable, overrides the matching YAML variable.") List<String> openapiVariables;
+        @Option(names = "--openapi-fill-examples", negatable = true, description = "Fill empty OpenAPI variables from unambiguous spec examples/defaults or generated suggestions.") Boolean openapiFillExamples;
         @Option(names = "--postman") Path postman;
         @Option(names = "--retry-package") Path retryPackage;
         @Option(names = "--base-url") String baseUrl;
@@ -331,18 +335,41 @@ public final class BypassFuzzerCli implements Runnable {
             Path request = first(this.request, job.path("input", "request"));
             String origin = first(targetOrigin, job.string("input", "targetOrigin"));
             Path manifest = first(requestManifest, job.path("input", "requestManifest"));
-            String openapi = first(this.openapi, job.string("input", "openapi"));
+            String openapi = first(this.openapi, job.location("input", "openapi"));
             Path postman = first(this.postman, job.path("input", "postman"));
             Path retry = first(retryPackage, job.path("input", "retryPackage"));
             String base = first(baseUrl, job.string("input", "baseUrl"));
             int sources = bool(urls) + bool(request) + bool(manifest) + bool(openapi) + bool(postman) + bool(retry);
             if (sources != 1) throw new IllegalArgumentException("Sweep requires exactly one input source");
+            if (openapi == null && (openapiParameterPolicy != null || openapiVariables != null
+                || openapiFillExamples != null || job.string("input", "openapiParameterPolicy") != null
+                || job.bool("input", "openapiFillExamples") != null || !job.stringValues("input", "openapiVariables").isEmpty()))
+                throw new IllegalArgumentException("OpenAPI parameter controls require --openapi or input.openapi");
             if (urls != null) return loader().urls(urls, unsafe);
             if (request != null) return loader().raw(request, origin);
             if (manifest != null) return loader().manifest(manifest);
-            if (openapi != null) return loader().openApi(openapi, base, unsafe);
+            if (openapi != null) return loader().openApi(openapi, base, unsafe, openApiOptions(job),
+                first(openapiFillExamples, job.bool("input", "openapiFillExamples"), false));
             if (postman != null) return loader().postman(postman, base, unsafe);
             return loader().retryPackage(retry);
+        }
+
+        private OpenApiImportOptions openApiOptions(YamlJob job) {
+            String policy = first(openapiParameterPolicy, job.string("input", "openapiParameterPolicy"), "required-variables");
+            OpenApiImportOptions.ParameterPolicy selected;
+            try {
+                selected = OpenApiImportOptions.ParameterPolicy.valueOf(policy.trim().replace('-', '_').toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException error) {
+                throw new IllegalArgumentException("Unknown OpenAPI parameter policy: " + policy);
+            }
+            Map<String, String> variables = new LinkedHashMap<>(job.stringValues("input", "openapiVariables"));
+            if (openapiVariables != null) for (String assignment : openapiVariables) {
+                int separator = assignment.indexOf('=');
+                if (separator <= 0 || assignment.substring(0, separator).trim().isEmpty())
+                    throw new IllegalArgumentException("Each OpenAPI variable needs a NAME=VALUE entry");
+                variables.put(assignment.substring(0, separator).trim(), assignment.substring(separator + 1));
+            }
+            return new OpenApiImportOptions(selected, variables);
         }
     }
 

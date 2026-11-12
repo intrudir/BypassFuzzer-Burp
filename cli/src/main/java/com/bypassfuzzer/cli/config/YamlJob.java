@@ -17,7 +17,7 @@ import java.util.Set;
 public final class YamlJob {
     private static final Map<String, Set<String>> KEYS = Map.of(
         "", Set.of("schemaVersion", "input", "transport", "execution", "evidence", "sweep", "bypass", "idor", "urlValidation"),
-        "input", Set.of("urls", "request", "targetOrigin", "requestManifest", "openapi", "postman", "retryPackage", "baseUrl"),
+        "input", Set.of("urls", "request", "targetOrigin", "requestManifest", "openapi", "postman", "retryPackage", "baseUrl", "openapiParameterPolicy", "openapiVariables", "openapiFillExamples"),
         "transport", Set.of("protocol", "proxy", "insecure", "connectTimeoutSeconds", "requestTimeoutSeconds"),
         "execution", Set.of("globalConcurrency", "perHostConcurrency", "throttleStatusCodes", "retryAttempts", "maxProbes", "includeStateChanging", "headers", "userAgentMode", "userAgentSeed", "posture", "pauseMode", "fixedPauseMillis", "oobDomain", "oobGenerator", "controlFile", "trafficMaxInFlight", "trafficMaxRps"),
         "evidence", Set.of("output", "redact"),
@@ -55,8 +55,27 @@ public final class YamlJob {
     public Long longValue(String section, String key) { String value = string(section, key); return value == null ? null : Long.valueOf(value); }
     public Boolean bool(String section, String key) { String value = string(section, key); return value == null ? null : Boolean.valueOf(value); }
     public Path path(String section, String key) { String value = string(section, key); if (value == null) return null; Path path = Path.of(value); return path.isAbsolute() ? path : file.getParent().resolve(path).normalize(); }
+    public String location(String section, String key) {
+        String value = string(section, key);
+        return value == null || value.startsWith("http://") || value.startsWith("https://")
+            ? value : path(section, key).toString();
+    }
     public List<String> strings(String section, String key) { Object value = section(section).get(key); if (value == null) return null; if (value instanceof List<?> list) return list.stream().map(Object::toString).toList(); return List.of(value.toString().split(",")); }
     public Map<String, Object> effective() { return root; }
+
+    public Map<String, String> stringValues(String section, String key) {
+        Object value = section(section).get(key);
+        if (value == null) return Map.of();
+        if (!(value instanceof Map<?, ?> map)) throw new IllegalArgumentException(section + "." + key + " must be a mapping");
+        Map<String, String> result = new LinkedHashMap<>();
+        for (var entry : map.entrySet()) {
+            if (!(entry.getKey() instanceof String name) || name.isBlank()
+                || entry.getValue() instanceof Map<?, ?> || entry.getValue() instanceof List<?>)
+                throw new IllegalArgumentException(section + "." + key + " requires variable names and scalar values");
+            result.put(name.trim(), entry.getValue() == null ? "" : entry.getValue().toString());
+        }
+        return Map.copyOf(result);
+    }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> section(String name) { Object value = root.get(name); return value instanceof Map<?, ?> map ? stringMap(map) : Map.of(); }

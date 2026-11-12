@@ -100,8 +100,17 @@ def main():
         print(f"Driving packaged CLI {mode} against loopback...", flush=True)
         directory = output / mode
         directory.mkdir()
-        run([sys.executable, str(helper), str(ROOT / "cli/build/libs/bypassfuzzer-cli.jar"),
-             str(directory), mode], directory / "drive.log", env)
+        verifier = ROOT / ".agents/skills/verify-bypassfuzzer-cli/helpers/verify.sh"
+        health_id = "parity-" + stamp + "-" + mode
+        run([str(verifier), "doctor", health_id], directory / "doctor-before-drive.log", env)
+        try:
+            run([sys.executable, str(helper), str(ROOT / "cli/build/libs/bypassfuzzer-cli.jar"),
+                 str(directory), mode], directory / "drive.log", env)
+        except RuntimeError:
+            run([str(verifier), "doctor", health_id], directory / "doctor-after-failure.log", env)
+            raise
+        finally:
+            run([str(verifier), "cleanup", health_id], directory / "cleanup.log", env)
         live.append({"mode": mode, "status": "PASS", "evidence": str(directory),
                      "assertions": json.loads((directory / "assertions.json").read_text())})
 

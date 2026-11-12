@@ -77,6 +77,30 @@ def run():
                                            '--header', 'X-Audit: flag'])
         assert 'X-Audit: flag' in preview and 'X-Audit: yaml' not in preview
         assert not observed, 'Preview sent traffic'
+        spec = evidence / 'openapi.json'
+        spec.write_text(json.dumps({'openapi': '3.0.0', 'servers': [{'url': origin}], 'paths': {
+            '/objects/{id}': {'get': {'parameters': [
+                {'name': 'id', 'in': 'path', 'required': True, 'schema': {'type': 'integer'}},
+                {'name': 'tenant', 'in': 'query', 'required': True, 'schema': {'type': 'string'}},
+                {'name': 'X-Object', 'in': 'header', 'required': True, 'schema': {'type': 'string'}}
+            ], 'responses': {'200': {'description': 'ok'}}}}
+        }}))
+        openapi_args = ['sweep', '--openapi', str(spec), '--openapi-variable', 'id=42',
+                        '--openapi-variable', 'tenant=owned', '--openapi-variable', 'X-Object=bound',
+                        '--openapi-parameter-policy', 'required-variables', '--families', 'Header',
+                        '--max-probes', '2', '--retry-attempts', '0', '--protocol', 'http1']
+        openapi_preview = invoke('openapi-preview', openapi_args + ['--preview'])
+        assert 'GET /objects/42?tenant=owned HTTP/1.1' in openapi_preview and not observed
+        openapi_output = evidence / 'openapi-scan'
+        invoke('openapi-live', openapi_args + ['--output', str(openapi_output)])
+        assert len(observed) == 2 and all(path == '/objects/42?tenant=owned' for path in observed)
+        openapi_rows = [json.loads(line) for line in (openapi_output / 'results.jsonl').read_text().splitlines()]
+        assert len(openapi_rows) == 2
+        for item in openapi_rows:
+            assert 'X-Object: bound' in (openapi_output / item['requestRef']).read_text()
+        (evidence / 'openapi-lab-requests.json').write_text(json.dumps(observed, indent=2) + '\n')
+        previous = len(observed)
+        admitted.clear()
         control = evidence / 'control.txt'
         control.write_text('pause')
         output = evidence / 'controlled-scan'
@@ -88,7 +112,7 @@ def run():
         with (evidence / 'control.stdout').open('w') as stdout, (evidence / 'control.stderr').open('w') as stderr:
             process = subprocess.Popen(command, stdout=stdout, stderr=stderr)
             time.sleep(1.5)
-            assert process.poll() is None and not observed, 'Initial pause failed'
+            assert process.poll() is None and len(observed) == previous, 'Initial pause failed'
             control.write_text('resume')
             assert admitted.wait(15), 'Resume did not admit a request'
             control.write_text('stop')
@@ -97,7 +121,7 @@ def run():
         assert summary['state'] == 'stopped' and observed
         (evidence / 'assertions.json').write_text(json.dumps({
             'state': 'PASS', 'resultsFiltersAndExports': True, 'yamlFlagsOverride': True,
-            'previewNoTraffic': True, 'pauseResumeStop': True, 'loopbackRequests': len(observed)
+            'previewNoTraffic': True, 'openApiImport': True, 'pauseResumeStop': True, 'loopbackRequests': len(observed)
         }, indent=2) + '\n')
     finally:
         if process is not None and process.poll() is None:

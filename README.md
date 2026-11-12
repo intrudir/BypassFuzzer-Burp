@@ -48,7 +48,7 @@ All four modes are available from the CLI. Sweep accepts URL lists, raw-request 
   - Supports HTTP/1.0, HTTP/1.1, native HTTP/2, cleartext h2c, and ALPN negotiation
   - Streams JSONL results while retaining raw request and response evidence for every probe
   - Supports strict versioned YAML jobs with command-line flags taking precedence
-  - Excludes Burp Collaborator and all out-of-band payload generation
+  - Supports operator-supplied out-of-band domains or generators; native Burp Collaborator client creation remains host-specific
 
 - **Sweep Mode:**
   - Available immediately when the extension loads
@@ -275,6 +275,8 @@ java -jar cli/build/libs/bypassfuzzer-cli.jar sweep \
   --retry-package bypassfuzzer-retry-queue.json \
   --output output/retry-package
 ```
+
+OpenAPI imports share Burp’s parameter policies and managed variables. The default `required-variables` policy requires missing values before sending; use repeatable `--openapi-variable NAME=VALUE`, `--openapi-parameter-policy`, or opt into `--openapi-fill-examples`. YAML uses `input.openapiParameterPolicy`, `input.openapiVariables`, and `input.openapiFillExamples`; see [CLI parameter controls](docs/CLI.md#openapi-parameter-controls).
 
 OpenAPI and Postman imports exclude `POST`, `PUT`, `PATCH`, and `DELETE` by default. Include them only when those state-changing operations are explicitly in scope:
 

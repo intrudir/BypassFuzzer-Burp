@@ -68,9 +68,19 @@ public final class CliRequestLoader {
         return List.copyOf(requests);
     }
 
-    public List<HttpRequestData> openApi(String location, String baseUrl, boolean includeStateChanging) throws Exception {
+    public List<HttpRequestData> openApi(String location, String baseUrl, boolean includeStateChanging,
+                                        com.bypassfuzzer.core.input.OpenApiImportOptions options,
+                                        boolean fillExamples) throws Exception {
         Source source = readLocation(location);
-        List<OpenApiOperation> operations = new OpenApiSpecParser().parse(source.text(), source.name(), baseUrl, source.url());
+        OpenApiSpecParser parser = new OpenApiSpecParser();
+        if (fillExamples) {
+            Map<String, String> variables = new java.util.LinkedHashMap<>(options.variables());
+            parser.variableSamples(source.text(), source.name()).forEach((name, value) -> {
+                if (variables.getOrDefault(name, "").isEmpty() && !value.isEmpty()) variables.put(name, value);
+            });
+            options = new com.bypassfuzzer.core.input.OpenApiImportOptions(options.parameterPolicy(), variables);
+        }
+        List<OpenApiOperation> operations = parser.parseTemplates(source.text(), source.name(), baseUrl, source.url(), options);
         return operations(operations, includeStateChanging);
     }
 
@@ -93,8 +103,13 @@ public final class CliRequestLoader {
     }
 
     private List<HttpRequestData> operations(List<OpenApiOperation> operations, boolean includeStateChanging) {
-        List<HttpRequestData> requests = operations.stream()
+        List<OpenApiOperation> selected = operations.stream()
             .filter(operation -> includeStateChanging || safeMethod(operation.method()))
+            .toList();
+        var missing = new java.util.LinkedHashSet<String>();
+        for (var operation : selected) missing.addAll(operation.unresolvedVariables());
+        if (!missing.isEmpty()) throw new com.bypassfuzzer.core.input.OpenApiImportOptions.MissingVariablesException(missing);
+        List<HttpRequestData> requests = selected.stream()
             .map(operation -> fromUrl(operation.method(), operation.url(), operation.headers(), operation.body()))
             .toList();
         if (requests.isEmpty()) throw new IllegalArgumentException("Input contains no enabled HTTP operations");

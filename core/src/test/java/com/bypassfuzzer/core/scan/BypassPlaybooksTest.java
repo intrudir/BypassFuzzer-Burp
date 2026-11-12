@@ -58,4 +58,11 @@ class BypassPlaybooksTest {
         assertTrue(multi.stream().anyMatch(p->p.request().rawTarget().equals("/v1/api/v4/admin?x=1")));
     }
 
+    @Test void exactSelectionDoesNotReserveBudgetForDisabledHostChecks() {
+        var options=new PlaybookOptions(Set.of("bypass.header.forwarded"),List.of(),true,false);
+        var plan=new SweepPlanner().highSignal(seed(),HighSignalPlanner.FAMILIES,3,List.of(0),true,options);
+        assertEquals(3,plan.size());
+        assertTrue(plan.stream().filter(p->!p.baseline()).allMatch(p->p.playbookId().equals("bypass.header.forwarded")));
+    }
+
 }

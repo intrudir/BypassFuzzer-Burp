@@ -18,8 +18,11 @@ bin/
 .project
 .codex
 
-# Claude Code
-.claude/
+# Claude Code local state and the shared CLI skill
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/bypassfuzzer-cli
 
 # Windows reserved names
 nul

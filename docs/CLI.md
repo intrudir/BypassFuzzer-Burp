@@ -2,6 +2,9 @@
 
 The CLI runs Sweep, Bypass, IDOR, and URL Validation without Burp. Use it only against systems you are authorized to test. Imported Sweep destinations are treated as the authorized scope; redirects are never followed.
 
+The repository-owned [CLI agent skill](../.agents/skills/bypassfuzzer-cli/SKILL.md)
+provides mode-specific operating guidance, a compatibility doctor, and evidence triage.
+
 ## Build and launch
 
 ```bash

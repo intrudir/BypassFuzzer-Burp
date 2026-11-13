@@ -221,4 +221,15 @@ class RunEditAdversarialRegressionTest {
    assertEquals(2,captures.get(),"second edited run reuses the preceding run's authenticated response without sending its new credential");
   }finally{engine.cleanup();}
  }
+
+ @Test void nativeRecoveredWorkClearsOldHeadersWithoutRemovingAnotherSeed() throws Exception {
+  var ctor=Class.forName("com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest").getDeclaredConstructor();ctor.setAccessible(true);var fixture=ctor.newInstance();var m=fixture.getClass().getDeclaredMethod("workspace",RequestSender.class);m.setAccessible(true);
+  var workspace=(SessionResultsWorkspace)m.invoke(fixture,mock(RequestSender.class));var base=request("/private","","GET",null,"");
+  var first=saved(base,base.withPath("/mutation"));var metadata=first.getEvidenceMetadata();
+  try {
+   workspace.addResult(first.withEvidenceMetadata(metadata.withIdentity("seed-A")));workspace.addResult(first.withEvidenceMetadata(metadata.withIdentity("seed-B")));
+   var edited=saved(base,base.withPath("/mutation").withAddedHeader("User-Agent","edited")).withEvidenceMetadata(metadata.withIdentity("seed-A"));
+   workspace.addResult(AttackResult.throttleRetryOf(edited,nativeResponse(200),1));assertEquals(1,workspace.throttledRetryCount());
+  }finally{workspace.cleanup();}
+ }
 }

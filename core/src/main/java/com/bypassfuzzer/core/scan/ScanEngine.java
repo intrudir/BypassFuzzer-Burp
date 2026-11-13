@@ -27,6 +27,7 @@ import java.util.function.ToIntFunction;
 
 /** Executes every scan mode through the same admission, retry, and result path. */
 public final class ScanEngine {
+    private final String workNamespace=java.util.UUID.randomUUID().toString();
     private final ScanOptions options;
     private final Map<String, Semaphore> hostPermits = new ConcurrentHashMap<>();
     private final Semaphore globalPermits;
@@ -70,7 +71,7 @@ public final class ScanEngine {
             HttpResponseData::statusCode, response -> response.firstHeader("Retry-After").orElse(null), message -> {}) : null;
     }
 
-    public String workIdentity(PlannedRequest item){return RunLedger.key(eventSeed.get(),item,0,0);}
+    public String workIdentity(PlannedRequest item){return workNamespace+"\n"+RunLedger.key(eventSeed.get(),item,0,0);}
     public long configurationRevision(){return generation;}
     public long headerRevision(){return headerGeneration;}
     public Set<Integer> throttleStatusCodes(){return options.throttleStatusCodes();}

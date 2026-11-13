@@ -748,6 +748,7 @@ public class SessionResultsWorkspace {
     }
 
     private String retryKey(AttackResult result) {
+        if(result.getEvidenceMetadata().workIdentity()!=null && !result.getEvidenceMetadata().workIdentity().isEmpty())return result.getEvidenceMetadata().workIdentity();
         HttpRequest request = result.getRequest();
         StringBuilder key = new StringBuilder();
         key.append(result.getAttackType()).append('\u0000')

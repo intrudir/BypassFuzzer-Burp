@@ -364,8 +364,8 @@ CLI pending failures use stable logical identities across header edits. Both aff
 engines retain adaptive feedback and Retry-After cooldowns across generations. Native
 timeouts retain physical admission until the actual Montoya call returns.
 
-The full regression run contains 531 Java tests plus 16 HTTP smoke tests and 27
-operating-skill tests. The twelve adversarial cases include ten previously failing
+The full regression run contains 532 Java tests plus 16 HTTP smoke tests and 27
+operating-skill tests. The thirteen adversarial cases include ten previously failing
 reproductions and two passing controls. Verification skills include these boundaries
 and a packaged recovery driver that checks new headers, an empty retry queue and
 server cooldown retention. Disposable real Burp verification exercises all four edit

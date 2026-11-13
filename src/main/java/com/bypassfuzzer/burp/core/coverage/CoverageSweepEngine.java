@@ -320,7 +320,7 @@ public class CoverageSweepEngine {
         Set<String> families=inventory==BypassPlaybooks.Inventory.BYPASS ? effectiveOptions.familySelection().bypassFamilies().stream().map(com.bypassfuzzer.burp.core.attacks.AttackType::id).collect(java.util.stream.Collectors.toSet()) : effectiveOptions.familySelection().highSignalFamilies();
         live=new LiveRun(new RunConfiguration(Set.of(),effectiveOptions.concurrency(),Math.min(effectiveOptions.concurrency(),effectiveOptions.perHostConcurrency()),400,
             BypassPlaybooks.resolve(inventory,families,effectiveOptions.playbookOptions()),effectiveOptions.requestHeaders(),Set.of(),effectiveOptions.userAgentMode(),effectiveOptions.userAgentRandomizationSeed()),RunPlans.bypass(inventory));
-        seedIds.clear();for(int index=0;index<candidates.size();index++){var candidate=candidates.get(index);live.registerHost(candidate.host());seedIds.put(candidate,Integer.toString(index));}liveMemories.clear();refreshedCaptures.clear();coordinator=null;
+        seedIds.clear();for(int index=0;index<candidates.size();index++){var candidate=candidates.get(index);live.registerHost(candidate.host());seedIds.put(candidate,java.util.UUID.randomUUID().toString());}liveMemories.clear();refreshedCaptures.clear();coordinator=null;
         pauseController.reset();
         failedCandidates.set(0);
         failures.clear();
@@ -625,7 +625,7 @@ public class CoverageSweepEngine {
                         event.probe().family(), event.signal(), event.probe().request(), event.response(),
                         event.originalRequest(), event.originalResponse(), event.verificationRequest(), event.verificationResponse())
                         .withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.probe().playbookId(), event.probe().controlRole(),
-                            event.calibration(),event.fallbackRequest(),event.fallbackResponse(),event.context()).withRun(null,generation)).copyEvidenceToTempFile();
+                            event.calibration(),event.fallbackRequest(),event.fallbackResponse(),event.context()).withRun(null,generation).withIdentity(seed+"\n"+event.probe().protocol()+"\n"+event.probe().family()+"\n"+event.probe().label()+"\n"+event.probe().controlRole())).copyEvidenceToTempFile();
                     if (resultCallback != null) resultCallback.accept(result);
                     // The master's anonymous verification control is evidence, not deferred mutation work.
                     if (!event.probe().family().equals("Unauthenticated Control") && isRetryableResponse(event.response(), options))
@@ -656,7 +656,7 @@ public class CoverageSweepEngine {
         if(template!=null) {
             probe=new CoverageSweepProbe(template.probe().label(),template.probe().family(),template.probe().request(),coreRequests.httpMode(template.probe().protocol()),template.probe().playbookId(),template.probe().controlRole());
             previous=new AttackResult(template.attackType(),template.probe().label(),template.target(),template.probe().family(),template.signal(),template.probe().request(),null,template.originalRequest(),template.originalResponse(),template.verificationRequest(),template.verificationResponse())
-                .withEvidenceMetadata(new AttackResult.EvidenceMetadata(template.probe().playbookId(),template.probe().controlRole(),template.calibration(),template.fallbackRequest(),template.fallbackResponse(),template.context()).withRun(null,generation,optionsThrottleCodes()));
+                .withEvidenceMetadata(new AttackResult.EvidenceMetadata(template.probe().playbookId(),template.probe().controlRole(),template.calibration(),template.fallbackRequest(),template.fallbackResponse(),template.context()).withRun(null,generation,optionsThrottleCodes()).withIdentity(retry.result().getEvidenceMetadata().workIdentity()));
         }
         return new RetryTask(retry.seed(),previous,probe);
     }

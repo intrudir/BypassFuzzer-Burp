@@ -12,7 +12,9 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
     }
     public record EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
         com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse,
-        com.bypassfuzzer.core.scan.SweepClassifier.Context sweepContext,Comparison comparison,long configurationRevision) {
+        com.bypassfuzzer.core.scan.SweepClassifier.Context sweepContext,Comparison comparison,long configurationRevision,String workIdentity) {
+        public EvidenceMetadata(String id,com.bypassfuzzer.core.scan.ControlRole role,com.bypassfuzzer.core.scan.WildcardCalibration.Assessment assessment,HttpRequest fallback,HttpResponse fallbackResponse,com.bypassfuzzer.core.scan.SweepClassifier.Context context,Comparison comparison,long revision){this(id,role,assessment,fallback,fallbackResponse,context,comparison,revision,"");}
+        public EvidenceMetadata withIdentity(String identity){return new EvidenceMetadata(playbookId,controlRole,calibration,fallbackRequest,fallbackResponse,sweepContext,comparison,configurationRevision,identity);}
         public EvidenceMetadata(String playbookId,com.bypassfuzzer.core.scan.ControlRole role,com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration,
             HttpRequest fallbackRequest,HttpResponse fallbackResponse,com.bypassfuzzer.core.scan.SweepClassifier.Context context) {
             this(playbookId,role,calibration,fallbackRequest,fallbackResponse,context,null,0);
@@ -22,7 +24,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
         }
         public EvidenceMetadata withRun(com.bypassfuzzer.core.scan.PlannedRequest planned,long revision,java.util.Set<Integer> throttleCodes) {
             return new EvidenceMetadata(playbookId,controlRole,calibration,fallbackRequest,fallbackResponse,sweepContext,
-                planned==null ? comparison : new Comparison(planned.intent(),planned.sourcePointer(),planned.targetIdentifier(),throttleCodes),revision);
+                planned==null ? comparison : new Comparison(planned.intent(),planned.sourcePointer(),planned.targetIdentifier(),throttleCodes),revision,workIdentity);
         }
         public EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
             com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse) {
@@ -166,7 +168,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
             original.verificationRequest,
             original.verificationResponse,
             attempt
-        ).withEvidenceMetadata(metadata);
+        ).withEvidenceMetadata(metadata.withIdentity(original.evidenceMetadata.workIdentity()));
     }
 
     private static com.bypassfuzzer.core.http.HttpResponseData toCore(HttpResponse response,com.bypassfuzzer.core.http.HttpProtocol protocol) {

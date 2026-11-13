@@ -58,3 +58,7 @@ same-URL credential/body seeds, two successive edited runs, late excluded-host
 results, clearing configured credentials, and retained Retry-After cooldowns.
 Native timeout fixtures must hold physical admission until a non-interruptible
 Montoya call actually returns. Run `RunEditAdversarialRegressionTest` for these cases.
+
+In native Sweep, require the visible retry queue to return to zero after edited
+automatic recoveries. Stable work IDs must retain separate queued seeds while
+removing the recovered item across header revisions.

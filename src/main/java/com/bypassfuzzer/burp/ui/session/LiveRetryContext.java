@@ -63,6 +63,6 @@ final class LiveRetryContext {
         }
         var refreshed=new AttackResult.EvidenceMetadata(metadata.playbookId(),metadata.controlRole(),metadata.calibration(),fallback==null ? null : fallback.request(),fallback==null ? null : fallback.response(),context,metadata.comparison(),revision);
         return new AttackResult(previous.getAttackType(),previous.getPayload(),previous.getTargetLabel(),previous.getPayloadFamily(),previous.getPayloadEncoding(),mutation,null,original.request(),original.response(),
-            verification==null ? null : verification.request(),verification==null ? null : verification.response()).withEvidenceMetadata(refreshed);
+            verification==null ? null : verification.request(),verification==null ? null : verification.response()).withEvidenceMetadata(refreshed.withIdentity(metadata.workIdentity()));
     }
 }

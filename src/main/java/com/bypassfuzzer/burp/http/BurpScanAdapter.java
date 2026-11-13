@@ -130,7 +130,7 @@ public final class BurpScanAdapter {
             targetEvidence == null ? null : targetEvidence.response());
         Exchange fallback = event.fallbackControl() == null ? null : fallbackControls.get(event.fallbackControl().request().protocol() + "\n" + event.fallbackControl().request().toRaw());
         result = result.withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.planned().playbookId(), event.planned().controlRole(), event.calibration(),
-            fallback == null ? null : fallback.request(),fallback == null ? null : fallback.response()).withRun(event.planned(),engine.configurationRevision(),engine.throttleStatusCodes()));
+            fallback == null ? null : fallback.request(),fallback == null ? null : fallback.response()).withRun(event.planned(),engine.configurationRevision(),engine.throttleStatusCodes()).withIdentity(engine.workIdentity(event.planned())));
         return event.retryAttempt() > 0 ? AttackResult.throttleRetryOf(result, response, event.retryAttempt()) : result;
     }
 

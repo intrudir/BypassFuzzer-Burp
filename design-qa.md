@@ -221,3 +221,41 @@ checks and 25 CLI operating-skill Python tests. Verification maps and the CLI
 skill describe the new controls and evidence semantics. Browser checks do not
 apply to this Swing extension. Collaborator behavior was covered in the earlier
 five-tab native pass; this follow-up does not claim a new callback verification.
+
+
+## Reliable results-header sorting (2026-11-13)
+
+A disposable Burp reproduction confirmed that ordinary Status clicks sort mixed
+responses correctly, but quick clicks within the desktop double-click interval
+can be ignored. With Smart filter enabled, two of six clicks in the 100ms-delay
+sequence left the sort keys unchanged. The native header delegates to Swing's
+BasicTableHeaderUI, which deliberately ignores even-numbered clicks. This is a
+confirmed reproduction of an intermittent sort action, not a claim that every
+possible report has the same cause.
+
+The shared results header now treats completed clicks inside a column as separate
+sort actions. Native press/drag/release events and the column-divider double-click
+resize zone remain unchanged. Filtering now keeps the existing sorter; the model's
+data-change event reapplies its current order, including an explicitly unsorted
+state. The former sorter replacement and swallowed restore exception are removed.
+The change applies to Bypass, Sweep, IDOR and URL Validation results.
+
+Evidence is in `artifacts/verification/sorting-20261113/`. The before proof retains
+16 successful ordinary clicks, the two ignored quick clicks and three failing
+regression cases. With the fix, real Burp passes all 16 ordinary clicks and all
+24 repeated-click checks across 800/400/200/100ms delays. The Header-family Bypass
+run retains 1,503 exchanges, with Smart filter off and on. The imported Sweep check
+asserts four sort actions while result batches arrive, then intentionally stops
+the owned scan at 221 exchanges and checks 18 more column sorts, both Smart filter
+states, calibration visibility, column reordering and native divider resizing.
+The initial Sweep verification harness deadline expired while the scan was
+healthy; the health-checked continuation and intentional Stop are retained
+separately. This is not a claim of a complete 246-probe Sweep run.
+
+All 485 Java tests pass (340 Burp, 114 core, 31 CLI), plus packaging smoke checks.
+The new regressions exercise each results layout with numeric/text columns,
+No response values, repeated clicks, moved columns, Smart/manual filters, new
+batches, clearing, divider click counts and preserved unsorted insertion order.
+The verification map now includes the quick-click recipe. Final committed artifact
+readiness, hashes, focused native recheck and temporary-profile cleanup are retained
+under `committed/`. No customer endpoint or pre-existing Burp instance was used.

@@ -54,6 +54,8 @@ Preconditions:
 
 - **Calibration display.** Shared results hide calibration rows by default and expose Show calibration requests when controls exist. Toggling changes visible/exported rows, preserving every exchange and candidate Fallback control viewer. Controls do not consume Smart filter repeat slots. Baseline roles Original / Authorized / Target remain visible. Control payload labels include requested protocol: an HTTP/1 replay can return an empty 404 while a forced HTTP/2 exchange is unavailable. A received empty 404 must display as 404.
 
+- **Sorting.** Follow the shared results-sorting recipe in [the map index](README.md#driving-conventions), including quick repeated Status clicks with Smart filter on, incoming rows and moved columns.
+
 ## Gotchas
 
 - The mode selector changes which source controls are visible. An import attempted outside `Import targets` is correctly rejected.

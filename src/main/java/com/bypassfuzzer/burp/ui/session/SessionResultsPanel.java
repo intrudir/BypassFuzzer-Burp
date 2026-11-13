@@ -113,6 +113,7 @@ public class SessionResultsPanel extends JPanel {
                 return getParent() == null || getParent().getWidth() >= getMinimumSize().width;
             }
         };
+        this.resultsTable.setTableHeader(new ResultsTableHeader(this.resultsTable.getColumnModel()));
         this.fallbackRequestViewer = api.userInterface().createHttpRequestEditor();
         this.fallbackResponseViewer = api.userInterface().createHttpResponseEditor();
         this.requestViewer = api.userInterface().createHttpRequestEditor();
@@ -138,22 +139,8 @@ public class SessionResultsPanel extends JPanel {
     }
 
     public void applyFilter(Predicate<AttackResult> filter) {
-        List<? extends javax.swing.RowSorter.SortKey> savedSortKeys = null;
-        if (resultsTable.getRowSorter() != null) {
-            savedSortKeys = new ArrayList<>(resultsTable.getRowSorter().getSortKeys());
-        }
-
+        // The model sends a data-change event; the existing sorter reapplies its current keys.
         tableModel.applyFilter(filter);
-        initializeRowSorter();
-
-        if (savedSortKeys != null && !savedSortKeys.isEmpty() && resultsTable.getRowSorter() != null) {
-            try {
-                resultsTable.getRowSorter().setSortKeys(savedSortKeys);
-            } catch (Exception e) {
-                // Ignore invalid sort state.
-            }
-        }
-
         resultsTable.repaint();
     }
 

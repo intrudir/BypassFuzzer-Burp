@@ -17,6 +17,7 @@ This directory is the maintained map of BypassFuzzer's user-facing Burp Suite ex
 - In Burp, use visible tab names, menu text, button labels, field labels, and table actions exactly as written.
 - In automation, run `./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive <RUN_ID> <feature-id>`.
 - A Swing test proves a named UI action/state; an engine test proves request generation or session behavior; a live smoke test proves the HTTP side effect. Do not claim one layer proves another.
+- Results sorting is shared by Bypass, Sweep, IDOR and URL Validation. With mixed statuses, click Status twice quickly (within the desktop double-click interval): each completed click must alternate ascending/descending and change the actual row order. Repeat with Smart filter on, while batches arrive, after manual/calibration visibility changes, and after dragging Status to a different column position. Verify numeric Status/Length/# and text columns, including No response rows. Filters preserve the selected sort and incoming rows enter that order; equal sort values may keep their stable relative order. Column dividers retain native resize gestures. `ResultsTableSortingTest` provides the four-layout regression; disposable Burp proves native mouse handling.
 - `Send to BypassFuzzer` is available from a selected request in Burp's Proxy, Sitemap, or Repeater message editor and has `Bypass`, `IDOR`, and `URL Validation` children.
 - Close or unload only sessions created in a disposable project. Do not remove evidence during cleanup.
 

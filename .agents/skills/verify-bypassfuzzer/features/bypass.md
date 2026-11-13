@@ -48,6 +48,8 @@ Preconditions:
 - **Pause and filter.** During a sufficiently large run, choose `Pause`, verify the control changes to `Resume`, then resume. Enable a manual `Show only` status filter for `200`, apply it, and ensure the known result remains while nonmatching rows hide without being deleted.
 - **Proof.** Retain `user-path.log`, `live-engine.log`, `live-lab-black-box.log`, copied XML, and manual screenshots when a Burp-visible surface changed.
 
+- **Sorting.** Follow the shared results-sorting recipe in [the map index](README.md#driving-conventions), including quick repeated Status clicks with Smart filter on, incoming rows and moved columns.
+
 ## Gotchas
 
 - Results use a `Probe` tab with Request and Response side by side. The shared manual filter drawer starts closed; open `Filters` before changing manual filters. The extension theme leaves native Burp editor internals and other tools unchanged.

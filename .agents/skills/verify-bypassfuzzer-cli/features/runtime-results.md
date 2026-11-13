@@ -29,3 +29,5 @@ Playbook/calibration metadata remains additive to schema-v1 JSONL. Readback reta
 Calibration controls remain in raw evidence. `results` hides WILDCARD rows by default; `--show-calibration` includes them in the filtered view/export. They bypass Smart repeat suppression and do not consume candidate slots; explicit manual filters still apply. Preserve Original / Authorized / Target, legacy rows lacking role metadata and unknown future roles. The native Show calibration requests checkbox follows the same semantics. Protocol-labeled controls distinguish an actual empty 404 from an unavailable forced protocol exchange.
 
 Run the [boundary drive](boundaries.md) for same-file/alias export rejection, strict TLS identity and headerless response limits. An export collision must exit 2 before opening the sink and leave the input byte-identical.
+
+For runtime scope, throttle, playbook and header changes, follow [Pause, edit and resume](editing.md). Initial setup controls remain separate from the active revision.

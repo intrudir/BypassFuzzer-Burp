@@ -51,3 +51,32 @@ proves a vulnerability by itself.
 `results` hides standalone calibration controls by default. Add `--show-calibration` to include them in TSV/JSONL or other filtered exports. Raw scan `results.jsonl`, request/response files and counters retain every exchange. Smart repeat filtering reserves its slots for ordinary results; explicitly shown controls remain subject to manual status/text filters. Baseline roles stay visible. Calibration payload labels include the requested protocol, since an HTTP/1 replay can return 404 while a forced HTTP/2 attempt has no response.
 
 `results --output` must differ from its input evidence file, including hard-link and symbolic-link aliases; collisions fail with exit 2 without truncation. Recovered Sweep responses get newly computed signals and calibration warnings from their retained baselines, so include retry records when triaging by signal.
+
+## Edit pending work
+
+The control file also accepts JSON `apply` and `apply-resume` commands. First
+write `pause` and wait for `<control-file>.status.json` to show `state: paused`
+and `inFlight: 0`. Read its `revision`, `hosts`, and `availablePlaybooks`.
+Send an edit with that `expectedRevision`; read back the incremented revision
+and an empty `error`. Invalid edits leave the old configuration paused.
+
+`configuration` supports `excludeHosts`, `concurrency`, `perHostConcurrency`,
+`requestsPerSecond`, `playbooks`, `headers`, `removeHeaders`, `userAgentMode`
+and `userAgentSeed`. Fields are partial replacements; supplied arrays replace
+whole lists. Header entries contain one `Name: value` line. Protect this file
+like a raw authenticated request, and write it atomically with a sibling rename.
+The status and `configuration-N.json` evidence files contain header names only.
+
+Playbook IDs come from the status inventory: Bypass/Sweep catalog IDs, existing
+`idor.*` families, or `url.context.<ENUM>` / `url.attack.<ENUM>`. Adding a check
+plans applicable unsent work; completed probes retain their evidence and are not
+repeated. Exclusions use the socket host across all ports and cover controls and
+retries. Header edits refresh comparison/calibration contexts; authenticated
+Sweep still strips selected credentials before anonymous traffic.
+
+Input/transport settings, IDs/markers, retry counts, calibration and unsafe-method
+opt-ins remain fixed for a run. Exact retry packages retain their saved inventory
+and add no calibration controls. Separate process traffic ceilings still apply.
+Read mixed-revision results against their own controls; a closed process's last
+status is not evidence it is still running. Full examples and semantics are in
+[the repository contract](../../../../docs/LIVE-RUN-CONTROL.md).

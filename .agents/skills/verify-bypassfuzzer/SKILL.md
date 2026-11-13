@@ -55,7 +55,7 @@ Use the helper from the repository root:
 ./.agents/skills/verify-bypassfuzzer/helpers/verify.sh drive "$RUN_ID" bypass
 ```
 
-Supported feature IDs are `dashboard`, `sweep`, `bypass`, `idor`, and `url-validation`. Each command drives named Swing controls or table actions from production UI classes through the existing JUnit harness. `bypass` and `url-validation` additionally start a test-local vulnerable lab, send real HTTP traffic through production attack engines, assert the response-side bypass marker, and tear the lab down.
+Supported feature IDs are `dashboard`, `sweep`, `bypass`, `idor`, `url-validation`, and `editing`. Each command drives named Swing controls or table actions from production UI classes through the existing JUnit harness. `bypass` and `url-validation` additionally start a test-local vulnerable lab, send real HTTP traffic through production attack engines, assert the response-side bypass marker, and tear the lab down.
 
 The Sweep drive also proves complete `All payloads` execution, exact concurrency limits, lazy candidate planning, bounded batched Swing delivery, and temp-file-backed raw evidence. Those delivery and evidence checks cover the shared results workspace used by every attack mode.
 
@@ -103,7 +103,7 @@ For a manual disposable Burp check, unload the extension and close only the disp
 ```text
 verify.sh launch  <run-id>
 verify.sh doctor  <run-id>
-verify.sh drive   <run-id> <dashboard|sweep|bypass|idor|url-validation>
+verify.sh drive   <run-id> <dashboard|sweep|bypass|idor|url-validation|editing>
 verify.sh cleanup <run-id>
 ```
 
@@ -112,3 +112,5 @@ Run it from the repository root. Run IDs may contain letters, numbers, dots, und
 For shared catalog, exact selection and fallback changes, also follow [features/playbooks.md](features/playbooks.md). The packaged-CLI two-hop fixture is the repeatable wire proof; a disposable real Burp pass proves native selection, warning/viewer and Collaborator paths.
 
 For transport/import and recovered-result changes, also run the packaged CLI [boundary drive](../verify-bypassfuzzer-cli/features/boundaries.md) and Sweep’s native credential/protocol/retry recipes. Use the shared owned fixture from that skill; keep native GUI launch settings and licensed profiles disposable.
+
+For atomic pause/edit/resume changes, follow [features/editing.md](features/editing.md). The `editing` drive covers the shared gate and saved work; repeat all four mode flows in disposable Burp for native dialog/rendering proof.

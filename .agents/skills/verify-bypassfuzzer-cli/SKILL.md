@@ -36,7 +36,7 @@ Drive one real CLI mode against the helper's isolated loopback lab:
 ./.agents/skills/verify-bypassfuzzer-cli/helpers/verify.sh drive "$RUN_ID" bypass
 ```
 
-Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, `runtime-results`, `playbooks`, and `boundaries`. The runtime-results drive covers retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
+Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, `runtime-results`, `playbooks`, `boundaries`, and `editing`. The runtime-results drive covers retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
 
 The boundaries drive verifies TLS peer identity, HTTP/0.9 limits/EOF, export aliases, and protocol-aware Sweep recovery; read [features/boundaries.md](features/boundaries.md) for its additional fixture prerequisites.
 
@@ -67,7 +67,7 @@ The live driver owns and closes its in-process loopback server. Cleanup removes 
 ```text
 verify.sh launch  <run-id>
 verify.sh doctor  <run-id>
-verify.sh drive   <run-id> <sweep|bypass|idor|url-validation|runtime-results|playbooks|boundaries>
+verify.sh drive   <run-id> <sweep|bypass|idor|url-validation|runtime-results|playbooks|boundaries|editing>
 verify.sh cleanup <run-id>
 ```
 
@@ -76,3 +76,7 @@ verify.sh cleanup <run-id>
 `helpers/runtime_drive.py` owns the runtime/results loopback lab and subprocess cleanup. Invoke it through `verify.sh drive <run-id> runtime-results`; it retains assertions, exports and command transcripts under that feature directory. Every drive performs its own doctor check, including `results --help`.
 
 `helpers/boundaries_drive.py` drives the packaged boundary cases; `helpers/boundary_lab.py` is its reusable owned wire fixture. Invoke through `verify.sh drive <run-id> boundaries`.
+
+For atomic pause/edit/resume changes, follow [features/editing.md](features/editing.md). The `editing` drive covers the shared gate and saved work; repeat all four mode flows in disposable Burp for native dialog/rendering proof.
+
+`helpers/editing_drive.py` implements the four-mode packaged edit proof. Invoke it through `verify.sh drive <run-id> editing`; it retains per-mode status, wire and raw evidence, and closes its owned fixture/processes on every exit.

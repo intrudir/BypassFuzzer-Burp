@@ -21,7 +21,7 @@ Read only the reference for the requested operation:
 - Exact Bypass/Sweep playbook selection and fallback calibration: [references/playbooks.md](references/playbooks.md)
 - Cross-user or cross-tenant object access: [references/idor.md](references/idor.md)
 - URL parser or allow-list behavior: [references/url-validation.md](references/url-validation.md)
-- Preview, pause/resume/stop, traffic limits, retained result filters and exports: [references/runtime-results.md](references/runtime-results.md)
+- Preview, pause/edit/resume/stop, scope/header/check changes, traffic limits, retained result filters and exports: [references/runtime-results.md](references/runtime-results.md)
 
 Read [references/common.md](references/common.md) before the first run in a
 session. Read [references/evidence.md](references/evidence.md) when reviewing
@@ -89,5 +89,5 @@ can find the owning checkout’s built CLI. Evidence paths follow the working di
 `scripts/bypassfuzzer.py` resolves the CLI from `BYPASSFUZZER_CLI`, a
 `bypassfuzzer` command on `PATH`, or a source-built JAR near the working directory or the skill’s owning checkout. It requires a
 compatible numeric version at least `1.4.4` (including development suffixes) and all five command surfaces
-plus the current playbook/calibration, OpenAPI, IDOR, OOB and result-filter options. The
+plus the current playbook/calibration, OpenAPI, IDOR, OOB, result-filter and JSON pause/edit/resume status contracts. The
 skill does not download or bundle BypassFuzzer.

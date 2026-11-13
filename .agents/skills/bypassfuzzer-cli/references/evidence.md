@@ -74,3 +74,5 @@ can contain credentials. With it, common credential headers are masked in stored
 files but still sent over the wire.
 
 Optional schema-v1 fields `playbookId`, `controlRole` and `calibration` describe shared checks and fallback comparisons. `WILDCARD` controls are listed separately by the helper; they never become Original/authorized/target baselines. Possible fallback and Calibration unavailable remain annotations on unchanged candidate signals. Read [playbooks.md](playbooks.md) before interpreting those annotations.
+
+For edited scans, use `configurationRevision` to identify the active settings and `headerRevision` to select matching baselines. Scope/limit/check-only edits reuse their header context. The triage helper groups comparisons by target, protocol and header revision; legacy evidence defaults to context zero.

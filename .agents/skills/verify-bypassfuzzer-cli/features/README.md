@@ -15,6 +15,8 @@ The CLI is a packaged Java command with four modes. Every mode writes streaming 
 
 - [Transport and recovery boundaries](./boundaries.md) covers peer identity, response limits/EOF, export aliases, protocol-isolated anonymous controls and recovered findings.
 
+- [Pause, edit and resume](./editing.md) covers atomic runtime edits, drained pause, scope, throttle, checks, headers and retained evidence.
+
 ## Proof conventions
 
 - Use the packaged fat JAR, not an internal main-class shortcut.

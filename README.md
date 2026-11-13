@@ -37,6 +37,8 @@ BypassFuzzer has four main testing areas:
 - **IDOR** for object identifier and BOLA-style request mutation.
 - **URL Validation** for marker-driven URL validation and SSRF-style allow-list bypass testing.
 
+All four modes support **Pause → Edit run… → Apply & Resume** for run-local scope, concurrency/rate limits, playbooks and headers while preserving completed evidence. The CLI provides the same flow through `--control-file` and an atomic JSON edit/status contract. See [pause, edit and resume](docs/LIVE-RUN-CONTROL.md).
+
 All four modes are available from the CLI. Sweep accepts URL lists, raw-request manifests, OpenAPI/Swagger, Postman, and Burp version-1 retry packages. Captured requests can be supplied to the CLI as raw files or manifests. Native Collaborator domains can be supplied through `--oob-domain` or an executable `--oob-generator`.
 
 - **Standalone CLI:**
@@ -61,7 +63,7 @@ All four modes are available from the CLI. Sweep accepts URL lists, raw-request 
   - Imports Postman Collection v2.0/v2.1 JSON, preserving methods, parameters, headers, auth, and request bodies
   - Deduplicates endpoint shapes before sending probes
   - Uses a bounded, mile-wide/inch-deep probe set with a default cap of 350 probes per endpoint
-  - Adaptive per-host rate control: automatically discovers each host's rate-limit ceiling and rides just under it (no delay/rate knobs to tune), sweeping every host in parallel at its own speed
+  - Adaptive per-host rate control: discovers each host's rate-limit ceiling, with optional runtime caps to limit it further, sweeping every host in parallel at its own speed
   - Optional one-click browser User-Agent preset on sweep probes
   - Shared request-header controls in every mode, including optional per-request User-Agent variation with synthetic non-browser tokens or browser-like variants
   - Shared full throttle controls and a common deferred retry queue across Bypass, Sweep, IDOR, and URL Validation
@@ -454,7 +456,7 @@ Protocol modes:
 
 Use `--insecure` only when an authorized target intentionally uses an untrusted TLS certificate. Proxy URLs use `http://[user:password@]host:port` syntax.
 
-Use `--traffic-max-in-flight` and `--traffic-max-rps` for the same shared admission limits used by Burp's Dashboard. All scan modes accept `--control-file control.txt`; write `pause`, `resume`, or `stop` to the file while the command runs. Pausing gates new sends; stopping retains unfinished retry work. The corresponding YAML keys are `execution.controlFile`, `execution.trafficMaxInFlight`, and `execution.trafficMaxRps`.
+Use `--traffic-max-in-flight` and `--traffic-max-rps` for the same shared admission limits used by Burp's Dashboard. All scan modes accept `--control-file control.txt`; write `pause`, `resume`, or `stop`, or submit an atomic JSON `apply` / `apply-resume` edit. Read `<file>.status.json` for the drained pause state, revision and acceptance/error. [The complete contract](docs/LIVE-RUN-CONTROL.md) covers host exclusions, throttle limits, checks, headers and exact saved retries. Pausing gates new sends; stopping retains unfinished retry work. The corresponding YAML keys are `execution.controlFile`, `execution.trafficMaxInFlight`, and `execution.trafficMaxRps`.
 
 ### YAML jobs
 

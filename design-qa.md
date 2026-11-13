@@ -306,3 +306,47 @@ The verification skills, feature maps and repository-owned CLI operating guidanc
 now describe these boundaries. Final committed packages are rebuilt and reloaded;
 readiness, hashes, the focused native recheck, and deletion of temporary licensed
 profiles/TLS keys are recorded with final delivery evidence. Commits are local.
+
+## Shared pause, edit and resume (2026-11-13)
+
+Bypass, Sweep, IDOR and URL Validation now share a drained edit boundary in Burp
+and the packaged CLI. The native Edit run… dialog changes exact-host exclusions,
+physical concurrency/rate caps, applicable playbooks and configured/removed headers.
+The CLI exposes equivalent atomic JSON commands and a protected status readback.
+Invalid/stale edits retain the old paused configuration. Dashboard global pause
+remains independent. Waiting for local admission holds no shared traffic slot and
+does not consume a network timeout. A regression first reproduced starvation of
+another tab, then passed after combining local and shared admission.
+
+Accepted edits retain completed exchanges and replan pending work. Header changes
+refresh the matching Original/Authorized/Target/Fallback context; authenticated
+Sweep still strips credentials from its anonymous context. Saved retry inventories
+keep their saved requests and can be narrowed without generating new probes.
+Evidence records configuration/header revisions and credential-free configuration
+history. Large retained control bodies use private run-owned temporary files.
+
+The full regression pass includes 519 Java tests (351 Burp, 129 core, 39 CLI),
+16 attack-playbook HTTP smoke tests and 27 operating-skill tests, all passing.
+The new checks cover atomic drain/apply, invalid and stale edits, exact scope,
+physical accounting, stable OOB identities, unique seeds, refreshed controls,
+unstarted retries, comparison metadata, private body storage/cleanup and dialog
+layout. Both verification maps include the new editing feature and rerunnable
+helpers; the CLI operating skill understands mixed header revisions.
+
+Owned packaged CLI drives cover all four modes, runtime/results, playbooks,
+transport boundaries and editing. The editing drive also exercises an exact retry
+package with multiple catalog entries and a legacy group, reads every referenced
+exchange and checks protected status/history files. Native proof in a disposable
+Burp Professional project covers all five tabs and empty states, actual traffic
+in all four attack modes, drained editing, an invalid-limit rejection, new
+playbooks/headers/limits, a two-host Sweep exclusion, fresh comparison viewers,
+and editing beneath Dashboard global pause. Real Collaborator callback and poll
+checks pass. No customer endpoint or pre-existing Burp instance was driven.
+
+Proof is retained under artifacts/verification/live-edit-20261113/, with packaged
+CLI feature evidence under artifacts/verification/bypassfuzzer-cli/. Failed fixture
+and harness iterations are retained separately from passing readbacks. Final
+committed package hashes, reload proof and deletion of the disposable licensed
+profile are recorded in the delivery evidence. Transport/input/protocol settings,
+identifier/marker setup and unsafe-method opt-ins remain fixed for a run, as
+specified in docs/LIVE-RUN-CONTROL.md. Commits are local.

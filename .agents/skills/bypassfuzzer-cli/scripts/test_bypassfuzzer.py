@@ -44,6 +44,7 @@ class ResolverTests(unittest.TestCase):
             "    print('Commands: ' + ' '.join(commands))\n"
             "elif len(sys.argv) >= 3 and sys.argv[1] in commands and sys.argv[2] == '--help':\n"
             "    print('Usage: bypassfuzzer ' + sys.argv[1] + ' ' + ' '.join(option for option in options[sys.argv[1]] if option not in omitted_options))\n"
+            "    if sys.argv[1] != 'results': print('JSON atomic edits; read back <file>.status.json')\n"
             "elif sys.argv[1:] and sys.argv[1] in commands:\n"
             "    if capture:\n"
             "        Path(capture).write_text(json.dumps(sys.argv[1:]))\n"
@@ -104,6 +105,13 @@ class ResolverTests(unittest.TestCase):
             self.assertEqual(report["version"], "1.4.4")
             self.assertEqual(bf.run_cli([str(executable)], ["bypass", "--example"]), 7)
             self.assertEqual(json.loads(capture.read_text()), ["bypass", "--example"])
+
+    def test_validate_rejects_legacy_pause_only_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            executable = self.fake_cli(Path(raw))
+            executable.write_text(executable.read_text().replace("JSON atomic edits; read back <file>.status.json", "plain pause resume stop"))
+            with self.assertRaisesRegex(bf.BypassFuzzerError, "pause/edit/resume"):
+                bf.validate_cli([str(executable)])
 
     def test_validate_rejects_old_version(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -257,6 +265,20 @@ class TriageTests(unittest.TestCase):
             self.assertFalse(success["baselineComparisons"][1]["bodyEqual"])
             self.assertFalse(denied["baselineComparisons"][0]["bodyEqual"])
             self.assertTrue(denied["baselineComparisons"][1]["bodyEqual"])
+
+    def test_triage_uses_matching_header_context_across_configuration_edits(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            rows = self.fixture(root)
+            rows[0].update(configurationRevision=0, headerRevision=0)
+            rows[1].update(configurationRevision=2, headerRevision=1)
+            rows[2].update(configurationRevision=1, headerRevision=0)
+            rows[3].update(configurationRevision=2, headerRevision=1)
+            (root / "results.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+            report = bf.build_triage_report(root)
+            self.assertEqual([row["sequence"] for row in report["candidates"][0]["baselineComparisons"]], [1])
+            self.assertEqual([row["sequence"] for row in report["candidates"][1]["baselineComparisons"]], [2])
+            self.assertIn("headerRevision=1", bf.render_triage_text(report))
 
     def test_wildcard_controls_stay_separate_and_annotations_are_visible(self) -> None:
         with tempfile.TemporaryDirectory() as raw:

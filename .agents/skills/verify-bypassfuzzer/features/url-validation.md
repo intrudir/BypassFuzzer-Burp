@@ -54,3 +54,5 @@ Preconditions:
 - Payload preview is valid only for the same contexts, settings, encodings, hosts, headers, and request used at execution.
 - Collaborator verifies an external production boundary and can create real out-of-band traffic. Use it only with explicit scope and preserve interaction evidence separately.
 - A final `200` alone is not proof: capture the substituted request and the response marker/body that distinguishes it from the blocked baseline.
+
+For runtime scope, throttle, playbook and header changes, follow [Pause, edit and resume](editing.md). Initial setup controls remain separate from the active revision.

@@ -156,6 +156,18 @@ drive() {
   doctor "$run_id" >"$evidence_dir/doctor-before-drive.txt"
 
   case "$feature" in
+    editing)
+      run_gradle "$evidence_dir" shared-run-controls.log :core:test \
+        --tests com.bypassfuzzer.core.scan.LiveRunTest \
+        --tests com.bypassfuzzer.core.http.ResponseArchiveTest
+      mkdir -p "$evidence_dir/test-results/core"
+      cp -R "$REPO_ROOT/core/build/test-results/test/." "$evidence_dir/test-results/core/"
+      run_gradle "$evidence_dir" physical-and-retry-controls.log :test \
+        --tests com.bypassfuzzer.burp.http.MontoyaRequestSenderTest \
+        --tests com.bypassfuzzer.burp.ui.session.RunHeaderFieldsTest \
+        --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest
+      copy_results "$evidence_dir" test
+      ;;
     dashboard)
       run_gradle "$evidence_dir" swing-controls.log :test \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest \

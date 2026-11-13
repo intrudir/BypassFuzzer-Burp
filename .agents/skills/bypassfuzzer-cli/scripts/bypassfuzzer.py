@@ -140,6 +140,8 @@ def validate_cli(invocation: Sequence[str]) -> dict[str, Any]:
         missing_options = [option for option in REQUIRED_OPTIONS[command] if option not in text.replace("--[no-]", "--")]
         if missing_options:
             raise BypassFuzzerError(f"BypassFuzzer {command} lacks options: " + ", ".join(missing_options))
+        if command != "results" and ("JSON atomic edits" not in " ".join(text.split()) or ".status.json" not in text):
+            raise BypassFuzzerError(f"BypassFuzzer {command} lacks the pause/edit/resume status contract")
 
     source = invocation[-1] if "-jar" in invocation else invocation[0]
     return {
@@ -224,6 +226,8 @@ def _body_digest(path: Path | None) -> str | None:
 def _record_view(record: Mapping[str, Any], request_path: Path, response_path: Path | None) -> dict[str, Any]:
     return {
         "sequence": record.get("sequence"),
+        "configurationRevision": record.get("configurationRevision", 0),
+        "headerRevision": record.get("headerRevision", record.get("configurationRevision", 0)),
         "target": record.get("target"),
         "protocol": record.get("protocol"),
         "family": record.get("family"),
@@ -321,7 +325,7 @@ def build_triage_report(
         views.append(view)
 
     views.sort(key=lambda value: value["sequence"])
-    baseline_groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+    baseline_groups: dict[tuple[Any, Any, Any], list[dict[str, Any]]] = {}
     baselines: list[dict[str, Any]] = []
     controls: list[dict[str, Any]] = []
     for record, view in zip(sorted(records, key=lambda value: value["sequence"]), views):
@@ -329,7 +333,7 @@ def build_triage_report(
             controls.append(view)
         elif record.get("baseline") is True:
             baselines.append(view)
-            baseline_groups.setdefault((view["target"], view["protocol"]), []).append(view)
+            baseline_groups.setdefault((view["target"], view["protocol"], view["headerRevision"]), []).append(view)
 
     default_filter = signals is None
     selected_signals = {value.strip().upper() for value in (DEFAULT_SIGNALS if signals is None else signals) if value.strip()}
@@ -341,7 +345,7 @@ def build_triage_report(
         sweep_signal = default_filter and record.get("mode") == "sweep" and signal not in ("", "NO_SIGNAL", "BASELINE")
         if not include_all and signal not in selected_signals and not sweep_signal:
             continue
-        matching = baseline_groups.get((view["target"], view["protocol"]), [])
+        matching = baseline_groups.get((view["target"], view["protocol"], view["headerRevision"]), [])
         candidate = dict(view)
         candidate["baselineComparisons"] = _baseline_comparisons(candidate, matching)
         candidates.append(candidate)
@@ -403,6 +407,7 @@ def render_triage_text(report: Mapping[str, Any]) -> str:
         if calibration:
             lines.append(f"    calibration={calibration.get('assessment')} {_short(calibration.get('annotation'))}")
             lines.append(f"    fallback request={calibration.get('controlRequestPath')} response={calibration.get('controlResponsePath')}")
+        lines.append(f"    configurationRevision={candidate.get('configurationRevision', 0)} headerRevision={candidate.get('headerRevision', 0)}")
         for comparison in candidate["baselineComparisons"]:
             lines.append(
                 f"    vs #{comparison['sequence']} {_short(comparison['payload'])}: "

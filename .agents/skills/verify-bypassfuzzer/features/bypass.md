@@ -64,3 +64,5 @@ Preconditions:
 - Closing the nested tab prompts for confirmation and disposes the session; use a disposable run before testing close.
 
 Shared checks also have a [playbook/calibration recipe](playbooks.md). Bypass exposes Playbooks… with family shortcuts and a selected-playbook count. Its pinned Scan behavior section groups default-on Wildcard calibration with a labeled Additional API prefixes field and format hint. Candidate warnings preserve the original signal and retain a selectable Fallback control exchange.
+
+For runtime scope, throttle, playbook and header changes, follow [Pause, edit and resume](editing.md). Initial setup controls remain separate from the active revision.

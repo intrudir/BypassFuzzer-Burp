@@ -43,3 +43,5 @@ Each feature file describes the visible behavior, all major user entry points, e
 - [IDOR / BOLA analysis](./idor.md) covers identifier setup, baselines, playbooks, run options, diagnostics, results, and retry.
 - [URL Validation](./url-validation.md) covers marker-driven request editing, payload contexts/settings, preview, execution, and results.
 - [Shared playbooks and calibration](./playbooks.md) covers exact shared selection, new probes, gating and fallback evidence.
+
+- [Pause, edit and resume](./editing.md) covers atomic runtime edits, drained pause, scope, throttle, checks, headers and retained evidence.

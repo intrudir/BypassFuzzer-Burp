@@ -65,3 +65,5 @@ Preconditions:
 - Path, query, body, and hybrid playbooks are context-aware; do not require an inapplicable family to emit variants.
 - Debug Info can expose sensitive request data. Store it only in the named local evidence directory and do not paste it into public logs.
 - Baselines must run first. A playbook result without both baseline comparisons is incomplete proof.
+
+For runtime scope, throttle, playbook and header changes, follow [Pause, edit and resume](editing.md). Initial setup controls remain separate from the active revision.

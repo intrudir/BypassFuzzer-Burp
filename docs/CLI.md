@@ -156,3 +156,7 @@ Retained `results` views hide calibration controls by default; add `--show-calib
 Transport and export safety: TLS verifies both the trusted chain and the socket-origin hostname unless `--insecure` is explicit. HTTP/0.9 uses the same 64 MiB response limit, rejects EOF before any body bytes, and represents nonempty body-only replies with a synthetic 200 because the protocol has no status line. `results --output` rejects the input evidence file and its file aliases before opening the sink; choose a different output file.
 
 Authenticated Sweep's anonymous verification uses the current protocol pass, including independent HTTP/1 and HTTP/2 decisions under BOTH. Recovered mutations recompute their signals, finding counts and calibration metadata from retained comparison context. Original and calibration controls remain controls when retried. The reproducible packaged proof is `verify-bypassfuzzer-cli/helpers/verify.sh drive <fresh-run-id> boundaries` (see its feature map for fixture prerequisites).
+
+## Edit a running scan
+
+All four modes support atomic pause/edit/resume through `--control-file`, with a credential-free `.status.json` readback and per-result configuration revisions. See [Pause, edit and resume](LIVE-RUN-CONTROL.md) for the JSON contract, available fields and exact retry behavior.

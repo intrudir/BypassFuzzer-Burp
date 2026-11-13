@@ -106,6 +106,17 @@ Saving variables or changing the dropdown rebuilds candidates from the retained 
 
 For URL imports, relative document links and redirects preserve unusual raw paths such as repeated slashes and backslashes. Relative servers—and OpenAPI's implicit `/` when no server is declared—resolve against the final document URL. An optional `OpenAPI base URL` overrides the resolved specification server.
 
+### Import a captured API spec
+
+From a Burp request/response editor or a single selected history item, choose
+Send to BypassFuzzer → Import API spec to Sweep. This parses the retained response
+body without replaying the spec request, preserving access through unusual paths
+or required Referer/bypass headers. The captured URL supplies the document origin
+when `servers` is absent. Captured request headers are inherited only by operations
+on the same origin; body framing and Host are generated for each operation.
+Inspect requests with View and use Request Headers to configure overrides.
+Importing opens Sweep candidates without sending endpoint probes or starting a scan.
+
 ## Authenticated Traffic
 
 Authenticated-traffic discovery does not send requests. It inspects Proxy history and inventories likely authentication header names and cookie names without displaying their values. `Authorization` and session/auth/token-like identifiers are selected automatically; the tester can change the selection and add custom auth header names.

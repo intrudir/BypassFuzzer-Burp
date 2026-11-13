@@ -73,3 +73,11 @@ Preconditions:
 The [shared playbook/calibration recipe](playbooks.md) covers both inventories. High signal includes a Verb group; post/put requires State-changing methods, now exposed in every Sweep source mode. Selections remain independent per inventory. Authenticated calibration and mutations use the same stripped credential context. Fallback controls cannot replace Original or Auth verification evidence. Column order stays Payload, Host, Family, Signal, Status, Length, Content-Type.
 
 For runtime scope, throttle, playbook and header changes, follow [Pause, edit and resume](editing.md). Initial setup controls remain separate from the active revision.
+
+Captured-spec entry point: right-click an existing OpenAPI/Swagger response in
+a message editor or a single history row, then Send to BypassFuzzer → Import API
+spec to Sweep. Require no re-fetch, Import targets selected, the expected operation
+rows and state-changing selections, same-origin Referer/credential inheritance,
+no inheritance to a different declared server, and no automatic scan. Test a
+backslash-containing spec URL with no servers. Run CapturedApiSpecImportTest and
+ContextMenuFactoryTest; use a disposable Burp Repeater response for native menu proof.

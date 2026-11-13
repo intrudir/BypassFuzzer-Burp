@@ -30,20 +30,27 @@ public class ContextMenuFactory implements ContextMenuItemsProvider {
     public List<Component> provideMenuItems(ContextMenuEvent event) {
         List<Component> menuItems = new ArrayList<>();
 
-        // Only show menu item if there's a selected request
-        if (event.messageEditorRequestResponse().isPresent()) {
-            HttpRequestResponse requestResponse = event.messageEditorRequestResponse().get()
-                    .requestResponse();
-
-            if (requestResponse != null && requestResponse.request() != null) {
-                JMenu sendMenu = new JMenu("Send to BypassFuzzer");
-                for (TargetedMode mode : TargetedMode.values()) {
-                    JMenuItem modeItem = new JMenuItem(mode.title());
-                    modeItem.addActionListener(e -> sendToFuzzer(requestResponse, mode));
-                    sendMenu.add(modeItem);
-                }
-                menuItems.add(sendMenu);
+        HttpRequestResponse selected = event.messageEditorRequestResponse()
+            .map(editor -> editor.requestResponse()).orElse(null);
+        if (selected == null && event.selectedRequestResponses().size() == 1)
+            selected = event.selectedRequestResponses().get(0);
+        if (selected != null && selected.request() != null) {
+            final HttpRequestResponse exchange = selected;
+            JMenu sendMenu = new JMenu("Send to BypassFuzzer");
+            for (TargetedMode mode : TargetedMode.values()) {
+                JMenuItem modeItem = new JMenuItem(mode.title());
+                modeItem.addActionListener(e -> sendToFuzzer(exchange, mode));
+                sendMenu.add(modeItem);
             }
+            if (exchange.response() != null && exchange.response().body() != null
+                && exchange.response().body().length() > 0) {
+                sendMenu.addSeparator();
+                JMenuItem importSpec = new JMenuItem("Import API spec to Sweep");
+                importSpec.setToolTipText("Import this captured OpenAPI/Swagger response without fetching it again.");
+                importSpec.addActionListener(e -> mainTab.importApiSpec(exchange));
+                sendMenu.add(importSpec);
+            }
+            menuItems.add(sendMenu);
         }
 
         return menuItems;

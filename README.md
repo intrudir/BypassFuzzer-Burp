@@ -714,6 +714,8 @@ GitHub's Wiki tab is a separate Git repository. In this project, `wiki/` is the 
 
 The script clones or updates `../BypassFuzzer-Burp.wiki`, syncs the Markdown pages from `wiki/`, and pushes them to the GitHub wiki repo.
 
+Right-click a captured OpenAPI/Swagger response and choose **Send to BypassFuzzer → Import API spec to Sweep** to import its existing body without downloading it again. This supports specs reached through bypass paths or a required Referer. Sweep uses the selected request URL when the spec omits `servers`, retains captured headers only on same-origin operations, and opens candidates for review without starting traffic. Use **View** to inspect inherited headers and **Request Headers** for overrides. POST and other state-changing operations remain unchecked until explicitly included.
+
 ## Custom Payloads
 
 Bundled payload resources can be edited before building. Runtime playbook selection and additional API prefixes are described in [Shared bypass playbooks](docs/bypass-playbooks.md).

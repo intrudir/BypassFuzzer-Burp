@@ -53,4 +53,17 @@ class ContextMenuFactoryTest {
             verify(mainTab).loadRequest(requestResponse, mode);
         }
     }
+
+    @Test void capturedResponseActionUsesEditorOrSingleTableSelection() {
+        for(boolean editor : List.of(true,false)) {
+            var api=mock(MontoyaApi.class,RETURNS_DEEP_STUBS);var tab=mock(BypassFuzzerTab.class);
+            var exchange=mock(HttpRequestResponse.class);when(exchange.request()).thenReturn(request("/Swagger/v1/\\swagger.json","","GET",null,""));
+            var response=mock(burp.api.montoya.http.message.responses.HttpResponse.class);var body=mock(burp.api.montoya.core.ByteArray.class);when(body.length()).thenReturn(10);when(response.body()).thenReturn(body);when(exchange.response()).thenReturn(response);
+            var event=mock(ContextMenuEvent.class);
+            if(editor){var message=mock(MessageEditorHttpRequestResponse.class);when(message.requestResponse()).thenReturn(exchange);when(event.messageEditorRequestResponse()).thenReturn(Optional.of(message));}
+            else {when(event.messageEditorRequestResponse()).thenReturn(Optional.empty());when(event.selectedRequestResponses()).thenReturn(List.of(exchange));}
+            JMenu menu=(JMenu)new ContextMenuFactory(api,tab).provideMenuItems(event).get(0);
+            JMenuItem action=menu.getItem(menu.getItemCount()-1);assertEquals("Import API spec to Sweep",action.getText());action.doClick();verify(tab).importApiSpec(exchange);
+        }
+    }
 }

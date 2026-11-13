@@ -174,6 +174,15 @@ public class BypassFuzzerTab extends JPanel {
         loadRequest(request, null, mode);
     }
 
+    public void importApiSpec(HttpRequestResponse exchange) {
+        Runnable importResponse = () -> {
+            tabbedPane.setSelectedComponent(sweepPanel);
+            sweepPanel.importApiSpecResponse(exchange);
+        };
+        if (SwingUtilities.isEventDispatchThread()) importResponse.run();
+        else SwingUtilities.invokeLater(importResponse);
+    }
+
     public void loadRequest(HttpRequestResponse exchange, TargetedMode mode) {
         loadRequest(exchange.request(), exchange.response(), mode);
     }

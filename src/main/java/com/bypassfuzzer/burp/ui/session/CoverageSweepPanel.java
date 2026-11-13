@@ -1100,21 +1100,53 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             return false;
         }
 
+        var headers = currentOptions().requestHeaders();
+        return startOpenApiImport(() -> {
+            var fetched = openApiUrlFetcher.fetchDocument(target.rawUrl(), httpMode, headers);
+            return new ImportedOpenApiDocument(fetched.source(), remoteFileName(target.requestTarget()), fetched.effectiveUrl(), false);
+        }, openApiBaseUrlField.getText().trim());
+    }
+
+    /** Import the retained response, including specs reached through unusual paths or bypass headers. */
+    public boolean importApiSpecResponse(burp.api.montoya.http.message.HttpRequestResponse exchange) {
+        if (engine.isRunning() || resultsWorkspace.isRetryRunning() || !modeComboBox.isEnabled()
+            || remoteImportWorker != null || candidateLoadWorker != null || sweepPreparationWorker != null) {
+            statusLabel.setText("Wait for the current Sweep activity to finish before importing an API spec.");
+            return false;
+        }
+        try {
+            if (exchange == null || exchange.request() == null || exchange.response() == null
+                || exchange.response().body() == null || exchange.response().body().length() == 0)
+                throw new IllegalArgumentException("Select a captured API spec response with a body.");
+            if (exchange.response().body().length() > OpenApiUrlFetcher.MAX_SOURCE_BYTES)
+                throw new IllegalArgumentException("API spec exceeds the 10 MiB import limit.");
+            String source = exchange.response().bodyToString();
+            String sourceUrl = exchange.request().url();
+            OpenApiUrlFetcher.parse(sourceUrl);
+            var excluded = Set.of("host", "content-length", "transfer-encoding", "content-type", "content-encoding");
+            var headers = exchange.request().headers().stream()
+                .filter(h -> !excluded.contains(h.name().toLowerCase(java.util.Locale.ROOT)) && !h.name().startsWith(":"))
+                .map(h -> new com.bypassfuzzer.core.http.ConfiguredHeader(h.name(), h.value())).toList();
+            var document = new ImportedOpenApiDocument(source,
+                source.stripLeading().startsWith("{") ? "captured-api-spec.json" : "captured-api-spec.yaml", sourceUrl, false, headers);
+            modeComboBox.setSelectedIndex(2);
+            openApiBaseUrlField.setText("");
+            return startOpenApiImport(() -> document, "");
+        } catch (Exception error) {
+            handleImportFailure(error);return false;
+        }
+    }
+
+    private boolean startOpenApiImport(java.util.concurrent.Callable<ImportedOpenApiDocument> source, String baseUrl) {
         setControlsForLoading();
-        statusLabel.setText("Downloading OpenAPI document from " + target.host() + "...");
+        statusLabel.setText("Importing API spec...");
         CoverageSweepOptions options = currentOptions();
-        String baseUrl = openApiBaseUrlField.getText().trim();
         OpenApiImportOptions importOptions = currentOpenApiImportOptions();
         boolean dedupeEndpoints = dedupeOnEndpointCheckBox.isSelected();
         SwingWorker<RemoteOpenApiImport, Void> worker = new SwingWorker<>() {
             @Override
             protected RemoteOpenApiImport doInBackground() throws Exception {
-                String fileName = remoteFileName(target.requestTarget());
-                OpenApiUrlFetcher.FetchedDocument fetched = openApiUrlFetcher.fetchDocument(
-                    target.rawUrl(), httpMode, options.requestHeaders());
-                String source = fetched.source();
-                ImportedOpenApiDocument document =
-                    new ImportedOpenApiDocument(source, fileName, fetched.effectiveUrl(), false);
+                ImportedOpenApiDocument document = source.call();
                 CoverageSweepPreview preview = collectOpenApiPreview(document, baseUrl, options,
                     dedupeEndpoints, importOptions);
                 return new RemoteOpenApiImport(preview, document);
@@ -1128,7 +1160,14 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 try {
                     RemoteOpenApiImport imported = get();
                     importedOpenApiDocument = imported.document();
+                    if (imported.document().capturedHeaders() != null) {
+                        requestHeadersControl.setHeaders(List.of());
+                        requestHeadersControl.setUserAgentMode(UserAgentMode.DISABLED);
+                        browserUserAgentCheckBox.setSelected(false);
+                    }
                     applyImportedPreview(imported.preview(), true, dedupeEndpoints);
+                    if (imported.document().capturedHeaders() != null)
+                        statusLabel.setText(statusLabel.getText()+". Captured headers retained on same-origin requests; inspect View before starting.");
                 } catch (CancellationException e) {
                     statusLabel.setText("OpenAPI URL import cancelled.");
                 } catch (InterruptedException e) {
@@ -1249,8 +1288,20 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private CoverageSweepPreview collectOpenApiPreview(ImportedOpenApiDocument document, String baseUrl,
                                                        CoverageSweepOptions options, boolean dedupe,
                                                        OpenApiImportOptions importOptions) {
-        return engine.collectPreviewFromOpenApi(document.source(), document.fileName(), baseUrl,
+        var preview = engine.collectPreviewFromOpenApi(document.source(), document.fileName(), baseUrl,
             document.sourceUrl(), options, dedupe, importOptions);
+        if (document.capturedHeaders() == null || document.capturedHeaders().isEmpty()) return preview;
+        var origin = OpenApiUrlFetcher.parse(document.sourceUrl());
+        var policy = new com.bypassfuzzer.core.http.RequestHeaderPolicy<>(com.bypassfuzzer.burp.http.MontoyaRequestAccess.INSTANCE,
+            document.capturedHeaders(), UserAgentMode.DISABLED, 0);
+        var candidates = preview.candidates().stream().map(candidate -> {
+            var target = OpenApiUrlFetcher.parse(candidate.displayUrl());
+            if (!origin.scheme().equals(target.scheme()) || !origin.host().equalsIgnoreCase(target.host()) || origin.port()!=target.port())return candidate;
+            return new CoverageSweepCandidate(policy.applyToBase(candidate.request()),candidate.originalResponse(),candidate.dedupeKey(),
+                candidate.displayUrl(),candidate.method(),candidate.host(),candidate.path(),candidate.statusCode(),candidate.contentLength(),
+                candidate.contentType(),candidate.time(),candidate.importKey(),candidate.unresolvedVariables());
+        }).toList();
+        return new CoverageSweepPreview(preview.blockedHistoryCount(),preview.dedupedEndpointCount(),candidates);
     }
 
     void setOpenApiVariables(Map<String, String> variables) {
@@ -1702,7 +1753,11 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
     private record RemoteOpenApiImport(CoverageSweepPreview preview, ImportedOpenApiDocument document) {
     }
 
-    private record ImportedOpenApiDocument(String source, String fileName, String sourceUrl, boolean postman) {
+    private record ImportedOpenApiDocument(String source, String fileName, String sourceUrl, boolean postman,
+                                           List<com.bypassfuzzer.core.http.ConfiguredHeader> capturedHeaders) {
+        ImportedOpenApiDocument(String source,String fileName,String sourceUrl,boolean postman) {
+            this(source,fileName,sourceUrl,postman,null);
+        }
     }
 
     private CoverageSweepOptions currentOptions() {

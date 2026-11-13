@@ -5,7 +5,7 @@
 | Mode | Shared plan | Execution |
 | --- | --- | --- |
 | Bypass | `BypassPlanner` | `ScanEngine.run` in both surfaces |
-| IDOR | `IdorPlanner` | `ScanEngine.run` in both surfaces |
+| IDOR | `IdorPlanner` and `ResponseGuidedIdorPlanner` | `ScanEngine.run` in both surfaces |
 | URL Validation | `UrlValidationPlanner` and core payload generator | `ScanEngine.run` in both surfaces |
 | Sweep | `HighSignalPlanner` or `BypassPlanner` | `SweepWorkflow` and `DeferredRetryRunner` in both surfaces; Burp uses `ScanEngine.exchange` for admission, while CLI uses the core throttle/governor adapters |
 
@@ -29,4 +29,4 @@ Burp Sweep records candidate planning/execution failures and setup failures inst
 
 ## Editable runs
 
-`LiveRun` and immutable `RunConfiguration` own drained pause, revision checks and scope/concurrency/rate admission. Both transport adapters place managed admission after outer traffic governors. The engines replan on revision changes; completed work remains in `RunLedger` / `SweepWorkflow.Memory`, header contexts refresh controls, and OOB identities stay stable. See [LIVE-RUN-CONTROL.md](LIVE-RUN-CONTROL.md).
+`LiveRun` and immutable `RunConfiguration` own drained pause, revision checks and scope/concurrency/rate admission. Both transport adapters combine local and shared admission without holding a shared slot while waiting on local pause or limits. The engines replan on revision changes; completed work remains in `RunLedger` / `SweepWorkflow.Memory`, header contexts refresh controls, and OOB identities stay stable. See [LIVE-RUN-CONTROL.md](LIVE-RUN-CONTROL.md).

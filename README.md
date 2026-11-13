@@ -693,17 +693,18 @@ If Burp receives no response, Sweep retries safe `GET`/`HEAD` probes over HTTP/1
 
 ## Documentation
 
-Wiki-style project documentation lives under [`wiki/`](wiki/), including:
+Current references and mode guides:
 
 - [`docs/CLI.md`](docs/CLI.md) for the complete standalone CLI reference
 - [`docs/SCAN-ENGINE.md`](docs/SCAN-ENGINE.md) for the shared planner and execution boundaries
+- [Pause, edit and resume](docs/LIVE-RUN-CONTROL.md) for runtime controls and retry semantics
+- [Shared bypass playbooks](docs/bypass-playbooks.md) for catalog selection and fallback calibration
+- [Verification skills](.agents/skills/verify-bypassfuzzer/SKILL.md) for Burp and [packaged CLI verification](.agents/skills/verify-bypassfuzzer-cli/SKILL.md)
 - [`wiki/Home.md`](wiki/Home.md)
-- [`wiki/Playbooks-Overview.md`](wiki/Playbooks-Overview.md)
 - [`wiki/Coverage-Sweep-Mode.md`](wiki/Coverage-Sweep-Mode.md)
 - [`wiki/AuthZ-Bypass-Playbooks.md`](wiki/AuthZ-Bypass-Playbooks.md)
 - [`wiki/URL-Validation-Playbooks.md`](wiki/URL-Validation-Playbooks.md)
 - [`wiki/IDOR-BOLA-Playbooks.md`](wiki/IDOR-BOLA-Playbooks.md)
-- [`wiki/Adding-New-Playbooks.md`](wiki/Adding-New-Playbooks.md)
 
 GitHub's Wiki tab is a separate Git repository. In this project, `wiki/` is the source of truth in the main repo, and you can mirror it into the GitHub wiki with:
 
@@ -715,7 +716,7 @@ The script clones or updates `../BypassFuzzer-Burp.wiki`, syncs the Markdown pag
 
 ## Custom Payloads
 
-You can edit the payload files before building. UI config for this will be added in a future release.
+Bundled payload resources can be edited before building. Runtime playbook selection and additional API prefixes are described in [Shared bypass playbooks](docs/bypass-playbooks.md).
 
 Sweep uses an explicit build-time probe wordlist:
 
@@ -744,7 +745,7 @@ The file documents all supported placeholders at the top. Edit it before buildin
    Example with Collaborator: `X-Forwarded-For: {OOB DOMAIN PAYLOAD}`
    Example for URL bypass: `X-Original-URL: {PATH SWAP}` (sends `GET /` with header `X-Original-URL: /edge/private/reports/quarterly`)
 
-   Collaborator placeholders are expanded only by the Burp extension. The standalone CLI skips OOB templates.
+   Burp expands Collaborator placeholders using its native client. The CLI expands OOB templates when `--oob-domain` or `--oob-generator` is configured.
 
 2. **IP Payloads:** One IP address per line
 

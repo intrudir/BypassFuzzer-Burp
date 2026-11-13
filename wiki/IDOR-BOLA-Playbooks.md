@@ -2,7 +2,9 @@
 
 The `IDOR` tab is for object-identifier manipulation and broken object-level authorization testing.
 
-The registry lives in `src/main/java/com/bypassfuzzer/burp/core/idor/playbooks/IdorPlaybookRegistry.java`.
+Generation lives in `core/src/main/java/com/bypassfuzzer/core/scan/IdorPlanner.java` and `ResponseGuidedIdorPlanner.java`; the Burp engine is an adapter over these shared planners.
+
+The examples below explain techniques. The selected identifier slot and enabled families determine the emitted plan. Families marked DANGEROUS are opt-in. Preview the actual request set before running it. Baseline gating, response-guided probes and execution behavior are described in [the shared engine guide](https://github.com/intrudir/BypassFuzzer-Burp/blob/main/docs/SCAN-ENGINE.md).
 
 This page is meant to read like an operator guide, not just a registry dump. It shows why the tab exists, how the flow works, and what the raw requests look like when we mutate an identifier.
 
@@ -12,7 +14,7 @@ This page is meant to read like an operator guide, not just a registry dump. It 
 - [Core Flow](#core-flow)
 - [Context-Aware Model](#context-aware-model)
 - [Naming Scheme](#naming-scheme)
-- [Current Playbooks](#current-playbooks)
+- [Technique Examples](#technique-examples)
   - [`idor.path.suffix_formats`](#idorpathsuffix_formats)
   - [`idor.path.trailing_slash`](#idorpathtrailing_slash)
   - [`idor.path.special_identifier_values`](#idorpathspecial_identifier_values)
@@ -44,8 +46,6 @@ This page is meant to read like an operator guide, not just a registry dump. It 
   - [`idor.hybrid.query_body_cross_source`](#idorhybridquery_body_cross_source)
   - [`idor.hybrid.method_override`](#idorhybridmethod_override)
   - [`idor.body.json_edge_cases`](#idorbodyjson_edge_cases)
-- [Notes For Future Additions](#notes-for-future-additions)
-- [Documentation Rule](#documentation-rule)
 
 ## Why This Is In The Tool
 
@@ -69,10 +69,10 @@ This lets the results answer a more specific question:
 
 ## Core Flow
 
-The current IDOR engine does three things in order:
+The IDOR workflow is:
 
 1. send the original request as the control request
-2. replace identifier 1 with identifier 2 and send that as the denied baseline
+2. replace identifier 1 with identifier 2 and send that as the target baseline
 3. analyze where identifier 1 appeared in the original request
 4. generate and send playbook variants derived from those identifier locations in the identifier-2 request
 
@@ -101,7 +101,7 @@ Examples:
 - `idor.hybrid.*`
   Curated ideas borrowed from the bypass tab when they are also useful for IDOR.
 
-## Current Playbooks
+## Technique Examples
 
 ### `idor.path.suffix_formats`
 
@@ -1722,22 +1722,3 @@ String id = body.entries().stream()
     .map(Map.Entry::getValue)
     .findFirst().orElse(null);
 ```
-
-## Notes For Future Additions
-
-When adding new playbooks, prefer grouping them into one of the existing namespaces:
-
-- `idor.path.*`
-- `idor.query.*`
-- `idor.body.*`
-- `idor.header.*`
-- `idor.hybrid.*`
-
-## Documentation Rule
-
-For new IDOR playbooks, document:
-
-- why the playbook exists
-- what kinds of broken target behavior it is meant to expose
-- a few raw HTTP examples
-- what "interesting" behavior would look like compared to the control request and the denied baseline

@@ -2,7 +2,7 @@
 
 The `URL Validation` tab is for marker-driven URL validation, allow-list bypass, and SSRF-style parser mismatch testing.
 
-The main payload generation flow lives in `src/main/java/com/bypassfuzzer/burp/core/urlvalidation/UrlValidationPayloadGenerator.java`.
+The main payload generation flow lives in `core/src/main/java/com/bypassfuzzer/core/urlvalidation/UrlValidationPayloadGenerator.java`.
 
 This page follows the same style as the IDOR playbook docs: why the area exists, what categories the tool generates, representative examples, and the kinds of broken code those payloads are trying to expose.
 

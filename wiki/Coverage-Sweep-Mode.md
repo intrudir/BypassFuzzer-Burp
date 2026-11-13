@@ -116,12 +116,12 @@ Images, JavaScript, CSS, and WOFF/WOFF2 responses are excluded by default using 
 
 Cookie selections are identifiers only. Before attacks are generated, Sweep removes:
 
-- the entire `Cookie` header
+- the selected authentication cookies, retaining unrelated cookies
 - `Authorization`
 - `Proxy-Authorization`
 - additional auth headers selected by the tester
 
-When `Verify unauthenticated access` is enabled, Sweep first replays the original request with authentication removed. A successful compatible `2xx` response is shown as `LIKELY PUBLIC: authenticated X -> unauthenticated Y`. This is a review signal, not confirmation: stale sessions, public endpoints, incomplete auth-identifier selection, and generic `200` responses can all produce false positives. The anonymous control response is retained in the result viewer alongside the original authenticated exchange. Authenticated Sweep results also provide dedicated `Auth Verification Request` and `Auth Verification Response` tabs for reviewing the exact credential-stripped exchange used for classification.
+When `Verify unauthenticated access` is enabled, Sweep first replays the original request with authentication removed. A successful compatible `2xx` response is shown as `LIKELY PUBLIC: authenticated X -> unauthenticated Y`. This is a review signal, not confirmation: stale sessions, public endpoints, incomplete auth-identifier selection, and generic `200` responses can all produce false positives. The anonymous control response is retained in the result viewer alongside the original authenticated exchange. Select the Auth verification exchange to inspect the credential-stripped request and response.
 
 If the anonymous control is blocked and a mutation succeeds, Sweep labels that result `LIKELY UNAUTHENTICATED BYPASS: X -> Y`. This is distinct from `LIKELY PUBLIC`: it means the endpoint was not directly reachable without credentials, but a crafted request changed the anonymous response.
 

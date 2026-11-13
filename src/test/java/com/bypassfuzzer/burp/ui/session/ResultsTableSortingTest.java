@@ -99,6 +99,45 @@ class ResultsTableSortingTest {
         });
     }
 
+    @Test void allResultsLayoutsKeepMetadataCenteredAndCompactAfterResizeAndReordering() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            for (var layout : SessionResultsPanel.TableLayout.values()) {
+                var panel = panel(layout);
+                JTable table = table(panel);
+                panel.addResults(List.of(row(200, "payload"), row(0, "unavailable")), ignored -> true);
+                for (int width : List.of(1280, 1700)) {
+                    table.setSize(width, 200);
+                    table.doLayout();
+                    for (String name : List.of("#", "Status", "Length")) {
+                        int col = table.getColumnModel().getColumnIndex(name);
+                        assertTrue(table.getColumnModel().getColumn(col).getWidth() < 160, layout + " / " + name);
+                        for (int row = 0; row < table.getRowCount(); row++) {
+                            JLabel cell = (JLabel) table.prepareRenderer(table.getCellRenderer(row, col), row, col);
+                            assertEquals(SwingConstants.CENTER, cell.getHorizontalAlignment(), layout + " / " + name);
+                            assertTrue(cell.getPreferredSize().width <= table.getColumnModel().getColumn(col).getWidth(),
+                                "Metadata should fit without truncation: " + cell.getText());
+                        }
+                        var header = table.getTableHeader();
+                        JLabel label = (JLabel) header.getDefaultRenderer().getTableCellRendererComponent(
+                            table, name, false, false, -1, col);
+                        assertEquals(SwingConstants.CENTER, label.getHorizontalAlignment());
+                    }
+                }
+                table.moveColumn(table.getColumnModel().getColumnIndex("Status"), 1);
+                click(table, "Status", 1);
+                for (int col = 0; col < table.getColumnCount(); col++) {
+                    String name = table.getColumnName(col);
+                    int expected = List.of("#", "Status", "Length", "Group").contains(name)
+                        ? SwingConstants.CENTER : SwingConstants.LEFT;
+                    JLabel cell = (JLabel) table.prepareRenderer(table.getCellRenderer(0, col), 0, col);
+                    assertEquals(expected, cell.getHorizontalAlignment(), layout + " / moved " + name);
+                    if (layout == SessionResultsPanel.TableLayout.IDOR && name.equals("Playbook"))
+                        assertEquals(Font.MONOSPACED, cell.getFont().getFamily());
+                }
+            }
+        });
+    }
+
     @Test void filteringPreservesExplicitUnsortedInsertionOrder() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             var panel = panel(SessionResultsPanel.TableLayout.DEFAULT);

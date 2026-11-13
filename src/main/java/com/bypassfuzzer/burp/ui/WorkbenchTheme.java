@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
 import javax.swing.border.TitledBorder;
 import javax.swing.plaf.basic.*;
 import javax.swing.text.JTextComponent;
@@ -115,6 +116,7 @@ public final class WorkbenchTheme {
             table.getTableHeader().setForeground(MUTED);
             table.getTableHeader().setFont(BODY.deriveFont(Font.BOLD, 13f));
             table.getTableHeader().setPreferredSize(new Dimension(0, 34));
+            configureTableColumns(table);
             TableCellRenderer original = table.getTableHeader().getDefaultRenderer();
             table.getTableHeader().setDefaultRenderer((owner, value, selected, focused, row, column) -> {
                 Component rendered = original.getTableCellRendererComponent(owner, value, selected, focused, row, column);
@@ -122,7 +124,7 @@ public final class WorkbenchTheme {
                 rendered.setForeground(MUTED);
                 rendered.setFont(BODY.deriveFont(Font.BOLD, 13f));
                 if (rendered instanceof JLabel label) {
-                    label.setHorizontalAlignment(SwingConstants.LEFT);
+                    label.setHorizontalAlignment(columnAlignment(owner.getColumnName(column)));
                     label.setBorder(BorderFactory.createCompoundBorder(
                         BorderFactory.createMatteBorder(0, 0, 1, 0, LINE),
                         BorderFactory.createEmptyBorder(0, 8, 0, 8)));
@@ -173,6 +175,53 @@ public final class WorkbenchTheme {
         c.addContainerListener(new ContainerAdapter() {
             @Override public void componentAdded(ContainerEvent event) { apply(event.getChild()); }
         });
+    }
+
+    /** Keep short metadata aligned with its header and leave spare width for request details. */
+    private static void configureTableColumns(JTable table) {
+        for (int viewColumn = 0; viewColumn < table.getColumnCount(); viewColumn++) {
+            TableColumn column = table.getColumnModel().getColumn(viewColumn);
+            String name = table.getColumnName(viewColumn);
+            switch (name) {
+                case "#" -> columnWidth(column, 44, 48, 60);
+                case "Status" -> columnWidth(column, 112, 128, 144);
+                case "Length" -> columnWidth(column, 80, 96, 112);
+                case "Run" -> columnWidth(column, 44, 52, 60);
+                case "Method" -> columnWidth(column, 72, 84, 100);
+                case "Group" -> columnWidth(column, 96, 104, 120);
+                case "Mode" -> columnWidth(column, 128, 136, 152);
+                case "State" -> columnWidth(column, 108, 140, 180);
+                case "Sent" -> columnWidth(column, 64, 80, 100);
+                case "Open", "Stop" -> columnWidth(column, 80, 88, 104);
+                case "Pause / Resume" -> columnWidth(column, 156, 164, 180);
+                default -> { }
+            }
+            TableCellRenderer original = column.getCellRenderer();
+            if (original == null) original = table.getDefaultRenderer(table.getColumnClass(viewColumn));
+            TableCellRenderer delegate = original;
+            column.setCellRenderer((owner, value, selected, focused, row, viewIndex) -> {
+                Component rendered = delegate.getTableCellRendererComponent(owner, value, selected, focused, row, viewIndex);
+                // Renderers reuse labels, so reset text columns as well as centering metadata.
+                if (rendered instanceof JLabel label)
+                    label.setHorizontalAlignment(columnAlignment(owner.getColumnName(viewIndex)));
+                return rendered;
+            });
+        }
+    }
+
+    private static int columnAlignment(String name) {
+        return switch (name) {
+            case "#", "Status", "Length", "Run", "Method", "Group", "Mode", "State",
+                 "Progress", "Sent", "Open", "Pause / Resume", "Stop" -> SwingConstants.CENTER;
+            default -> SwingConstants.LEFT;
+        };
+    }
+
+    private static void columnWidth(TableColumn column, int minimum, int preferred, int maximum) {
+        column.setMaxWidth(maximum);
+        column.setMinWidth(minimum);
+        column.setPreferredWidth(preferred);
+        column.setWidth(preferred);
     }
 
     private static Border themedBorder(Border border) {

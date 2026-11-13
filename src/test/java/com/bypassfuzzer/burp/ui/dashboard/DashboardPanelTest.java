@@ -5,6 +5,8 @@ import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.SwingConstants;
 import javax.swing.JCheckBox;
 import javax.swing.JSpinner;
 import javax.swing.JTable;
@@ -35,6 +37,27 @@ class DashboardPanelTest {
             assertEquals(1, table.getRowCount());
             assertEquals("Bypass", table.getValueAt(0, 0));
             assertEquals("Running", table.getValueAt(0, 2));
+
+            table.setSize(1700, 200);
+            table.doLayout();
+            assertTrue(table.getFontMetrics(table.getFont()).stringWidth("URL Validation") + 16
+                <= table.getColumn("Mode").getMinWidth(), "The longest mode name should fit");
+            for (int column = 0; column < table.getColumnCount(); column++) {
+                int expected = column == 1 ? SwingConstants.LEFT : SwingConstants.CENTER;
+                var header = table.getTableHeader();
+                JLabel label = (JLabel) header.getDefaultRenderer().getTableCellRendererComponent(
+                    table, table.getColumnName(column), false, false, -1, column);
+                assertEquals(expected, label.getHorizontalAlignment());
+                Component cell = table.prepareRenderer(table.getCellRenderer(0, column), 0, column);
+                if (column < 5) {
+                    assertEquals(expected, ((JLabel) cell).getHorizontalAlignment());
+                    if (column == 0) assertTrue(cell.getPreferredSize().width <= table.getColumnModel().getColumn(column).getMinWidth());
+                } else {
+                    assertTrue(cell instanceof JButton);
+                    assertEquals(SwingConstants.CENTER, ((JButton) cell).getHorizontalAlignment());
+                    assertTrue(cell.getPreferredSize().width <= table.getColumnModel().getColumn(column).getWidth());
+                }
+            }
 
             clickTableAction(table, 0, 5);
             assertTrue(opened.get());

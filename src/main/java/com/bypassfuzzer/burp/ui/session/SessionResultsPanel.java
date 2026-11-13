@@ -195,18 +195,6 @@ public class SessionResultsPanel extends JPanel {
         configurePopupHandling();
         configureCopyAction();
         configureColumns();
-        for (int column = 0; column < resultsTable.getColumnCount(); column++) {
-            String name = resultsTable.getColumnName(column);
-            int minimum = switch (name) {
-                case "#" -> 44;
-                case "Status" -> 84;
-                case "Length" -> 76;
-                case "Payload", "Variant" -> 180;
-                case "Playbook" -> 180;
-                default -> 100;
-            };
-            resultsTable.getColumnModel().getColumn(column).setMinWidth(minimum);
-        }
 
         JScrollPane tableScrollPane = new JScrollPane(resultsTable);
 
@@ -311,11 +299,9 @@ public class SessionResultsPanel extends JPanel {
                 }
 
                 if (tableLayout == TableLayout.IDOR && result != null) {
-                    applyIdorCellStyling(table, component, value, column, isSelected, result);
+                    applyIdorCellStyling(table, component, value, table.convertColumnIndexToModel(column), isSelected, result);
                 } else {
                     String name = table.getColumnName(column);
-                    if (name.equals("Status") || name.equals("Length") || name.equals("#"))
-                        setHorizontalAlignment(SwingConstants.RIGHT);
                     if (name.equals("Payload")) setFont(WorkbenchTheme.MONO);
                     if (name.equals("Status") && result != null) {
                         if (result.getResponse() == null) setForeground(WorkbenchTheme.WARNING);
@@ -376,15 +362,6 @@ public class SessionResultsPanel extends JPanel {
             }
             return;
         }
-
-        if (column == 5) {
-            renderer.setHorizontalAlignment(SwingConstants.RIGHT);
-            return;
-        }
-
-        if (column == 6) {
-            renderer.setHorizontalAlignment(SwingConstants.LEFT);
-        }
     }
 
     private Color statusColor(int status) {
@@ -415,49 +392,23 @@ public class SessionResultsPanel extends JPanel {
     }
 
     private void configureColumns() {
-        if (tableLayout == TableLayout.COVERAGE_SWEEP) {
-            int[] widths = {46, 250, 180, 140, 180, 96, 86, 160};
-            for (int i = 0; i < widths.length; i++) {
-                resultsTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
-            }
-            resultsTable.getColumnModel().getColumn(0).setMaxWidth(60);
-            return;
+        // WorkbenchTheme owns compact metadata columns across every tab.
+        int[] widths = switch (tableLayout) {
+            case COVERAGE_SWEEP -> new int[]{0, 250, 180, 140, 180, 0, 0, 160};
+            case URL_VALIDATION -> new int[]{0, 120, 90, 90, 280, 0, 0, 130};
+            case IDOR -> new int[]{0, 0, 210, 420, 0, 0, 170};
+            case DEFAULT -> new int[]{0, 140, 420, 0, 0, 220};
+        };
+        for (int column = 0; column < widths.length; column++) {
+            if (widths[column] == 0) continue;
+            String name = resultsTable.getColumnName(column);
+            int minimum = switch (name) {
+                case "Payload", "Variant", "Playbook" -> 180;
+                default -> 100;
+            };
+            resultsTable.getColumnModel().getColumn(column).setMinWidth(minimum);
+            resultsTable.getColumnModel().getColumn(column).setPreferredWidth(widths[column]);
         }
-        if (tableLayout == TableLayout.URL_VALIDATION) {
-            resultsTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-            resultsTable.getColumnModel().getColumn(0).setMaxWidth(50);
-            resultsTable.getColumnModel().getColumn(1).setPreferredWidth(120);
-            resultsTable.getColumnModel().getColumn(2).setPreferredWidth(90);
-            resultsTable.getColumnModel().getColumn(3).setPreferredWidth(90);
-            resultsTable.getColumnModel().getColumn(4).setPreferredWidth(280);
-            resultsTable.getColumnModel().getColumn(5).setPreferredWidth(60);
-            resultsTable.getColumnModel().getColumn(5).setMaxWidth(80);
-            resultsTable.getColumnModel().getColumn(6).setPreferredWidth(80);
-            resultsTable.getColumnModel().getColumn(7).setPreferredWidth(130);
-            return;
-        }
-
-        if (tableLayout == TableLayout.IDOR) {
-            resultsTable.getColumnModel().getColumn(0).setPreferredWidth(34);
-            resultsTable.getColumnModel().getColumn(0).setMaxWidth(52);
-            resultsTable.getColumnModel().getColumn(1).setPreferredWidth(88);
-            resultsTable.getColumnModel().getColumn(1).setMaxWidth(110);
-            resultsTable.getColumnModel().getColumn(2).setPreferredWidth(210);
-            resultsTable.getColumnModel().getColumn(3).setPreferredWidth(420);
-            resultsTable.getColumnModel().getColumn(4).setPreferredWidth(64);
-            resultsTable.getColumnModel().getColumn(4).setMaxWidth(84);
-            resultsTable.getColumnModel().getColumn(5).setPreferredWidth(86);
-            resultsTable.getColumnModel().getColumn(5).setMaxWidth(110);
-            resultsTable.getColumnModel().getColumn(6).setPreferredWidth(170);
-            return;
-        }
-
-        int[] widths = {46, 140, 420, 100, 100, 220};
-        for (int i = 0; i < widths.length; i++) {
-            resultsTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
-        }
-        resultsTable.getColumnModel().getColumn(0).setMaxWidth(60);
-
     }
 
     private void initializeRowSorter() {

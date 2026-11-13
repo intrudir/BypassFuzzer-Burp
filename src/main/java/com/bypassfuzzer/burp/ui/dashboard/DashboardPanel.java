@@ -145,13 +145,9 @@ public final class DashboardPanel extends JPanel {
     private void configureTable() {
         activityTable.setFillsViewportHeight(true);
         activityTable.setRowHeight(25);
-        activityTable.getColumnModel().getColumn(0).setPreferredWidth(90);
         activityTable.getColumnModel().getColumn(1).setPreferredWidth(420);
-        activityTable.getColumnModel().getColumn(2).setPreferredWidth(130);
         activityTable.getColumnModel().getColumn(3).setPreferredWidth(180);
-        activityTable.getColumnModel().getColumn(4).setPreferredWidth(70);
         for (int column = 5; column <= 7; column++) {
-            activityTable.getColumnModel().getColumn(column).setPreferredWidth(95);
             activityTable.getColumnModel().getColumn(column).setCellRenderer(new ActionRenderer());
             activityTable.getColumnModel().getColumn(column).setCellEditor(new ActionEditor(column));
         }

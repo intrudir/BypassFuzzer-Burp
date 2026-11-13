@@ -809,9 +809,6 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
                 startButton.setEnabled(canStartSelectedCandidates());
             }
         });
-        candidateTable.getColumnModel().getColumn(0).setMaxWidth(55);
-        candidateTable.getColumnModel().getColumn(1).setMaxWidth(72);
-        candidateTable.getColumnModel().getColumn(4).setPreferredWidth(110);
         candidateTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 updatePreviewButton();

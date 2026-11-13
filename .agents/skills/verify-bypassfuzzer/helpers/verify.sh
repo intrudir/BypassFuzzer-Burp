@@ -173,7 +173,9 @@ drive() {
       run_gradle "$evidence_dir" swing-controls.log :test \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest \
         --tests com.bypassfuzzer.burp.ui.BypassFuzzerTabTest.updateBannerShowsVersionDetailsAndCanBeDismissed \
-        --tests com.bypassfuzzer.burp.ui.dashboard.DashboardPanelTest
+        --tests com.bypassfuzzer.burp.ui.dashboard.DashboardPanelTest \
+        --tests com.bypassfuzzer.burp.ui.WorkbenchThemeTest \
+        --tests com.bypassfuzzer.burp.ui.session.ResultsTableSortingTest
       copy_results "$evidence_dir" test
       ;;
     sweep)

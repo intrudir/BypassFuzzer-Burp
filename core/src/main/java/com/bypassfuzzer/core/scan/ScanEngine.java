@@ -125,7 +125,7 @@ public final class ScanEngine {
                         plan.stream().filter(p -> !p.baseline()).forEach(p -> controlProtocols.add(p.request().protocol()));
                         for (var controlProtocol : controlProtocols) {
                             if (stopped) break;
-                            PlannedRequest fallback = new PlannedRequest("Calibration", "Wildcard sibling control", "",
+                            PlannedRequest fallback = new PlannedRequest("Calibration", WildcardCalibration.controlLabel(controlProtocol), "",
                                 WildcardCalibration.control(seed.withProtocol(controlProtocol), RequestAccess.CORE),
                                 true, ProbeIntent.STANDARD, "", "", "", ControlRole.WILDCARD);
                             wildcardControls.put(controlProtocol, fallback);

@@ -7,6 +7,17 @@ import java.util.*;
 public final class WildcardCalibration {
     private WildcardCalibration() { }
     public enum Assessment { MATCH, DIFFERENT, UNAVAILABLE, DISABLED }
+    public static String controlLabel(HttpProtocol protocol) {
+        String mode = switch (protocol) {
+            case HTTP_1 -> "HTTP/1.1";
+            case HTTP_1_0 -> "HTTP/1.0";
+            case HTTP_0_9 -> "HTTP/0.9";
+            case HTTP_2 -> "HTTP/2";
+            case AUTO -> "AUTO";
+            case BOTH -> "BOTH";
+        };
+        return "Wildcard sibling control (" + mode + ")";
+    }
     public static boolean eligible(String method) { return Set.of("GET", "HEAD").contains(method.toUpperCase(Locale.ROOT)); }
     public static <Q> Q control(Q seed, RequestAccess<Q> access) {
         String url = access.url(seed);

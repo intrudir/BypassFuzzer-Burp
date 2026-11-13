@@ -52,6 +52,8 @@ Preconditions:
 - **Failure visibility.** Use the engine regression fixture to throw a planner/API linkage error for one candidate. Require a Failed activity and `Run errors (n)` with the request and exception; the other candidate must execute, the failed host must stay out of completed hosts, and a subsequent clean run must clear failures. Keep the first 100 messages; full error logs remain in Extensions. An invalid API prefix must show a validation message before traffic without disabling Import or Start. Fixing it must refresh the estimate. A text URL list alone is a supported input and must complete against an owned loopback fixture with completed/planned counts equal.
 - **Proof.** Retain the automated transcript/XML. For manual import, retain the source fixture, candidate screenshot, exact-probe preview screenshot, and a result's Request/Response viewers.
 
+- **Calibration display.** Shared results hide calibration rows by default and expose Show calibration requests when controls exist. Toggling changes visible/exported rows, preserving every exchange and candidate Fallback control viewer. Controls do not consume Smart filter repeat slots. Baseline roles Original / Authorized / Target remain visible. Control payload labels include requested protocol: an HTTP/1 replay can return an empty 404 while a forced HTTP/2 exchange is unavailable. A received empty 404 must display as 404.
+
 ## Gotchas
 
 - The mode selector changes which source controls are visible. An import attempted outside `Import targets` is correctly rejected.

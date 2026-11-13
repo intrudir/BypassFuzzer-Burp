@@ -33,6 +33,44 @@ import static org.mockito.Mockito.when;
 class SessionResultsWorkspaceTest {
 
     @Test
+    void calibrationVisibilityPreservesBaselinesFallbackEvidenceAndFailedControls() throws Exception {
+        SessionResultsWorkspace workspace = workspace(new SequenceSender(response(200)));
+        var request = request("/api-docs/control", "", "GET", null, "");
+        var empty404 = response(404);
+        when(empty404.headers()).thenReturn(List.of());
+        var metadata = new AttackResult.EvidenceMetadata("", com.bypassfuzzer.core.scan.ControlRole.WILDCARD,
+            com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED, null, null);
+        AttackResult control = new AttackResult("Calibration", "control", request, empty404).withEvidenceMetadata(metadata);
+        AttackResult unavailable = new AttackResult("Calibration", "failed control", request, null).withEvidenceMetadata(metadata);
+        workspace.addResult(control); workspace.addResult(unavailable);
+        for (var role : List.of(com.bypassfuzzer.core.scan.ControlRole.ORIGINAL,
+            com.bypassfuzzer.core.scan.ControlRole.AUTHORIZED, com.bypassfuzzer.core.scan.ControlRole.TARGET)) {
+            workspace.addResult(new AttackResult("Baseline", role.name(), request, empty404).withEvidenceMetadata(
+                new AttackResult.EvidenceMetadata("", role, com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED, null, null)));
+        }
+        AttackResult candidate = new AttackResult("Path", "candidate", request, empty404).withEvidenceMetadata(
+            new AttackResult.EvidenceMetadata("bypass.path.base", com.bypassfuzzer.core.scan.ControlRole.NONE,
+                com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.MATCH, request, empty404));
+        workspace.addResult(candidate);
+        Field field = SessionResultsWorkspace.class.getDeclaredField("showCalibrationRequests"); field.setAccessible(true);
+        javax.swing.JCheckBox toggle = (javax.swing.JCheckBox) field.get(workspace);
+        assertFalse(toggle.isSelected()); assertTrue(toggle.isVisible());
+        assertEquals(4, workspace.shownResultsCount()); assertEquals(6, workspace.allResultsCount());
+        assertTrue(workspace.visibleResultsAsTsv().contains("candidate"));
+        assertFalse(workspace.visibleResultsAsTsv().contains("failed control"));
+        assertEquals(1, workspace.throttledRetryCount(), "hidden unavailable evidence stays in the retry queue");
+        SwingUtilities.invokeAndWait(toggle::doClick);
+        assertEquals(6, workspace.shownResultsCount());
+        assertTrue(workspace.visibleResultsAsTsv().contains("failed control"));
+        SwingUtilities.invokeAndWait(toggle::doClick);
+        assertEquals(4, workspace.shownResultsCount()); assertEquals(6, workspace.allResultsCount());
+        assertTrue(workspace.allResults().contains(candidate));
+        assertEquals(empty404, candidate.getEvidenceMetadata().fallbackResponse());
+        assertEquals("Possible fallback", candidate.getEvidenceMetadata().annotation());
+        workspace.cleanup();
+    }
+
+    @Test
     void sharedWorkspaceAlwaysExposesTheRetryQueueControl() throws Exception {
         SessionResultsWorkspace workspace = workspace(new SequenceSender(response(200)));
         Field field = SessionResultsWorkspace.class.getDeclaredField("retryQueueButton");

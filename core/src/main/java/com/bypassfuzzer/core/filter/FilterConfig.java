@@ -7,6 +7,11 @@ import java.util.Set;
  * Configuration for filtering attack results.
  */
 public class FilterConfig {
+    private boolean showCalibrationRequests;
+
+    public boolean isShowCalibrationRequests() { return showCalibrationRequests; }
+    public void setShowCalibrationRequests(boolean show) { showCalibrationRequests = show; }
+
     // Smart filter settings
     private boolean smartFilterEnabled = false;
     private int smartFilterRepeats = 10;

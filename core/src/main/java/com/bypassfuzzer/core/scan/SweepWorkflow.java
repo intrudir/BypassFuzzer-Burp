@@ -99,7 +99,7 @@ public final class SweepWorkflow<Q, S> {
             for (var protocol : protocols) {
                 if (!continuing.getAsBoolean()) return;
                 Q request = access.withProtocol(calibrationPolicy.reconcileMutation(seed, WildcardCalibration.control(seed, access)), protocol);
-                var probe = new Probe<>("Wildcard sibling control", "Calibration", request, protocol, "", ControlRole.WILDCARD);
+                var probe = new Probe<>(WildcardCalibration.controlLabel(protocol), "Calibration", request, protocol, "", ControlRole.WILDCARD);
                 observer.planned(1);
                 S response = send.apply(probe);
                 observer.completed();

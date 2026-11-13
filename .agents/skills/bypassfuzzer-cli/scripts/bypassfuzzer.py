@@ -23,7 +23,7 @@ REQUIRED_OPTIONS = {
     "bypass": ("--preview", "--oob-generator", "--control-file", "--playbooks", "--list-playbooks", "--api-prefix", "--wildcard-calibration"),
     "idor": ("--id-location", "--baseline-response", "--unique-json-field"),
     "url-validation": ("--oob-generator", "--contexts"),
-    "results": ("--response-regex", "--smart-repeats", "--format"),
+    "results": ("--response-regex", "--smart-repeats", "--format", "--show-calibration"),
 }
 DEFAULT_SIGNALS = (
     "LIKELY_BYPASS",

@@ -15,6 +15,9 @@ public class ResultFilterController {
     private final ManualFilter manualFilter = new ManualFilter(filterConfig);
     private final ResultHighlighter highlighter = new ResultHighlighter();
     private String highlightColorFilter = "All";
+    private int calibrationResults;
+
+    public int calibrationResultsCount() { return calibrationResults; }
 
     public FilterConfig filterConfig() {
         return filterConfig;
@@ -29,10 +32,12 @@ public class ResultFilterController {
     }
 
     public void track(AttackResult result) {
+        if (result.getControlRole().isCalibration()) calibrationResults++;
         smartFilter.track(result);
     }
 
     public boolean shouldShow(AttackResult result) {
+        if (result.getControlRole().isCalibration() && !filterConfig.isShowCalibrationRequests()) return false;
         if (!smartFilter.shouldShow(result)) {
             return false;
         }
@@ -51,12 +56,14 @@ public class ResultFilterController {
     }
 
     public void reset() {
+        calibrationResults = 0;
         smartFilter.reset();
         highlighter.clearAll();
     }
 
     public String statusText(int shownResults, int totalResults) {
-        boolean anyFilterActive = filterConfig.isSmartFilterEnabled() || filterConfig.isManualFilterEnabled();
+        boolean hiddenCalibration = calibrationResults > 0 && !filterConfig.isShowCalibrationRequests();
+        boolean anyFilterActive = filterConfig.isSmartFilterEnabled() || filterConfig.isManualFilterEnabled() || hiddenCalibration;
         if (!anyFilterActive) {
             return "No filters active";
         }
@@ -70,6 +77,10 @@ public class ResultFilterController {
                 status.append(" | ");
             }
             status.append("Manual: Active");
+        }
+        if (hiddenCalibration) {
+            if (status.length() > 0) status.append(" | ");
+            status.append("Calibration: hidden");
         }
         status.append(" | Showing ").append(shownResults).append(" of ").append(totalResults);
         return status.toString();

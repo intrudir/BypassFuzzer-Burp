@@ -23,4 +23,4 @@ Require existing IDOR/URL Validation previews and live results as regressions. V
 
 - Size the disposable display so tables and native editors are readable; verify the actual visible row before selecting it. A generated preview or model readback is not proof of the corresponding viewer.
 - Selection actions and counts remain pinned while the playbook list scrolls. Assert the count before starting an exact-selection check.
-- Controls remain visible even when unavailable; they do not overwrite Original or Auth verification. Clear Results must clear the fallback viewer too.
+- Controls remain retained even when unavailable; Show calibration requests reveals their table rows, including failed controls. They do not overwrite Original or Auth verification. Clear Results must clear the fallback viewer too.

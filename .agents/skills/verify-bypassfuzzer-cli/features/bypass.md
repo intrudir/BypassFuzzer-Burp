@@ -14,6 +14,8 @@ Run `java -jar cli/build/libs/bypassfuzzer-cli.jar bypass --request request.raw 
 
 Run `verify.sh doctor <run-id>` followed by `verify.sh drive <run-id> bypass`. The lab blocks the original request and accepts a trusted `CF-Connecting-IP` mutation. Proof requires the raw emitted header, a `200` marker response, `LIKELY_BYPASS`, redacted stored authorization, and a rejected Collaborator YAML key.
 
+Also drive an uncapped run with all twelve families, all applicable playbooks, a custom UA, and global / per-host concurrency 20/20. Use a raw request with captured headers/cookies and an owned protocol-aware empty-404 fixture. Verify the complete summary, every referenced exchange, headerless HTTP/0.9 and retained UA values elsewhere. Inspect results with default visibility and --show-calibration; the raw results.jsonl must remain unchanged.
+
 ## Gotchas
 
 - `--target-origin` controls the socket/TLS destination; a mutated `Host` header does not silently reroute traffic.

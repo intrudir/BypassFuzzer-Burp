@@ -26,6 +26,8 @@ public class SmartFilter implements ResponseFilter {
      * Called for EVERY result regardless of filter state.
      */
     public void track(ResultView result) {
+        // Control traffic must not consume the first-N slots reserved for scan results.
+        if (result.getControlRole().isCalibration()) return;
         String key = createKey(result);
         patternDatabase.put(key, patternDatabase.getOrDefault(key, 0) + 1);
 
@@ -38,6 +40,7 @@ public class SmartFilter implements ResponseFilter {
 
     @Override
     public boolean shouldShow(ResultView result) {
+        if (result.getControlRole().isCalibration()) return true;
         if (!config.isSmartFilterEnabled()) {
             return true; // Filter disabled, show all
         }

@@ -131,6 +131,12 @@ class ResolverTests(unittest.TestCase):
             with self.assertRaisesRegex(bf.BypassFuzzerError, "sweep lacks options: --openapi-variable"):
                 bf.validate_cli([str(executable)])
 
+    def test_doctor_requires_calibration_visibility_option(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            executable = self.fake_cli(Path(raw), omitted_options=("--show-calibration",))
+            with self.assertRaisesRegex(bf.BypassFuzzerError, "results lacks options: --show-calibration"):
+                bf.validate_cli([str(executable)])
+
     def test_validate_rejects_missing_command(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             executable = self.fake_cli(

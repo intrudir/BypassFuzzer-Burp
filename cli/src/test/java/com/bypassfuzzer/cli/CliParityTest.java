@@ -40,6 +40,29 @@ class CliParityTest {
         return JsonParser.parseString(Files.readString(output.resolve("summary.json"))).getAsJsonObject();
     }
 
+    @Test void calibrationRowsAreOptionalWithoutChangingRetainedEvidenceOrSmartSlots() throws Exception {
+        Path input = temporary.resolve("calibration-results.jsonl");
+        var roles = java.util.Arrays.asList("WILDCARD", "WILDCARD", "NONE", "ORIGINAL", "AUTHORIZED", "TARGET", "FUTURE_ROLE", null);
+        StringBuilder data = new StringBuilder();
+        for (int index = 0; index < roles.size(); index++) {
+            var row = new JsonObject(); row.addProperty("schemaVersion", 1);
+            row.addProperty("payload", "row-" + index); row.addProperty("status", index == 1 ? 0 : 404);
+            row.addProperty("length", 0); row.addProperty("contentType", "");
+            if (roles.get(index) != null) row.addProperty("controlRole", roles.get(index));
+            data.append(row).append('\n');
+        }
+        Files.writeString(input, data);
+        Run hidden = run("results", "--input", input.toString(), "--format", "jsonl");
+        assertEquals(0, hidden.code()); assertEquals(6, hidden.output().lines().count());
+        assertFalse(hidden.output().contains("WILDCARD"));
+        Run shown = run("results", "--input", input.toString(), "--format", "jsonl", "--show-calibration");
+        assertEquals(0, shown.code()); assertEquals(8, shown.output().lines().count());
+        Run smart = run("results", "--input", input.toString(), "--format", "jsonl", "--show-calibration", "--smart-repeats", "1");
+        assertEquals(0, smart.code()); assertEquals(3, smart.output().lines().count());
+        assertTrue(smart.output().contains("row-2"));
+        assertEquals(data.toString(), Files.readString(input));
+    }
+
     @Test void fullSweepAndTargetedBypassAreUncappedByDefault() throws Exception {
         Path request = request("catalog.raw", "/private/reports/quarterly?id=alice", "");
         for (String mode : List.of("sweep", "bypass")) {
@@ -217,11 +240,15 @@ class CliParityTest {
                 "--families", "header", "--max-probes", "2", "--control-file", control.toString(),
                 "--traffic-max-rps", "5", "--output", temporary.resolve("resume-out").toString()));
             Thread.sleep(300); assertTrue(times.isEmpty());
+            long resumedAt = System.nanoTime();
             Files.writeString(control, "resume");
             assertEquals(0, run.get(8, TimeUnit.SECONDS));
             assertEquals(3, times.size());
+            // Admission precedes connection setup, whose latency can compress arrival gaps.
+            // Check the cumulative 5 req/s budget; the governor tests measure admission spacing directly.
             for (int index = 1; index < times.size(); index++)
-                assertTrue(times.get(index) - times.get(index - 1) >= TimeUnit.MILLISECONDS.toNanos(140));
+                assertTrue(times.get(index) - resumedAt >= TimeUnit.MILLISECONDS.toNanos(200L * index - 20L),
+                    "Request " + index + " arrived before its post-resume rate budget");
         } finally { worker.shutdownNow(); server.stop(0); }
     }
 

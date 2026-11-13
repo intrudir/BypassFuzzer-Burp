@@ -149,3 +149,5 @@ Each run writes `run.json`, `results.jsonl`, `summary.json`, and numbered raw re
 Full wire evidence is stored by default and can contain credentials. `--redact` masks common credential headers in stored requests, responses, and configuration without changing what is sent.
 
 The exit code is `0` once a scan starts, including runs with findings, per-request failures, cancellation, or a finalized failed summary. Usage, YAML, input, and other preflight failures return `2`; automation should read `summary.json` for scan state and findings.
+
+Retained `results` views hide calibration controls by default; add `--show-calibration` to include them. This changes the filtered display/export only: raw scan JSONL, exchanges and accounting remain complete. Smart filter repeat limits exclude controls from the candidate budget. Original, authorized and target baselines remain visible; records without control metadata retain their legacy behavior.

@@ -45,3 +45,7 @@ not establish successful result export.
 For baseline/body comparisons and evidence integrity checks, use the helper's
 separate `triage` action described in [evidence.md](evidence.md). No export signal
 proves a vulnerability by itself.
+
+## Calibration rows
+
+`results` hides standalone calibration controls by default. Add `--show-calibration` to include them in TSV/JSONL or other filtered exports. Raw scan `results.jsonl`, request/response files and counters retain every exchange. Smart repeat filtering reserves its slots for ordinary results; explicitly shown controls remain subject to manual status/text filters. Baseline roles stay visible. Calibration payload labels include the requested protocol, since an HTTP/1 replay can return 404 while a forced HTTP/2 attempt has no response.

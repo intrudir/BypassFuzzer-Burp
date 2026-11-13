@@ -16,6 +16,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
     }
     private final EvidenceMetadata evidenceMetadata;
     public EvidenceMetadata getEvidenceMetadata() { return evidenceMetadata; }
+    @Override public com.bypassfuzzer.core.scan.ControlRole getControlRole() { return evidenceMetadata.controlRole(); }
     public AttackResult withEvidenceMetadata(EvidenceMetadata metadata) {
         return new AttackResult(attackType,payload,targetLabel,payloadFamily,payloadEncoding,request,response,originalRequest,originalResponse,
             verificationRequest,verificationResponse,throttleRetryAttempt,statusCode,contentLength,contentType,timestamp,evidenceOnDisk,metadata);

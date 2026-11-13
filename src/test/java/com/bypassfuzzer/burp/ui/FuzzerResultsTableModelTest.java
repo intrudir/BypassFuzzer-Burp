@@ -8,6 +8,25 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class FuzzerResultsTableModelTest {
 
     @Test
+    void empty404WithoutContentTypeRemainsAResponseInEveryResultsLayout() {
+        var response = org.mockito.Mockito.mock(burp.api.montoya.http.message.responses.HttpResponse.class);
+        var body = org.mockito.Mockito.mock(burp.api.montoya.core.ByteArray.class);
+        org.mockito.Mockito.when(response.statusCode()).thenReturn((short) 404);
+        org.mockito.Mockito.when(response.body()).thenReturn(body);
+        org.mockito.Mockito.when(response.headers()).thenReturn(java.util.List.of());
+        var result = new AttackResult("Calibration", "empty 404", null, response);
+        for (var layout : FuzzerResultsTableModel.TableLayout.values()) {
+            FuzzerResultsTableModel model = new FuzzerResultsTableModel(layout);
+            model.addResult(result, true);
+            int status = -1;
+            for (int column = 0; column < model.getColumnCount(); column++)
+                if (model.getColumnName(column).equals("Status")) status = column;
+            org.junit.jupiter.api.Assertions.assertTrue(status >= 0);
+            assertEquals(404, model.getValueAt(0, status));
+        }
+    }
+
+    @Test
     void assignsImmutableRequestIds() {
         FuzzerResultsTableModel model = new FuzzerResultsTableModel();
         AttackResult first = new AttackResult("Header", "one", null, null);

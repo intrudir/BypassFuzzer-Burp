@@ -84,6 +84,7 @@ public class SessionResultsWorkspace {
     private volatile boolean retryStopRequested;
     private boolean filtersCollapsed = true;
     private JLabel resultSummary;
+    private final javax.swing.JCheckBox showCalibrationRequests = new javax.swing.JCheckBox("Show calibration requests");
     private Runnable throttleRetryQueueChangedListener = () -> { };
     private JDialog retryQueueDialog;
     private RetryQueueTableModel retryQueueTableModel;
@@ -540,6 +541,13 @@ public class SessionResultsWorkspace {
         toolbarActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
         toolbarActions.add(filterPanel.smartFilterControl());
         toolbarActions.add(filtersButton);
+        showCalibrationRequests.setVisible(false);
+        showCalibrationRequests.setToolTipText("Show calibration controls in this table. All exchanges are retained; candidate Fallback control viewers remain available.");
+        showCalibrationRequests.addActionListener(event -> {
+            filterController.filterConfig().setShowCalibrationRequests(showCalibrationRequests.isSelected());
+            applyFilters();
+        });
+        toolbarActions.add(showCalibrationRequests);
         toolbar.add(toolbarActions, BorderLayout.SOUTH);
         retryRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
         retryRow.add(retryQueueButton);
@@ -560,7 +568,11 @@ public class SessionResultsWorkspace {
     }
 
     private void updateFilterStatus() {
-        resultSummary.setText(resultsPanel.shownResultsCount() + " / " + resultsPanel.allResultsCount() + " results");
+        int calibration = filterController.calibrationResultsCount();
+        showCalibrationRequests.setVisible(calibration > 0);
+        String hidden = calibration > 0 && !showCalibrationRequests.isSelected()
+            ? " · " + calibration + " calibration hidden" : "";
+        resultSummary.setText(resultsPanel.shownResultsCount() + " / " + resultsPanel.allResultsCount() + " results" + hidden);
         filterPanel.setFilterStatus(
             filterController.statusText(resultsPanel.shownResultsCount(), resultsPanel.allResultsCount())
         );

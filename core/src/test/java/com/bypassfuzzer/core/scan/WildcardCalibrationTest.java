@@ -11,6 +11,36 @@ class WildcardCalibrationTest {
     private HttpRequestData seed() { return new RawHttpRequestParser().parse("GET /api/v1/admin?tenant=42 HTTP/1.1\r\nHost: example.test\r\nAuthorization: Bearer captured\r\nCookie: session=secret; preference=dark\r\nX-Keep: yes\r\n\r\n".getBytes(), TargetOrigin.parse("https://example.test")); }
     private HttpResponseData response(int status, int length) { return new HttpResponseData(HttpProtocol.HTTP_1, status, List.of(new HttpHeader("Content-Type","text/html; charset=UTF-8")), new byte[length], 0); }
     private ScanOptions options(boolean enabled,int retries) { return new ScanOptions(HttpProtocol.HTTP_1,Duration.ofSeconds(1),1,1,Set.of(429,503),retries,false,"ride-hard","off",1000,true,enabled); }
+    @Test void empty404AndMissingHttp2ControlRemainDistinctAndCarryTheirProtocol() {
+        var request = seed();
+        var empty = new HttpResponseData(HttpProtocol.HTTP_1, 404,
+            List.of(new HttpHeader("Content-Length", "0")), new byte[0], 0);
+        var workflow = new SweepWorkflow<HttpRequestData, HttpResponseData>(RequestAccess.CORE, SweepClassifier::response);
+        var events = new ArrayList<SweepWorkflow.Result<HttpRequestData, HttpResponseData>>();
+        var candidate = new SweepWorkflow.Candidate<HttpRequestData, HttpResponseData>(request, null,
+            request.targetLabel(), new SweepClassifier.Baseline(404, 0, ""));
+        workflow.execute(candidate, new SweepWorkflow.Options(false, false, false, Set.of(), Set.of(), true, Set.of(429)),
+            new RequestHeaderPolicy<>(RequestAccess.CORE, List.of(), UserAgentMode.DISABLED, 0),
+            () -> List.of(new SweepWorkflow.Probe<>("Original", "Control", request, HttpProtocol.HTTP_1),
+                new SweepWorkflow.Probe<>("HTTP1 mutation", "Path", request.withRawTarget("/mutated1"), HttpProtocol.HTTP_1),
+                new SweepWorkflow.Probe<>("HTTP2 mutation", "Path", request.withProtocol(HttpProtocol.HTTP_2).withRawTarget("/mutated2"), HttpProtocol.HTTP_2)),
+            probe -> probe.controlRole().isCalibration() && probe.protocol() == HttpProtocol.HTTP_2 ? null : empty,
+            () -> true, new SweepWorkflow.Observer<HttpRequestData, HttpResponseData>() {
+                public void planned(int count) { }
+                public void completed() { }
+                public void skippedPublic() { }
+                public void result(SweepWorkflow.Result<HttpRequestData, HttpResponseData> result) { events.add(result); }
+            });
+        var controls = events.stream().filter(e -> e.probe().controlRole().isCalibration()).toList();
+        assertEquals(2, controls.size());
+        assertEquals(404, controls.get(0).response().statusCode());
+        assertEquals("Wildcard sibling control (HTTP/1.1)", controls.get(0).probe().label());
+        assertNull(controls.get(1).response());
+        assertEquals("Calibration unavailable", controls.get(1).signal());
+        assertEquals("Wildcard sibling control (HTTP/2)", controls.get(1).probe().label());
+        for (var event : events) if (!event.probe().controlRole().isCalibration()) assertEquals(404, event.response().statusCode());
+    }
+
     @Test void siblingIsFreshAndPreservesSeedContext() {
         var a=WildcardCalibration.control(seed(),RequestAccess.CORE); var b=WildcardCalibration.control(seed(),RequestAccess.CORE);
         assertNotEquals(a.path(),b.path()); assertTrue(a.path().startsWith("/api/v1/__bf_control_")); assertEquals("tenant=42",a.query());

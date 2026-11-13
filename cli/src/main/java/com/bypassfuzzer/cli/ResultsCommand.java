@@ -31,6 +31,7 @@ public final class ResultsCommand implements Callable<Integer> {
     @Option(names = "--response-contains") String response;
     @Option(names = "--response-regex") boolean responseRegex;
     @Option(names = "--invert-response-match") boolean inverted;
+    @Option(names = "--show-calibration", description = "Include calibration control rows (hidden by default; raw scan evidence is retained).") boolean showCalibration;
     @Option(names = "--smart-repeats", description = "Show the first N results per status/length/content-type pattern.") Integer repeats;
 
     @Override public Integer call() throws Exception {
@@ -40,6 +41,7 @@ public final class ResultsCommand implements Callable<Integer> {
         Path directory = file.toRealPath().getParent();
         FilterConfig config = new FilterConfig();
         config.setManualFilterEnabled(true);
+        config.setShowCalibrationRequests(showCalibration);
         config.setHiddenStatusCodes(hiddenStatuses); config.setShownStatusCodes(shownStatuses);
         config.setHiddenContentLengths(hiddenLengths); config.setShownContentLengths(shownLengths);
         config.setMinContentLength(minLength); config.setMaxContentLength(maxLength);
@@ -72,6 +74,7 @@ public final class ResultsCommand implements Callable<Integer> {
                     JsonObject data = JsonParser.parseString(line).getAsJsonObject();
                     var view = new StoredResult(data, directory);
                     smart.track(view);
+                    if (view.getControlRole().isCalibration() && !config.isShowCalibrationRequests()) continue;
                     if (!smart.shouldShow(view) || !manual.shouldShow(view)) continue;
                     if (format.equals("jsonl")) sink.write(data + "\n");
                     else if (format.equals("payloads") || format.equals("hosts")) {
@@ -90,6 +93,10 @@ public final class ResultsCommand implements Callable<Integer> {
     private static String cell(String text) { return text == null ? "" : text.replace('\t', ' ').replace('\r', ' ').replace('\n', ' '); }
     private record StoredResult(JsonObject data, Path directory) implements ResultView {
         String text(String key) { return !data.has(key) || data.get(key).isJsonNull() ? "" : data.get(key).getAsString(); }
+        public com.bypassfuzzer.core.scan.ControlRole getControlRole() {
+            try { return com.bypassfuzzer.core.scan.ControlRole.valueOf(text("controlRole")); }
+            catch (IllegalArgumentException unknownOrLegacyRole) { return com.bypassfuzzer.core.scan.ControlRole.NONE; }
+        }
         public int getStatusCode() { return text("status").isBlank() ? 0 : Integer.parseInt(text("status")); }
         public int getContentLength() { return text("length").isBlank() ? 0 : Integer.parseInt(text("length")); }
         public String getContentType() { return text("contentType"); }

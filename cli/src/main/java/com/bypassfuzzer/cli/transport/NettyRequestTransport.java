@@ -5,6 +5,7 @@ import com.bypassfuzzer.core.http.HttpProtocol;
 import com.bypassfuzzer.core.http.HttpRequestData;
 import com.bypassfuzzer.core.http.HttpResponseData;
 import com.bypassfuzzer.core.http.RequestTransport;
+import com.bypassfuzzer.core.http.TargetOrigin;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -40,6 +41,9 @@ import io.netty.handler.ssl.ApplicationProtocolNames;
 import io.netty.handler.ssl.ApplicationProtocolNegotiationHandler;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslHandler;
+import io.netty.buffer.ByteBufAllocator;
+import java.io.EOFException;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.util.ReferenceCountUtil;
 
@@ -100,7 +104,7 @@ public final class NettyRequestTransport implements RequestTransport {
             protected void initChannel(SocketChannel channel) throws Exception {
                 addProxy(channel.pipeline());
                 if (ssl != null) {
-                    channel.pipeline().addLast(ssl.newHandler(channel.alloc(), request.origin().host(), request.origin().port()));
+                    channel.pipeline().addLast(sslHandler(ssl, channel.alloc(), request.origin()));
                     channel.pipeline().addLast(new ApplicationProtocolNegotiationHandler("") {
                         @Override
                         protected void configurePipeline(ChannelHandlerContext context, String protocol) {
@@ -261,16 +265,24 @@ public final class NettyRequestTransport implements RequestTransport {
         Bootstrap bootstrap = bootstrap(new ChannelInitializer<SocketChannel>() {
             @Override protected void initChannel(SocketChannel channel) throws Exception {
                 addProxy(channel.pipeline());
-                if (ssl != null) channel.pipeline().addLast(ssl.newHandler(channel.alloc(), request.origin().host(), request.origin().port()));
+                if (ssl != null) channel.pipeline().addLast(sslHandler(ssl, channel.alloc(), request.origin()));
                 channel.pipeline().addLast(new io.netty.channel.ChannelInboundHandlerAdapter() {
                     @Override public void channelRead(ChannelHandlerContext context, Object message) {
-                        ByteBuf bytes = (ByteBuf) message;
-                        byte[] chunk = new byte[bytes.readableBytes()];
-                        bytes.readBytes(chunk);
-                        body.writeBytes(chunk);
-                        ReferenceCountUtil.release(message);
+                        try {
+                            ByteBuf bytes = (ByteBuf) message;
+                            if ((long) body.size() + bytes.readableBytes() > MAX_RESPONSE_BYTES)
+                                throw new IllegalStateException("Response exceeded " + MAX_RESPONSE_BYTES + " bytes");
+                            byte[] chunk = new byte[bytes.readableBytes()];
+                            bytes.readBytes(chunk);
+                            body.writeBytes(chunk);
+                        } finally {
+                            ReferenceCountUtil.release(message);
+                        }
                     }
-                    @Override public void channelInactive(ChannelHandlerContext context) { response.complete(new HttpResponseData(HttpProtocol.HTTP_0_9, 200, List.of(), body.toByteArray(), elapsed(started))); }
+                    @Override public void channelInactive(ChannelHandlerContext context) {
+                        if (body.size() == 0) response.completeExceptionally(new EOFException("HTTP/0.9 connection closed without a response"));
+                        else response.complete(new HttpResponseData(HttpProtocol.HTTP_0_9, 200, List.of(), body.toByteArray(), elapsed(started)));
+                    }
                     @Override public void exceptionCaught(ChannelHandlerContext context, Throwable cause) { response.completeExceptionally(cause); context.close(); }
                 });
             }
@@ -285,6 +297,16 @@ public final class NettyRequestTransport implements RequestTransport {
     private Bootstrap bootstrap(ChannelInitializer<SocketChannel> initializer) {
         return new Bootstrap().group(group).channel(NioSocketChannel.class)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMillis).handler(initializer);
+    }
+
+    private SslHandler sslHandler(SslContext context, ByteBufAllocator allocator, TargetOrigin origin) {
+        SslHandler handler = context.newHandler(allocator, origin.host(), origin.port());
+        if (!insecure) {
+            var parameters = handler.engine().getSSLParameters();
+            parameters.setEndpointIdentificationAlgorithm("HTTPS");
+            handler.engine().setSSLParameters(parameters);
+        }
+        return handler;
     }
 
     private SslContext sslContext(boolean h2, boolean allowHttp1) throws Exception {

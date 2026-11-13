@@ -37,6 +37,7 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('test') {
     useJUnitPlatform()
+    systemProperty 'bypassfuzzer.test.classpath', sourceSets.test.runtimeClasspath.asPath
     filter {
         failOnNoMatchingTests = false
     }

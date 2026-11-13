@@ -15,6 +15,27 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CliParityTest {
+    @Test void resultsExportRejectsItsInputAndFileAliasesBeforeTruncating() throws Exception {
+        Path directory = temporary.resolve("retained"); Files.createDirectory(directory);
+        Path input = directory.resolve("results.jsonl");
+        String original = "{\"schemaVersion\":1,\"payload\":\"keep me\",\"status\":403,\"length\":0}\n";
+        Files.writeString(input, original);
+        var aliases = new java.util.ArrayList<Path>(List.of(input, directory.resolve("../retained/results.jsonl")));
+        try { aliases.add(Files.createLink(directory.resolve("hardlink.jsonl"), input)); }
+        catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) { }
+        try { aliases.add(Files.createSymbolicLink(directory.resolve("symlink.jsonl"), input)); }
+        catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) { }
+        for (Path alias : aliases) {
+            Run result = run("results", "--input", directory.toString(), "--output", alias.toString(), "--format", "jsonl");
+            assertEquals(2, result.code(), alias.toString());
+            assertEquals(original, Files.readString(input));
+        }
+        Path export = directory.resolve("filtered.jsonl");
+        assertEquals(0, run("results", "--input", input.toString(), "--output", export.toString(), "--format", "jsonl").code());
+        assertTrue(Files.readString(export).contains("keep me"));
+        assertEquals(original, Files.readString(input));
+    }
+
     @TempDir Path temporary;
     private record Run(int code, String output) { }
     private static String[] legacyArgs(String[] args) {

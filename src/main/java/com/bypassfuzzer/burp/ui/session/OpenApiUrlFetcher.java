@@ -104,7 +104,7 @@ interface OpenApiUrlFetcher {
                 throw new IOException("OpenAPI URL exceeded " + MAX_REDIRECTS + " redirects");
             }
             return fetchWithBurp(api, requestFactory, resolveReference(target, location.trim()),
-                httpMode, configuredHeaders, redirectCount + 1, discoveryCount);
+                httpMode, forwardedHeaders(target, resolveReference(target, location.trim()), configuredHeaders), redirectCount + 1, discoveryCount);
         }
         if (status < 200 || status >= 300) {
             throw new IOException("OpenAPI URL returned HTTP " + status);
@@ -120,12 +120,21 @@ interface OpenApiUrlFetcher {
                     + " document discovery steps");
             }
             return fetchWithBurp(api, requestFactory, resolveReference(target, reference),
-                httpMode, configuredHeaders, 0, discoveryCount + 1);
+                httpMode, forwardedHeaders(target, resolveReference(target, reference), configuredHeaders), 0, discoveryCount + 1);
         }
         if (looksLikeHtml(source, response.headerValue("Content-Type"))) {
             throw new IOException("URL returned HTML without a discoverable API document reference");
         }
         return new FetchedDocument(source, target.rawUrl());
+    }
+
+    private static java.util.List<ConfiguredHeader> forwardedHeaders(ParsedUrl current, String nextUrl,
+                                                                     java.util.List<ConfiguredHeader> headers) {
+        ParsedUrl next = parse(nextUrl);
+        // Custom credentials have no declared scope beyond the current origin. Once a
+        // chain leaves that origin, keep only defaults generated for the new destination.
+        return current.secure() == next.secure() && current.port() == next.port()
+            && current.host().equalsIgnoreCase(next.host()) ? headers : java.util.List.of();
     }
 
     private static String buildRawRequest(ParsedUrl target, java.util.List<ConfiguredHeader> configuredHeaders) {

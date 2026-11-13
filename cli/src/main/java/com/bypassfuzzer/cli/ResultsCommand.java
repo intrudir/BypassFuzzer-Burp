@@ -31,6 +31,7 @@ public final class ResultsCommand implements Callable<Integer> {
     @Option(names = "--response-contains") String response;
     @Option(names = "--response-regex") boolean responseRegex;
     @Option(names = "--invert-response-match") boolean inverted;
+    @picocli.CommandLine.Spec picocli.CommandLine.Model.CommandSpec spec;
     @Option(names = "--show-calibration", description = "Include calibration control rows (hidden by default; raw scan evidence is retained).") boolean showCalibration;
     @Option(names = "--smart-repeats", description = "Show the first N results per status/length/content-type pattern.") Integer repeats;
 
@@ -52,6 +53,8 @@ public final class ResultsCommand implements Callable<Integer> {
         if (repeats != null) { config.setSmartFilterEnabled(true); config.setSmartFilterRepeats(repeats); }
         var manual = new ManualFilter(config);
         var smart = new SmartFilter(config);
+        if (output != null && Files.exists(output) && Files.isSameFile(file, output))
+            throw new picocli.CommandLine.ParameterException(spec.commandLine(), "Results output must differ from its input evidence file");
         Writer sink = output == null ? new OutputStreamWriter(System.out, StandardCharsets.UTF_8)
             : Files.newBufferedWriter(output, StandardCharsets.UTF_8);
         if (output != null) try { Files.setPosixFilePermissions(output, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")); }

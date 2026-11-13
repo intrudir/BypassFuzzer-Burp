@@ -19,6 +19,61 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class OpenApiUrlFetcherTest {
+    @Test
+    void redirectAndDiscoveryScopeCustomHeadersToTheCurrentOrigin() throws Exception {
+        for (boolean discovery : List.of(false, true)) {
+            for (String destination : List.of("https://origin.test:443/spec", "https://ORIGIN.test/spec",
+                "https://other.test/spec", "https://origin.test:8443/spec", "http://origin.test/spec")) {
+                MontoyaApi api = mock(MontoyaApi.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+                var first = exchange(discovery ? 200 : 302,
+                    discovery ? "<html><script>SwaggerUIBundle({url: '" + destination + "'})</script></html>" : "",
+                    discovery ? "text/html" : "", destination);
+                var second = exchange(200, "{\"openapi\":\"3.0.0\",\"paths\":{}}", "application/json", null);
+                when(api.http().sendRequest(any(HttpRequest.class), eq(HttpMode.HTTP_1))).thenReturn(first, second);
+                var raw = new java.util.ArrayList<String>();
+                OpenApiUrlFetcher.burp(api, (target, request) -> { raw.add(request); return mock(HttpRequest.class); })
+                    .fetch("https://origin.test/start", HttpMode.HTTP_1, List.of(
+                        new com.bypassfuzzer.core.http.ConfiguredHeader("Authorization", "Bearer fixture"),
+                        new com.bypassfuzzer.core.http.ConfiguredHeader("Cookie", "session=fixture"),
+                        new com.bypassfuzzer.core.http.ConfiguredHeader("X-Custom-Secret", "fixture")));
+                boolean sameOrigin = destination.equals("https://origin.test:443/spec") || destination.equals("https://ORIGIN.test/spec");
+                assertEquals(2, raw.size());
+                org.junit.jupiter.api.Assertions.assertTrue(raw.get(0).contains("Authorization: Bearer fixture"));
+                assertEquals(sameOrigin, raw.get(1).contains("Authorization: Bearer fixture"), destination);
+                assertEquals(sameOrigin, raw.get(1).contains("Cookie: session=fixture"), destination);
+                assertEquals(sameOrigin, raw.get(1).contains("X-Custom-Secret: fixture"), destination);
+                org.junit.jupiter.api.Assertions.assertTrue(raw.get(1).contains("User-Agent: "));
+            }
+        }
+    }
+
+    @Test
+    void leavingAndReturningToOriginDoesNotRestoreCredentials() throws Exception {
+        MontoyaApi api = mock(MontoyaApi.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        var leave = exchange(302, "", "", "https://other.test/next");
+        var back = exchange(302, "", "", "https://origin.test/spec");
+        var document = exchange(200, "{}", "application/json", null);
+        when(api.http().sendRequest(any(HttpRequest.class), eq(HttpMode.HTTP_1))).thenReturn(leave, back, document);
+        var raw = new java.util.ArrayList<String>();
+        OpenApiUrlFetcher.burp(api, (target, request) -> { raw.add(request); return mock(HttpRequest.class); })
+            .fetch("https://origin.test/start", HttpMode.HTTP_1,
+                List.of(new com.bypassfuzzer.core.http.ConfiguredHeader("Authorization", "Bearer fixture")));
+        assertEquals(3, raw.size());
+        org.junit.jupiter.api.Assertions.assertFalse(raw.get(1).contains("Bearer fixture"));
+        org.junit.jupiter.api.Assertions.assertFalse(raw.get(2).contains("Bearer fixture"));
+    }
+
+    private static HttpRequestResponse exchange(int status, String text, String type, String location) {
+        HttpRequestResponse result = mock(HttpRequestResponse.class);
+        HttpResponse response = mock(HttpResponse.class);
+        ByteArray body = mock(ByteArray.class);
+        when(result.response()).thenReturn(response); when(response.statusCode()).thenReturn((short) status);
+        when(response.body()).thenReturn(body); when(body.length()).thenReturn(text.length());
+        when(response.bodyToString()).thenReturn(text); when(response.headerValue("Content-Type")).thenReturn(type);
+        when(response.headerValue("Location")).thenReturn(location);
+        return result;
+    }
+
 
     @Test
     void parserPreservesLiteralBackslashInRequestTarget() {

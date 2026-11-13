@@ -65,6 +65,7 @@ case "$ACTION" in
     if test "$FEATURE" = editing; then
       python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/editing_drive.py" \
         --jar "$JAR" --evidence "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
+      python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/retry_edit_drive.py" --jar "$JAR" --evidence "$EVIDENCE/$FEATURE/recovery" >"$EVIDENCE/$FEATURE/recovery.log" 2>&1
     elif test "$FEATURE" = boundaries; then
       python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/boundaries_drive.py" \
         "$JAR" "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1

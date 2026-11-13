@@ -42,3 +42,10 @@ server, including on assertion failure.
   unsafe-method opt-ins remain fixed. Exact replays retain their saved inventory.
 - A closed process can leave its last status file behind; inspect its exit and
   final summary. Read mixed-revision results against their own controls.
+
+Regression boundaries: retain queued failures across a header edit, recover them and
+require an empty retry queue with the new headers and revision. Check distinct
+same-URL credential/body seeds, two successive edited runs, late excluded-host
+results, clearing configured credentials, and retained Retry-After cooldowns.
+Native timeout fixtures must hold physical admission until a non-interruptible
+Montoya call actually returns. Run `RunEditAdversarialRegressionTest` for these cases.

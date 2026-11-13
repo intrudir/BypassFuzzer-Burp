@@ -165,6 +165,7 @@ drive() {
       run_gradle "$evidence_dir" physical-and-retry-controls.log :test \
         --tests com.bypassfuzzer.burp.http.MontoyaRequestSenderTest \
         --tests com.bypassfuzzer.burp.ui.session.RunHeaderFieldsTest \
+        --tests com.bypassfuzzer.burp.ui.session.RunEditAdversarialRegressionTest \
         --tests com.bypassfuzzer.burp.ui.session.SessionResultsWorkspaceTest
       copy_results "$evidence_dir" test
       ;;

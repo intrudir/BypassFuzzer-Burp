@@ -350,3 +350,26 @@ committed package hashes, reload proof and deletion of the disposable licensed
 profile are recorded in the delivery evidence. Transport/input/protocol settings,
 identifier/marker setup and unsafe-method opt-ins remain fixed for a run, as
 specified in docs/LIVE-RUN-CONTROL.md. Commits are local.
+
+
+## Pause/edit/resume adversarial fixes (2026-11-13)
+
+All nine reviewed boundaries now have regressions in RunEditAdversarialRegressionTest.
+AUTO Sweep retries preserve their planned protocol when resolving refreshed templates;
+captured seeds and manual controls have distinct request identities, captured-response
+caches reset on a new scan, and retry results retain the active revision. Historical
+configured header values are removed from saved retries when their override is cleared.
+Late excluded-host results stay visible as evidence without re-entering the retry queue.
+CLI pending failures use stable logical identities across header edits. Both affected
+engines retain adaptive feedback and Retry-After cooldowns across generations. Native
+timeouts retain physical admission until the actual Montoya call returns.
+
+The full regression run contains 531 Java tests plus 16 HTTP smoke tests and 27
+operating-skill tests. The twelve adversarial cases include ten previously failing
+reproductions and two passing controls. Verification skills include these boundaries
+and a packaged recovery driver that checks new headers, an empty retry queue and
+server cooldown retention. Disposable real Burp verification exercises all four edit
+flows, all five tabs/empty states and Collaborator, with a queued AUTO Sweep failure
+retained through the header edit. Evidence and final committed artifact hashes are
+retained under artifacts/verification/run-edit-fixes-20261113/. Normal Burp profiles
+are outside the disposable verification session. Commits are local.

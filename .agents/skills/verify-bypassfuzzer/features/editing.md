@@ -51,3 +51,10 @@ For OOB changes, require the skill's real Collaborator callback/poll proof.
   does not generate new seeds. Input/protocol/unsafe-method setup remains fixed.
 - Follow [docs/LIVE-RUN-CONTROL.md](../../../../docs/LIVE-RUN-CONTROL.md) for the
   shared semantics and CLI command/status contract.
+
+Regression boundaries: retain queued failures across a header edit, recover them and
+require an empty retry queue with the new headers and revision. Check distinct
+same-URL credential/body seeds, two successive edited runs, late excluded-host
+results, clearing configured credentials, and retained Retry-After cooldowns.
+Native timeout fixtures must hold physical admission until a non-interruptible
+Montoya call actually returns. Run `RunEditAdversarialRegressionTest` for these cases.

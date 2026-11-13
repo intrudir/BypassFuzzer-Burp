@@ -80,3 +80,7 @@ verify.sh cleanup <run-id>
 For atomic pause/edit/resume changes, follow [features/editing.md](features/editing.md). The `editing` drive covers the shared gate and saved work; repeat all four mode flows in disposable Burp for native dialog/rendering proof.
 
 `helpers/editing_drive.py` implements the four-mode packaged edit proof. Invoke it through `verify.sh drive <run-id> editing`; it retains per-mode status, wire and raw evidence, and closes its owned fixture/processes on every exit.
+
+The editing drive also runs `helpers/retry_edit_drive.py` against the packaged JAR,
+requiring recovery under edited headers, an empty deferred queue and a retained
+server Retry-After cooldown. Its owned loopback fixture always closes in finally.

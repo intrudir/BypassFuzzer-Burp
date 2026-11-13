@@ -80,3 +80,7 @@ and add no calibration controls. Separate process traffic ceilings still apply.
 Read mixed-revision results against their own controls; a closed process's last
 status is not evidence it is still running. Full examples and semantics are in
 [the repository contract](../../../../docs/LIVE-RUN-CONTROL.md).
+
+Header edits preserve server cooldowns. A successful automatic retry removes its
+logical work item even when headers changed; verify `deferredRetries` and the
+exported retry queue rather than counting earlier failure rows.

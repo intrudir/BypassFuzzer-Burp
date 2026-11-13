@@ -80,7 +80,7 @@ public final class ScanExecutor {
                 evidence.recordConfiguration(control.liveRun(),engine.configurationRevision());
                 evidence.write(event);
                 if (!event.planned().baseline()) {
-                    String key = event.planned().family() + "\n" + event.planned().payload() + "\n" + event.planned().request().toRaw();
+                    String key = engine.workIdentity(event.planned());
                     if (event.response() == null || options.throttleStatusCodes().contains(event.response().statusCode()))
                         pending.put(key, evidence.retryEntry(event.planned(), event.retryAttempt()));
                     else pending.remove(key);

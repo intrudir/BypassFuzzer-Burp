@@ -33,19 +33,20 @@ final class LiveRetryContext {
         var metadata=previous.getEvidenceMetadata();boolean anonymous=metadata.sweepContext()!=null && metadata.sweepContext().authenticated();
         var workflow=new SweepWorkflow<HttpRequest,HttpResponse>(access,CoverageSweepClassifier::toCore);
         HttpRequest oldBase=previous.getOriginalRequest()==null ? previous.getRequest() : previous.getOriginalRequest();
+        oldBase=run.cleanSavedHeaders(oldBase,access);
         HttpRequest baseline=policy.reconcileMutation(oldBase,config.prepare(oldBase,access));
-        String seed=previous.getTargetLabel()+"\n"+new CoreRequestAdapter().fromMontoya(previous.getRequest()).protocol();
+        String seed=previous.getTargetLabel()+"\n"+new CoreRequestAdapter().fromMontoya(previous.getRequest()).protocol()+"\n"+oldBase.toString();
         var original=control(seed,"Original control for edited retry",ControlRole.ORIGINAL,baseline,send,revision);
         Control verification=null;
         if(previous.getVerificationRequest()!=null) {
-            HttpRequest verify=config.prepare(previous.getVerificationRequest(),access);
+            HttpRequest verify=config.prepare(run.cleanSavedHeaders(previous.getVerificationRequest(),access),access);
             if(anonymous)verify=workflow.stripAuthentication(verify,authHeaders,authCookies);
             var verificationPolicy=anonymous ? policy.withoutAuthentication(authHeaders,authCookies) : policy;
             verify=verificationPolicy.reconcileMutation(verify,verify);
             verification=control(seed,"Comparison control for edited retry",ControlRole.TARGET,verify,send,revision);
         }
         var mutationPolicy=anonymous ? policy.withoutAuthentication(authHeaders,authCookies) : policy;
-        HttpRequest mutation=previous.getRequest();for(String name:config.removeHeaders())mutation=access.removeHeader(mutation,name);
+        HttpRequest mutation=run.cleanSavedHeaders(previous.getRequest(),access);for(String name:config.removeHeaders())mutation=access.removeHeader(mutation,name);
         if(anonymous)mutation=workflow.stripAuthentication(mutation,authHeaders,authCookies);
         mutation=mutationPolicy.reconcileMutation(oldBase,mutation);
         Control fallback=null;

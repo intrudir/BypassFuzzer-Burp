@@ -13,6 +13,7 @@ public final class LiveRun {
     public static final class Excluded extends RuntimeException {
         public Excluded(String host) { super("Skipped: host excluded: " + host); }
     }
+    private final Set<com.bypassfuzzer.core.http.ConfiguredHeader> priorHeaders=new HashSet<>();
     private RunConfiguration configuration;
     private java.util.function.Consumer<RunConfiguration> configurationValidator=ignored -> {};
     private final Map<Long,RunConfiguration> history=new HashMap<>();
@@ -31,11 +32,22 @@ public final class LiveRun {
 
     public LiveRun(RunConfiguration initial, Map<String,String> available) {
         this.available = Collections.unmodifiableMap(new LinkedHashMap<>(available));
-        validate(initial); configuration = initial;history.put(0L,initial);headerHistory.put(0L,0L);
+        validate(initial); priorHeaders.addAll(initial.headers()); configuration = initial;history.put(0L,initial);headerHistory.put(0L,0L);
     }
     private void validate(RunConfiguration value) {
         if (value.playbooks() != null && !available.keySet().containsAll(value.playbooks()))
             throw new IllegalArgumentException("Unknown or unavailable playbook in run configuration");
+    }
+    public void inheritHeaderHistory(LiveRun source){var values=source.headerHistoryValues();synchronized(this){priorHeaders.addAll(values);}}
+    private synchronized Set<com.bypassfuzzer.core.http.ConfiguredHeader> headerHistoryValues(){return Set.copyOf(priorHeaders);}
+    public synchronized <Q> Q cleanSavedHeaders(Q request,com.bypassfuzzer.core.http.RequestAccess<Q> access) {
+        var current=configuration.headers().stream().map(h -> h.name().toLowerCase(java.util.Locale.ROOT)).collect(java.util.stream.Collectors.toSet());
+        var names=new HashSet<String>();for(var h:priorHeaders)if(!current.contains(h.name().toLowerCase(java.util.Locale.ROOT)))names.add(h.name());
+        for(String name:names) {
+            var values=access.headers(request).stream().filter(h -> h.name().equalsIgnoreCase(name)).filter(h -> priorHeaders.stream().noneMatch(old -> old.name().equalsIgnoreCase(name) && old.value().equals(h.value()))).toList();
+            request=access.removeHeader(request,name);for(var h:values)request=access.addHeader(request,h.name(),h.value());
+        }
+        return request;
     }
     public synchronized long headerRevision(long revision){return headerHistory.getOrDefault(revision,0L);}
     public synchronized RunConfiguration configuration(long revision){return history.get(revision);}
@@ -56,7 +68,7 @@ public final class LiveRun {
         validate(next);configurationValidator.accept(next);
         if (configuration.equals(next)) return;
         if (!configuration.sameHeaders(next)) headerRevision++;
-        configuration = next; revision++;history.put(revision,next);headerHistory.put(revision,headerRevision); notifyAll();
+        priorHeaders.addAll(next.headers()); configuration = next; revision++;history.put(revision,next);headerHistory.put(revision,headerRevision); notifyAll();
     }
     public synchronized void checkpoint(long expectedRevision) {
         while (paused && !stopped && !Thread.currentThread().isInterrupted()) {

@@ -6,6 +6,7 @@ import com.bypassfuzzer.core.input.OpenApiImportOptions;
 import com.bypassfuzzer.core.input.OpenApiOperation;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.http.HttpMode;
 import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -318,7 +319,7 @@ public class CoverageSweepEngine {
         Set<String> families=inventory==BypassPlaybooks.Inventory.BYPASS ? effectiveOptions.familySelection().bypassFamilies().stream().map(com.bypassfuzzer.burp.core.attacks.AttackType::id).collect(java.util.stream.Collectors.toSet()) : effectiveOptions.familySelection().highSignalFamilies();
         live=new LiveRun(new RunConfiguration(Set.of(),effectiveOptions.concurrency(),Math.min(effectiveOptions.concurrency(),effectiveOptions.perHostConcurrency()),400,
             BypassPlaybooks.resolve(inventory,families,effectiveOptions.playbookOptions()),effectiveOptions.requestHeaders(),Set.of(),effectiveOptions.userAgentMode(),effectiveOptions.userAgentRandomizationSeed()),RunPlans.bypass(inventory));
-        candidates.forEach(c -> live.registerHost(c.host()));liveMemories.clear();
+        candidates.forEach(c -> live.registerHost(c.host()));liveMemories.clear();refreshedCaptures.clear();coordinator=null;
         pauseController.reset();
         failedCandidates.set(0);
         failures.clear();
@@ -487,7 +488,8 @@ public class CoverageSweepEngine {
         completedSweepHosts.removeIf(host -> live.snapshot().configuration().excludes(host));
         CoverageSweepOptions options=initialOptions.withRunConfiguration(live.snapshot().configuration());
         ThrottleSettings throttleSettings = options.throttleSettings();
-        coordinator = new HostThrottleCoordinator(throttleSettings, api);
+        if(coordinator==null)coordinator = new HostThrottleCoordinator(throttleSettings, api);
+        else coordinator.reconfigureConcurrency(throttleSettings.globalConcurrency(),throttleSettings.perHostConcurrency());
         coreScan = new ScanEngine(new ScanOptions(HttpProtocol.AUTO, Duration.ofSeconds(15),
             throttleSettings.globalConcurrency(), throttleSettings.perHostConcurrency(),
             options.throttleStatusCodes(), 0, false, options.posture().name().toLowerCase(),
@@ -580,7 +582,7 @@ public class CoverageSweepEngine {
     private void executeCandidate(CoverageSweepCandidate originalCandidate,CoverageSweepOptions options,
         Consumer<AttackResult> resultCallback,ConcurrentLinkedQueue<RetryTask> retryQueue) {
         live.checkpoint(generation);
-        String seed=originalCandidate.method()+" "+originalCandidate.displayUrl();
+        String seed=originalCandidate.method()+" "+originalCandidate.displayUrl()+"\n"+originalCandidate.request().httpVersion()+"\n"+originalCandidate.request().toString();
         if(!live.allowed(originalCandidate.host(),seed))return;
         live.planningSeed(originalCandidate.dedupeKey()+"\n"+originalCandidate.request().toString());
         var config=live.snapshot().configuration();
@@ -626,7 +628,7 @@ public class CoverageSweepEngine {
                     if (resultCallback != null) resultCallback.accept(result);
                     // The master's anonymous verification control is evidence, not deferred mutation work.
                     if (!event.probe().family().equals("Unauthenticated Control") && isRetryableResponse(event.response(), options))
-                        retryQueue.add(new RetryTask(result, new CoverageSweepProbe(event.probe().label(), event.probe().family(),
+                        retryQueue.add(new RetryTask(seed,result, new CoverageSweepProbe(event.probe().label(), event.probe().family(),
                             event.probe().request(), coreRequests.httpMode(event.probe().protocol()), event.probe().playbookId(), event.probe().controlRole())));
                 }
             },memory);
@@ -648,14 +650,14 @@ public class CoverageSweepEngine {
     private RetryTask currentRetry(RetryTask retry) {
         CoverageSweepProbe probe=retry.probe();
         AttackResult previous=retry.result();
-        var memory=liveMemories.get(previous.getTargetLabel());
-        var template=memory==null ? null : memory.latest(new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(),probe.family(),probe.request(),coreRequests.fromMontoya(probe.request()).protocol(),probe.playbookId(),probe.controlRole()));
+        var memory=liveMemories.get(retry.seed());
+        var template=memory==null ? null : memory.latest(new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(),probe.family(),probe.request(),probe.httpMode()==null ? HttpProtocol.AUTO : probe.httpMode()==HttpMode.HTTP_2 ? HttpProtocol.HTTP_2 : HttpProtocol.HTTP_1,probe.playbookId(),probe.controlRole()));
         if(template!=null) {
             probe=new CoverageSweepProbe(template.probe().label(),template.probe().family(),template.probe().request(),coreRequests.httpMode(template.probe().protocol()),template.probe().playbookId(),template.probe().controlRole());
             previous=new AttackResult(template.attackType(),template.probe().label(),template.target(),template.probe().family(),template.signal(),template.probe().request(),null,template.originalRequest(),template.originalResponse(),template.verificationRequest(),template.verificationResponse())
-                .withEvidenceMetadata(new AttackResult.EvidenceMetadata(template.probe().playbookId(),template.probe().controlRole(),template.calibration(),template.fallbackRequest(),template.fallbackResponse(),template.context()));
+                .withEvidenceMetadata(new AttackResult.EvidenceMetadata(template.probe().playbookId(),template.probe().controlRole(),template.calibration(),template.fallbackRequest(),template.fallbackResponse(),template.context()).withRun(null,generation,optionsThrottleCodes()));
         }
-        return new RetryTask(previous,probe);
+        return new RetryTask(retry.seed(),previous,probe);
     }
 
     private boolean executeDeferredRetry(RetryTask retry,
@@ -675,7 +677,7 @@ public class CoverageSweepEngine {
         }
         boolean retryable = isRetryableResponse(response, options);
         if (retryable) {
-            retryQueue.add(new RetryTask(retryResult, probe));
+            retryQueue.add(new RetryTask(retry.seed(),retryResult, probe));
         }
         return retryable;
     }
@@ -699,7 +701,8 @@ public class CoverageSweepEngine {
         return response == null || isThrottleResponse(response, options);
     }
 
-    private record RetryTask(AttackResult result, CoverageSweepProbe probe) {
+    private Set<Integer> optionsThrottleCodes(){return coreScan.throttleStatusCodes();}
+    private record RetryTask(String seed,AttackResult result, CoverageSweepProbe probe) {
     }
 
     private boolean eligible(ProxyHttpRequestResponse item, CoverageSweepOptions options) {

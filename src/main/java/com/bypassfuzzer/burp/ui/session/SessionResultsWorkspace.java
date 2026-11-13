@@ -384,7 +384,7 @@ public class SessionResultsWorkspace {
             var enabled=new java.util.LinkedHashSet<String>();
             for(String id:saved.keySet())if(source.availablePlaybooks().isEmpty() || inherited.playbooks()==null || inherited.playbooks().contains(id) || id.startsWith("saved."))enabled.add(id);
             var replayConfiguration=new RunConfiguration(inherited.excludedHosts(),inherited.concurrency(),inherited.perHostConcurrency(),inherited.requestsPerSecond(),enabled,inherited.headers(),inherited.removeHeaders(),inherited.userAgentMode(),inherited.userAgentSeed());
-            retryLive=new LiveRun(replayConfiguration,saved);lastPrimaryRun=source;
+            var priorRetry=retryLive;retryLive=new LiveRun(replayConfiguration,saved);retryLive.inheritHeaderHistory(source);if(source==lastPrimaryRun && priorRetry!=null)retryLive.inheritHeaderHistory(priorRetry);lastPrimaryRun=source;
             selected.forEach(entry -> retryLive.registerHost(entry.getValue().result().getRequest().httpService().host()));
         }else retryLive=null;
         retryStatusLabel.setText("Classifying and retrying " + selected.size()
@@ -723,6 +723,8 @@ public class SessionResultsWorkspace {
         if (!isRetryableResult(result)) {
             return;
         }
+        LiveRun activeRun=editableRun();
+        if(activeRun!=null && (!activeRun.allowed(result.getRequest().httpService().host(),retryKey(result)) || !activeRun.availablePlaybooks().isEmpty() && !activeRun.selected(result.getEvidenceMetadata().playbookId(),result.getPayloadFamily(),result.getControlRole())))return;
         synchronized (throttledRetries) {
             String key = retryKey(result);
             DeferredRetry existing = throttledRetries.get(key);

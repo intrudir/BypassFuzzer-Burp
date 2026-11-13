@@ -70,6 +70,7 @@ public final class ScanEngine {
             HttpResponseData::statusCode, response -> response.firstHeader("Retry-After").orElse(null), message -> {}) : null;
     }
 
+    public String workIdentity(PlannedRequest item){return RunLedger.key(eventSeed.get(),item,0,0);}
     public long configurationRevision(){return generation;}
     public long headerRevision(){return headerGeneration;}
     public Set<Integer> throttleStatusCodes(){return options.throttleStatusCodes();}
@@ -108,8 +109,7 @@ public final class ScanEngine {
                 live.snapshot().configuration().perHostConcurrency(), live.snapshot().configuration().requestsPerSecond(),
                 com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.valueOf(options.posture().replace('-','_').toUpperCase()),
                 com.bypassfuzzer.core.throttle.ThrottleSettings.PauseMode.valueOf(options.pauseMode().toUpperCase()), options.fixedPauseMillis());
-            throttle = new com.bypassfuzzer.core.throttle.HostThrottleCoordinator<>(old, r -> r.origin().toString(),
-                HttpResponseData::statusCode, r -> r.firstHeader("Retry-After").orElse(null), message -> {});
+            throttle.reconfigureConcurrency(concurrency,old.perHostConcurrency());
         }
         ExecutorService pool = Executors.newFixedThreadPool(concurrency);
         try {

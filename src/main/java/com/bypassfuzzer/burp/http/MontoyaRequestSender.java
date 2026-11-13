@@ -132,16 +132,24 @@ public class MontoyaRequestSender implements RequestSender {
     }
     private HttpResponse sendManagedAttempt(HttpRequest request,HttpMode mode,long timeout,TimeUnit unit,BooleanSupplier continuing,
         com.bypassfuzzer.core.scan.LiveRun run,long revision) {
-        return globalGovernor.execute(request,() -> {
-            try {
-                    Future<HttpResponse> future=timeoutExecutor.submit(() -> responseFrom(mode==null ? api.http().sendRequest(request) : api.http().sendRequest(request,mode)));
-                    try{return future.get(timeout,unit);}
-                    catch(InterruptedException interrupted){future.cancel(true);Thread.currentThread().interrupt();return null;}
-                    catch(TimeoutException timedOut){future.cancel(true);safeLogError("Timed HTTP request exceeded "+timeout+" "+unit.toString().toLowerCase()+".");return null;}
-                    catch(ExecutionException failed){safeLogError("Timed HTTP request failed: "+failed.getCause().getClass().getSimpleName(),failed.getCause());return null;}
-            }catch(com.bypassfuzzer.core.scan.LiveRun.Reconfigured | java.util.concurrent.CancellationException error){throw error;}
-            catch(Exception error){throw new java.util.concurrent.CompletionException(error);}
-        },() -> {run.checkpoint(revision);return canContinue(continuing);},run.admission(revision,request.httpService().host()));
+        var admitted=new java.util.concurrent.CountDownLatch(1);
+        Future<HttpResponse> future=timeoutExecutor.submit(() -> globalGovernor.execute(request,() -> {
+            admitted.countDown();
+            return responseFrom(mode==null ? api.http().sendRequest(request) : api.http().sendRequest(request,mode));
+        },() -> {run.checkpoint(revision);return canContinue(continuing);},run.admission(revision,request.httpService().host())));
+        try {
+            while(!admitted.await(100,TimeUnit.MILLISECONDS))if(future.isDone())return future.get();
+            return future.get(timeout,unit);
+        }catch(TimeoutException timedOut) {
+            // The Montoya call has no cancellation acknowledgement. Keep its reservations until it returns.
+            safeLogError("Timed HTTP request exceeded "+timeout+" "+unit.toString().toLowerCase()+".");return null;
+        }catch(InterruptedException interrupted){future.cancel(true);Thread.currentThread().interrupt();return null;}
+        catch(ExecutionException failed) {
+            if(failed.getCause() instanceof com.bypassfuzzer.core.scan.LiveRun.Reconfigured changed)throw changed;
+            if(failed.getCause() instanceof java.util.concurrent.CancellationException stopped)throw stopped;
+            safeLogError("Timed HTTP request failed: "+failed.getCause().getClass().getSimpleName(),failed.getCause());return null;
+        }
+
     }
 
     private boolean pauseBeforeRetry() {

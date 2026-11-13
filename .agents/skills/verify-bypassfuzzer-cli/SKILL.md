@@ -26,7 +26,7 @@ Run the read-only artifact doctor before each drive:
 ./.agents/skills/verify-bypassfuzzer-cli/helpers/verify.sh doctor "$RUN_ID"
 ```
 
-It checks Java and Python, manifest metadata, packaged payload resources, the four command names, and each subcommand's `--help`. Do not drive an older JAR after source or build configuration changes; launch again first.
+It checks Java and Python, manifest metadata, packaged payload resources, the four scan commands and `results`, and each subcommand's `--help`. Do not drive an older JAR after source or build configuration changes; launch again first.
 
 ## Drive
 
@@ -36,7 +36,9 @@ Drive one real CLI mode against the helper's isolated loopback lab:
 ./.agents/skills/verify-bypassfuzzer-cli/helpers/verify.sh drive "$RUN_ID" bypass
 ```
 
-Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, `runtime-results`, and `playbooks`. The runtime-results drive covers retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
+Feature IDs are `sweep`, `bypass`, `idor`, `url-validation`, `runtime-results`, `playbooks`, and `boundaries`. The runtime-results drive covers retained-result exports, YAML precedence and pause/resume/stop through packaged commands. Each drive invokes the packaged JAR as a subprocess with ordinary CLI flags, captures stdout/stderr/exit status, reads `summary.json` and `results.jsonl`, follows every request/response reference, and verifies that stored authorization is redacted. It also proves a YAML key containing `collaborator` is rejected with exit code 2 before a scan starts. The lab binds an ephemeral loopback port and is stopped by the driver that created it.
+
+The boundaries drive verifies TLS peer identity, HTTP/0.9 limits/EOF, export aliases, and protocol-aware Sweep recovery; read [features/boundaries.md](features/boundaries.md) for its additional fixture prerequisites.
 
 The playbooks drive verifies every new shared check through a real stripping proxy and checks calibration, protocol/gating rules, YAML/flags and evidence.
 
@@ -65,10 +67,12 @@ The live driver owns and closes its in-process loopback server. Cleanup removes 
 ```text
 verify.sh launch  <run-id>
 verify.sh doctor  <run-id>
-verify.sh drive   <run-id> <sweep|bypass|idor|url-validation|runtime-results>
+verify.sh drive   <run-id> <sweep|bypass|idor|url-validation|runtime-results|playbooks|boundaries>
 verify.sh cleanup <run-id>
 ```
 
 `helpers/live_drive.py` implements the isolated lab and black-box assertions; invoke it through `verify.sh` so paths and evidence are consistent.
 
 `helpers/runtime_drive.py` owns the runtime/results loopback lab and subprocess cleanup. Invoke it through `verify.sh drive <run-id> runtime-results`; it retains assertions, exports and command transcripts under that feature directory. Every drive performs its own doctor check, including `results --help`.
+
+`helpers/boundaries_drive.py` drives the packaged boundary cases; `helpers/boundary_lab.py` is its reusable owned wire fixture. Invoke through `verify.sh drive <run-id> boundaries`.

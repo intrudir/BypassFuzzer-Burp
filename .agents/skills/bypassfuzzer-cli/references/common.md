@@ -79,3 +79,5 @@ or evidence settings. Protect YAML containing credentials like the raw request.
 
 See [runtime-results.md](runtime-results.md) for offline previews, run control,
 Dashboard-style traffic limits and native result exports.
+
+TLS checks the certificate chain and the hostname from the socket origin, including HTTP/0.9; a mutated Host header does not change that identity. `--insecure` explicitly disables these checks. Response bodies are capped at 64 MiB. HTTP/0.9 replies have no status line: a nonempty body uses a synthetic 200, while empty EOF is a transport error.

@@ -28,3 +28,5 @@ Also verify `--payload-set all --header 'User-Agent: Sweep-CLI-Repro-UA' --globa
 - Imported API operations that can change state require `--include-state-changing` and explicit target authorization.
 
 The [shared playbook/calibration recipe](playbooks.md) covers both inventories. High signal includes a Verb group; post/put requires Include state-changing methods, now exposed in every Sweep source mode. Selections remain independent per inventory. Authenticated calibration and mutations use the same stripped credential context. Fallback controls cannot replace Original or Auth verification evidence. Column order stays Payload, Host, Family, Signal, Status, Length, Content-Type.
+
+For [protocol/recovery boundaries](boundaries.md), require anonymous controls to use the selected pass, with independent BOTH decisions. Recovered mutations recompute signals, findings and fallback metadata from their retained baselines; control responses never become mutation findings.

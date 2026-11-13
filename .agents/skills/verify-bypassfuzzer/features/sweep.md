@@ -56,6 +56,9 @@ Preconditions:
 
 - **Sorting.** Follow the shared results-sorting recipe in [the map index](README.md#driving-conventions), including quick repeated Status clicks with Smart filter on, incoming rows and moved columns.
 
+- **Import credential scope.** Configure synthetic Authorization, Cookie and a custom secret header in Request Headers. Import owned OpenAPI URLs that redirect or discover a spec on another host/port or scheme. The first origin receives them; the next origin must receive none of those custom headers. Same-origin redirects preserve them. Leaving and returning must not restore credentials. Retain requests at both owned servers and the imported candidate list. `OpenApiUrlFetcherTest` covers these origin variants.
+- **Protocol and retry recovery.** Capture an owned authenticated HTTP/1 request through the disposable project's proxy. Use a TLS fixture where anonymous HTTP/1 is 403 and HTTP/2 is public, then Load Authenticated History. Anonymous verification must stay on HTTP/1 and mutations must run. Return 429 on initial selected mutations and 200 on recovery; require BYPASS? signals, refreshed Possible fallback metadata, retained Original/Auth verification/Fallback control exchanges and an empty retry queue. Repeat an imported blocked candidate with automatic retries held at 429, switch the owned fixture healthy, then use Retry queue → Retry Queued. The recovered rows must show 403 → 200. Check the signal filter can select these rows. Do not classify recovered Original/Calibration controls as mutations. Shared context lives in `SweepClassifier.Context`; `SweepRecoveryTest`, `CliSweepRecoveryTest`, `CoverageSweepEngineTest` and `SessionResultsWorkspaceTest` cover it.
+
 ## Gotchas
 
 - The mode selector changes which source controls are visible. An import attempted outside `Import targets` is correctly rejected.

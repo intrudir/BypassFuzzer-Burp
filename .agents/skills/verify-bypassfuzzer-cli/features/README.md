@@ -13,6 +13,8 @@ The CLI is a packaged Java command with four modes. Every mode writes streaming 
 
 - [Shared playbooks and calibration](./playbooks.md) covers catalog selection, protocol requirements, new wire checks and separate fallback controls.
 
+- [Transport and recovery boundaries](./boundaries.md) covers peer identity, response limits/EOF, export aliases, protocol-isolated anonymous controls and recovered findings.
+
 ## Proof conventions
 
 - Use the packaged fat JAR, not an internal main-class shortcut.

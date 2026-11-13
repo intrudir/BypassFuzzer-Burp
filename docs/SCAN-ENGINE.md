@@ -7,7 +7,7 @@
 | Bypass | `BypassPlanner` | `ScanEngine.run` in both surfaces |
 | IDOR | `IdorPlanner` | `ScanEngine.run` in both surfaces |
 | URL Validation | `UrlValidationPlanner` and core payload generator | `ScanEngine.run` in both surfaces |
-| Sweep | `HighSignalPlanner` or `BypassPlanner` | `ScanEngine.run` in CLI; `ScanEngine.exchange` supplies admission and pacing to Burp's Proxy-history candidate, canary retry, and evidence workflow |
+| Sweep | `HighSignalPlanner` or `BypassPlanner` | `SweepWorkflow` and `DeferredRetryRunner` in both surfaces; Burp uses `ScanEngine.exchange` for admission, while CLI uses the core throttle/governor adapters |
 
 Burp-specific classes in `src/main/java/com/bypassfuzzer/burp/http` translate Montoya requests and responses at the boundary. Burp's URL Validation payload generator and Sweep probe generator are adapters over the core catalogs. Burp owns Proxy history discovery, Collaborator payload creation, session controls, and result presentation. CLI owns file/API imports, Netty transport, YAML parsing, and on-disk evidence.
 
@@ -24,3 +24,5 @@ When adding a payload family, change its core planner or payload resource, then 
 Burp Sweep records candidate planning/execution failures and setup failures instead of presenting a successful completion. `Run errors (n)` shows the first 100 request/error details; extension errors retain the log messages. API linkage failures are captured at that adapter boundary too. Other candidates continue, and a host with a failed candidate is excluded from completed-host exports. A new run resets the failure state. Invalid scan options are reported before disabling execution controls.
 
 `RequestAccess.supportsHeaders` declares whether a request's wire format admits headers. The shared `RequestHeaderPolicy` checks this before applying configured values or User-Agent randomization, preserving HTTP/0.9's versionless, headerless format. Montoya reports a null version for those generated requests and cannot add a header to them. This capability check prevents All payloads Sweep from aborting during candidate planning when a custom UA is configured; it preserves the protocol probe and keeps normal header payload-delta behavior in both Burp and CLI.
+
+`SweepClassifier.Context` retains immutable baseline/control/anonymous response summaries and throttle codes for initial and recovered Sweep responses. Automatic and manual retries recompute signals and calibration against those comparisons; neither canaries nor recovered calibration/original controls become mutation findings. Candidate protocol is explicit, so anonymous verification cannot silently change a forced pass. Native OpenAPI acquisition scopes configured headers to the current origin across redirects and discovered spec URLs, dropping them permanently once the chain crosses an origin boundary.

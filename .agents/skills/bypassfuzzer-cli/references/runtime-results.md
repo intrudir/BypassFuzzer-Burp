@@ -49,3 +49,5 @@ proves a vulnerability by itself.
 ## Calibration rows
 
 `results` hides standalone calibration controls by default. Add `--show-calibration` to include them in TSV/JSONL or other filtered exports. Raw scan `results.jsonl`, request/response files and counters retain every exchange. Smart repeat filtering reserves its slots for ordinary results; explicitly shown controls remain subject to manual status/text filters. Baseline roles stay visible. Calibration payload labels include the requested protocol, since an HTTP/1 replay can return 404 while a forced HTTP/2 attempt has no response.
+
+`results --output` must differ from its input evidence file, including hard-link and symbolic-link aliases; collisions fail with exit 2 without truncation. Recovered Sweep responses get newly computed signals and calibration warnings from their retained baselines, so include retry records when triaging by signal.

@@ -59,10 +59,13 @@ case "$ACTION" in
     ;;
   drive)
     FEATURE=${3:-}
-    case "$FEATURE" in sweep|bypass|idor|url-validation|runtime-results|playbooks) ;; *) echo "unknown feature: $FEATURE" >&2; exit 2 ;; esac
+    case "$FEATURE" in sweep|bypass|idor|url-validation|runtime-results|playbooks|boundaries) ;; *) echo "unknown feature: $FEATURE" >&2; exit 2 ;; esac
     mkdir -p "$EVIDENCE/$FEATURE"
     doctor >"$EVIDENCE/$FEATURE/doctor-before-drive.txt"
-    if test "$FEATURE" = playbooks; then
+    if test "$FEATURE" = boundaries; then
+      python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/boundaries_drive.py" \
+        "$JAR" "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
+    elif test "$FEATURE" = playbooks; then
       python3 "$ROOT/.agents/skills/verify-bypassfuzzer-cli/helpers/playbooks_drive.py" \
         "$JAR" "$EVIDENCE/$FEATURE" >"$EVIDENCE/$FEATURE/drive.log" 2>&1
     elif test "$FEATURE" = runtime-results; then

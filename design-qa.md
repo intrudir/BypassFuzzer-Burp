@@ -259,3 +259,50 @@ batches, clearing, divider click counts and preserved unsorted insertion order.
 The verification map now includes the quick-click recipe. Final committed artifact
 readiness, hashes, focused native recheck and temporary-profile cleanup are retained
 under `committed/`. No customer endpoint or pre-existing Burp instance was used.
+
+
+## Adversarial boundary and recovered-result fixes (2026-11-13)
+
+The seven reproduced review findings are fixed. Native OpenAPI acquisition preserves
+configured headers only within an origin; redirects and document discovery drop all
+custom headers after a scheme/host/port change, including when a chain returns to
+its first origin. CLI TLS validates the socket-origin hostname as well as trust,
+including HTTP/0.9; explicit insecure mode remains available. CLI results exports
+reject their input and file aliases before opening the sink. Headerless responses
+obey the 64 MiB body limit and empty EOF is retained as a transport failure.
+
+Shared Sweep candidates carry their selected protocol, so anonymous verification
+stays in that pass. Immutable response summaries in SweepClassifier.Context preserve
+the original comparison for recovered responses. Automatic and manual Sweep retries
+refresh their signals and fallback annotation; recovered controls remain controls.
+CLI finding counts include recovered blocked and authenticated mutations.
+
+The full suite passes 497 Java tests (344 Burp, 117 core, 36 CLI), plus packaging
+smoke checks and 25 operating-skill tests. Owned regressions exercise origin changes
+and return chains, certificate identity/trust/insecure controls, the exact 64/65 MiB
+boundary, empty/nonempty HTTP/0.9 replies, export path aliases, every forced protocol
+pass, retained baseline comparisons and recovered control/mutation distinctions.
+
+Evidence is under artifacts/verification/seven-fixes-20261113/ and the packaged CLI
+skill's seven-fixes-after-2-20261113 and seven-fixes-modes-20261113 runs. The new
+boundaries drive uses the packaged JAR and a reusable owned HTTP/1+HTTP/2 fixture,
+checks strict TLS and file-alias rejection, verifies distinct BOTH/public decisions,
+and reads every referenced exchange. Existing Sweep, Bypass, IDOR, URL Validation,
+runtime-results and playbook drives also pass.
+
+A disposable real Burp project verifies all five tabs and targeted empty states,
+same-origin/cross-origin/Swagger discovery imports, captured authenticated HTTP/1
+history against a server with public HTTP/2, global pause/resume, five recovered
+authenticated mutations with BYPASS? signals and five manual recoveries with
+403 -> 200 signals. Original/Auth verification/Fallback control exchanges remain
+selectable and calibration annotations refresh. Bypass separately completes 20
+protocol/content-type exchanges with a custom UA and 20/20 limits, retaining readable
+results at 1700x1100 and 1280x900. The proof makes no new native IDOR or URL Validation
+scan claim; their packaged CLI and full regression paths provide the unchanged-mode
+coverage. Failed fixture/harness iterations and corrected settled readbacks remain
+identified with the evidence. No customer host or pre-existing Burp process was used.
+
+The verification skills, feature maps and repository-owned CLI operating guidance
+now describe these boundaries. Final committed packages are rebuilt and reloaded;
+readiness, hashes, the focused native recheck, and deletion of temporary licensed
+profiles/TLS keys are recorded with final delivery evidence. Commits are local.

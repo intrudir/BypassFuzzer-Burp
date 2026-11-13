@@ -27,3 +27,5 @@ Run `verify.sh doctor <run-id>` then `verify.sh drive <run-id> runtime-results`.
 Playbook/calibration metadata remains additive to schema-v1 JSONL. Readback retains it; the repository-owned operating helper separates WILDCARD controls from baselines and prints warnings and safe control references without altering the original signal. See [playbooks.md](playbooks.md).
 
 Calibration controls remain in raw evidence. `results` hides WILDCARD rows by default; `--show-calibration` includes them in the filtered view/export. They bypass Smart repeat suppression and do not consume candidate slots; explicit manual filters still apply. Preserve Original / Authorized / Target, legacy rows lacking role metadata and unknown future roles. The native Show calibration requests checkbox follows the same semantics. Protocol-labeled controls distinguish an actual empty 404 from an unavailable forced protocol exchange.
+
+Run the [boundary drive](boundaries.md) for same-file/alias export rejection, strict TLS identity and headerless response limits. An export collision must exit 2 before opening the sink and leave the input byte-identical.

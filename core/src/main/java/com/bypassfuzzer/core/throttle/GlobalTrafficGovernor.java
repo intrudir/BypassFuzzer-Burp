@@ -1,7 +1,5 @@
 package com.bypassfuzzer.core.throttle;
 
-
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -16,6 +14,11 @@ import java.util.function.Supplier;
  * a total in-flight cap, and smooth per-host pacing shared by all scan sessions.
  */
 public class GlobalTrafficGovernor<Q> {
+
+    /** Nonblocking local reservation: zero reserves a send; positive values request another check after that delay. */
+    public record LocalAdmission(LongSupplier acquire,Runnable release) {
+        public LocalAdmission {java.util.Objects.requireNonNull(acquire);java.util.Objects.requireNonNull(release);}
+    }
 
     public record Snapshot(boolean limitsEnabled, boolean paused, int maxInFlight,
                            double maxRequestsPerSecondPerHost, int inFlight,
@@ -95,19 +98,20 @@ public class GlobalTrafficGovernor<Q> {
         }
     }
 
-    /** Executes one physical HTTP attempt after acquiring shared admission. */
-    public <T> T execute(Q request, Supplier<T> sender, BooleanSupplier shouldContinue) {
-        if (sender == null || !acquire(request, shouldContinue)) {
-            return null;
-        }
-        try {
-            return sender.get();
-        } finally {
-            release();
+    /** Executes one physical HTTP attempt after acquiring shared and optional local admission together. */
+    public <T> T execute(Q request,Supplier<T> sender,BooleanSupplier continuing) {
+        return execute(request,sender,continuing,null);
+    }
+    public <T> T execute(Q request,Supplier<T> sender,BooleanSupplier continuing,LocalAdmission local) {
+        if(sender==null || !acquire(request,continuing,local))return null;
+        try{return sender.get();}
+        finally {
+            try{if(local!=null)local.release().run();}
+            finally{release();}
         }
     }
 
-    private boolean acquire(Q request, BooleanSupplier shouldContinue) {
+    private boolean acquire(Q request,BooleanSupplier shouldContinue,LocalAdmission local) {
         String hostKey = this.hostKey.apply(request);
         lock.lock();
         queued++;
@@ -130,7 +134,10 @@ public class GlobalTrafficGovernor<Q> {
                 long now = nanoTime.getAsLong();
                 long rateWaitNanos = limitsEnabled ? rateWaitNanos(hostKey, now) : 0L;
                 boolean concurrencyAvailable = !limitsEnabled || inFlight < maxInFlight;
-                if (!paused && concurrencyAvailable && rateWaitNanos <= 0L) {
+                long localWaitNanos=0;
+                if(!paused && concurrencyAvailable && rateWaitNanos<=0L)
+                    localWaitNanos=local==null ? 0 : local.acquire().getAsLong();
+                if (!paused && concurrencyAvailable && rateWaitNanos <= 0L && localWaitNanos==0) {
                     inFlight++;
                     admittedRequests++;
                     if (limitsEnabled) {
@@ -141,7 +148,9 @@ public class GlobalTrafficGovernor<Q> {
 
                 long waitNanos = CANCELLATION_POLL_NANOS;
                 if (!paused && concurrencyAvailable && rateWaitNanos > 0L) {
-                    waitNanos = Math.min(waitNanos, rateWaitNanos);
+                    waitNanos = Math.min(waitNanos,rateWaitNanos);
+                }else if(localWaitNanos>0L) {
+                    waitNanos=Math.min(waitNanos,localWaitNanos);
                 }
                 try {
                     stateChanged.awaitNanos(Math.max(1L, waitNanos));

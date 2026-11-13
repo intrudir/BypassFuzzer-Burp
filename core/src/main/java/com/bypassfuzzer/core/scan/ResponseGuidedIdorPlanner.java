@@ -79,7 +79,7 @@ public final class ResponseGuidedIdorPlanner {
 
     /** Exact response value at a JSON pointer, or null when absent/non-scalar. */
     public static String valueAt(HttpResponseData response, String pointer) {
-        if (response == null || response.body().length > MAX_RESPONSE_BYTES
+        if (response == null || response.bodyLength() > MAX_RESPONSE_BYTES
             || pointer == null || !pointer.startsWith("/")) return null;
         try {
             JsonElement node = JsonParser.parseString(new String(response.body(), StandardCharsets.UTF_8));
@@ -96,7 +96,7 @@ public final class ResponseGuidedIdorPlanner {
 
     private void discoverOne(HttpResponseData response, String source, String a, String b,
                              Map<String, ResponseField> found) {
-        if (response == null || response.body().length > MAX_RESPONSE_BYTES) return;
+        if (response == null || response.bodyLength() > MAX_RESPONSE_BYTES) return;
         try {
             JsonElement root = JsonParser.parseString(new String(response.body(), StandardCharsets.UTF_8));
             collect(root, new ArrayList<>(), source, a, b, found, 0);

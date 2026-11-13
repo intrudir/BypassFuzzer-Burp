@@ -31,7 +31,16 @@ public final class ScanEngine {
     private final Map<String, Semaphore> hostPermits = new ConcurrentHashMap<>();
     private final Semaphore globalPermits;
     private final Object pauseGate = new Object();
-    private final com.bypassfuzzer.core.throttle.HostThrottleCoordinator<HttpRequestData, HttpResponseData> throttle;
+    private com.bypassfuzzer.core.throttle.HostThrottleCoordinator<HttpRequestData, HttpResponseData> throttle;
+    private final LiveRun live;
+    private final boolean ownThrottle;
+    private final RunLedger<Outcome> attempts = new RunLedger<>();
+    private final Set<String> finished = ConcurrentHashMap.newKeySet();
+    private final Set<String> published = ConcurrentHashMap.newKeySet();
+    private volatile long generation;
+    private volatile long headerGeneration;
+    private com.bypassfuzzer.core.http.ResponseArchive archive;
+    private final ThreadLocal<String> eventSeed=new ThreadLocal<>();
     private final AtomicLong requestsSent = new AtomicLong();
     private volatile boolean stopped;
     private volatile boolean paused;
@@ -42,7 +51,14 @@ public final class ScanEngine {
 
     /** Burp already supplies the same shared controller at its Montoya boundary. */
     public ScanEngine(ScanOptions options, boolean ownThrottle) {
+        this(options, ownThrottle, null);
+    }
+
+    public ScanEngine(ScanOptions options, boolean ownThrottle, LiveRun live) {
         this.options = options;
+        this.live = live;
+        this.generation = live==null ? 0 : live.snapshot().revision();
+        this.ownThrottle = ownThrottle;
         this.globalPermits = new Semaphore(options.globalConcurrency());
         var settings = new com.bypassfuzzer.core.throttle.ThrottleSettings(options.throttleStatusCodes(),
             options.globalConcurrency(), options.perHostConcurrency(), 400,
@@ -54,11 +70,15 @@ public final class ScanEngine {
             HttpResponseData::statusCode, response -> response.firstHeader("Retry-After").orElse(null), message -> {}) : null;
     }
 
-    public void pause() { paused = true; if (throttle != null) throttle.manualPause(); }
-    public void resume() { paused = false; if (throttle != null) throttle.manualResume(); synchronized (pauseGate) { pauseGate.notifyAll(); } }
-    public void stop() { stopped = true; resume(); }
-    public boolean isPaused() { return paused; }
-    public long requestsSent() { return requestsSent.get(); }
+    public long configurationRevision(){return generation;}
+    public long headerRevision(){return headerGeneration;}
+    public Set<Integer> throttleStatusCodes(){return options.throttleStatusCodes();}
+    public LiveRun liveRun() { return live; }
+    public void pause() { if (live != null) { live.pause(); return; } paused = true; if (throttle != null) throttle.manualPause(); }
+    public void resume() { if (live != null) { live.resume(); return; } paused = false; if (throttle != null) throttle.manualResume(); synchronized (pauseGate) { pauseGate.notifyAll(); } }
+    public void stop() { stopped = true; if (live != null) live.stop(); else resume(); }
+    public boolean isPaused() { return live == null ? paused : live.snapshot().state() == LiveRun.State.PAUSED || live.snapshot().state() == LiveRun.State.PAUSING; }
+    public long requestsSent() { return live==null ? requestsSent.get() : live.snapshot().requestsSent(); }
 
     public Summary run(String mode, List<HttpRequestData> inputs,
                        Function<HttpRequestData, List<PlannedRequest>> planner,
@@ -70,26 +90,49 @@ public final class ScanEngine {
                        Function<HttpRequestData, List<PlannedRequest>> planner,
                        PostBaselinePlanner postBaselinePlanner,
                        RequestTransport transport, Consumer<ScanEvent> events) throws Exception {
+        attempts.clear();published.clear();finished.clear();
+        try(var retained=new com.bypassfuzzer.core.http.ResponseArchive()) {
+        archive=retained;
         Instant started = Instant.now();
         AtomicInteger records = new AtomicInteger();
         AtomicInteger findings = new AtomicInteger();
         AtomicInteger throttled = new AtomicInteger();
         AtomicInteger errors = new AtomicInteger();
-        ExecutorService pool = Executors.newFixedThreadPool(options.globalConcurrency());
+        while (!stopped) {
+        var generationSnapshot=live==null ? null : live.snapshot();
+        generation=generationSnapshot==null ? 0 : generationSnapshot.revision();
+        headerGeneration=generationSnapshot==null ? 0 : generationSnapshot.headerRevision();
+        int concurrency = live == null ? options.globalConcurrency() : live.snapshot().configuration().concurrency();
+        if (live != null && ownThrottle) {
+            var old = new com.bypassfuzzer.core.throttle.ThrottleSettings(options.throttleStatusCodes(), concurrency,
+                live.snapshot().configuration().perHostConcurrency(), live.snapshot().configuration().requestsPerSecond(),
+                com.bypassfuzzer.core.throttle.ThrottleSettings.Posture.valueOf(options.posture().replace('-','_').toUpperCase()),
+                com.bypassfuzzer.core.throttle.ThrottleSettings.PauseMode.valueOf(options.pauseMode().toUpperCase()), options.fixedPauseMillis());
+            throttle = new com.bypassfuzzer.core.throttle.HostThrottleCoordinator<>(old, r -> r.origin().toString(),
+                HttpResponseData::statusCode, r -> r.firstHeader("Retry-After").orElse(null), message -> {});
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(concurrency);
         try {
-            for (HttpRequestData input : inputs) {
+            for(int inputIndex=0;inputIndex<inputs.size();inputIndex++) {
+                HttpRequestData input=inputs.get(inputIndex);
+                String seedKey=inputIndex+"\n"+input.targetLabel();
                 if (stopped) break;
+                if (live != null) { live.checkpoint(generation); if (!live.allowed(input.origin().host(),seedKey)) continue; }
                 for (HttpProtocol protocol : protocols(options.protocol())) {
                     if (stopped) break;
                     HttpRequestData base = input.withProtocol(protocol);
+                    if (live != null) base = live.snapshot().configuration().prepare(base, RequestAccess.CORE);
+                    final HttpRequestData planningBase = base;
+                    if(live!=null)live.planningSeed(seedKey+"\n"+protocol);
                     List<PlannedRequest> plan = new ArrayList<>(planner.apply(base));
+                    if (live != null) plan.replaceAll(p -> p.withRequest(live.snapshot().configuration().policy(RequestAccess.CORE).reconcileMutation(planningBase,p.request())));
                     if (options.implicitBaseline() && plan.stream().noneMatch(PlannedRequest::baseline))
                         plan.add(0, PlannedRequest.baseline(base, "Original request"));
                     HttpResponseData authorized = null;
                     HttpResponseData target = null;
                     for (PlannedRequest item : plan) {
                         if (!item.baseline() || stopped) continue;
-                        Outcome outcome = send(transport, item, 0);
+                        Outcome outcome = send(transport,item,0,seedKey);
                         if (stopped && outcome.response == null) break;
                         boolean idor = "idor".equals(mode);
                         boolean targetControl = idor && item.payload().equals("idor.baseline.target");
@@ -111,7 +154,7 @@ public final class ScanEngine {
                     boolean targetComparable = target != null && isComparableIdorTargetStatus(target.statusCode());
                     if (idor && !authorizedValid) continue;
                     if (postBaselinePlanner != null) {
-                        List<PlannedRequest> afterBaselines = postBaselinePlanner.plan(base, authorized, target);
+                        List<PlannedRequest> afterBaselines = postBaselinePlanner.plan(planningBase, authorized, target);
                         plan = new ArrayList<>(afterBaselines);
                     }
                     if (idor && !targetComparable && postBaselinePlanner == null) continue;
@@ -128,14 +171,18 @@ public final class ScanEngine {
                             PlannedRequest fallback = new PlannedRequest("Calibration", WildcardCalibration.controlLabel(controlProtocol), "",
                                 WildcardCalibration.control(seed.withProtocol(controlProtocol), RequestAccess.CORE),
                                 true, ProbeIntent.STANDARD, "", "", "", ControlRole.WILDCARD);
+                            if (live != null) {
+                                final PlannedRequest generated = fallback;
+                                fallback = live.control(seedKey+"\n"+controlProtocol,headerGeneration,() -> generated);
+                            }
                             wildcardControls.put(controlProtocol, fallback);
-                            Outcome calibration = send(transport, fallback, 0);
+                            Outcome calibration = send(transport,fallback,0,seedKey);
                             for (int attempt = 0;; attempt++) {
                                 String controlSignal = calibration.error != null || calibration.response == null ? "CALIBRATION_UNAVAILABLE" :
                                     options.throttleStatusCodes().contains(calibration.response.statusCode()) ? "THROTTLED" : "CALIBRATION_CONTROL";
                                 publish(events, new ScanEvent(mode, input.targetLabel(), fallback, calibration.response, calibration.error, controlSignal, attempt), records, findings, throttled, errors);
                                 if (attempt >= options.retryAttempts() || stopped || !(calibration.response == null || "THROTTLED".equals(controlSignal))) break;
-                                calibration = send(transport, fallback, attempt + 1);
+                                calibration = send(transport,fallback,attempt+1,seedKey);
                             }
                             if (calibration.response != null) wildcardResponses.put(controlProtocol, calibration.response);
                         }
@@ -146,9 +193,12 @@ public final class ScanEngine {
                     for (PlannedRequest item : plan) {
                         if (stopped) break;
                         if (item.baseline()) continue;
+                        if(live!=null && !live.selected(item))continue;
+                        String workKey = RunLedger.key(seedKey,item,0,0);
+                        if (live != null && finished.contains(workKey)) continue;
                         if (idor && !targetComparable && item.intent() != ProbeIntent.MASS_ASSIGNMENT) continue;
                         pending.add(pool.submit(() -> {
-                            Outcome outcome = send(transport, item, 0);
+                            Outcome outcome = send(transport,item,0,seedKey);
                             if (stopped && outcome.response == null) return;
                             String signal = classify(mode, item, authorizedBaseline, targetBaseline, outcome);
                             publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, 0,
@@ -158,7 +208,7 @@ public final class ScanEngine {
                             if (retryable(item.request().method()) && options.retryAttempts() > 0) {
                                 for (int attempt = 1; attempt <= options.retryAttempts() && !stopped
                                     && (outcome.error != null || "THROTTLED".equals(signal)); attempt++) {
-                                    outcome = send(transport, item, attempt);
+                                    outcome = send(transport,item,attempt,seedKey);
                                     signal = classify(mode, item, authorizedBaseline, targetBaseline, outcome);
                                     publish(events, new ScanEvent(mode, input.targetLabel(), item, outcome.response, outcome.error, signal, attempt,
                                 !wildcardControls.containsKey(item.request().protocol()) ? WildcardCalibration.Assessment.DISABLED : WildcardCalibration.compare(item.request().method(),
@@ -166,31 +216,56 @@ public final class ScanEngine {
                                 wildcardControls.get(item.request().protocol()), wildcardResponses.get(item.request().protocol())), records, findings, throttled, errors);
                                 }
                             }
+                            if (live != null) { finished.add(workKey); attempts.removeWork(seedKey,item); }
                         }));
-                        if (pending.size() >= options.globalConcurrency() * 2) awaitFirst(pending);
+                        if (pending.size() >= concurrency * 2) awaitFirst(pending);
                     }
                     while (!pending.isEmpty()) awaitFirst(pending);
                 }
             }
+        } catch (LiveRun.Reconfigured changed) {
+            // Workers waiting at the final gate unwind; the next generation replans all seeds.
+        } catch (java.util.concurrent.CancellationException cancelled) {
+            if (!stopped && (live == null || live.snapshot().state()!=LiveRun.State.STOPPED)) throw cancelled;
         } finally {
             pool.shutdownNow();
+            while (!pool.awaitTermination(100, java.util.concurrent.TimeUnit.MILLISECONDS)) { }
+        }
+        if (live == null || stopped || generation == live.snapshot().revision()) break;
         }
         return new Summary(stopped ? "stopped" : "completed", mode, started.toString(), Instant.now().toString(),
-            inputs.size(), records.get(), findings.get(), throttled.get(), errors.get(), requestsSent.get());
+            inputs.size(),records.get(),findings.get(),throttled.get(),errors.get(),requestsSent());
+        }finally{attempts.clear();archive=null;}
     }
 
     private void awaitFirst(List<Future<?>> pending) throws Exception {
-        pending.remove(0).get();
+        try { pending.remove(0).get(); }
+        catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof LiveRun.Reconfigured changed) throw changed;
+            if (e.getCause() instanceof java.util.concurrent.CancellationException cancelled) throw cancelled;
+            throw e;
+        }
     }
 
-    private Outcome send(RequestTransport transport, PlannedRequest item, int attempt) {
-        ExchangeResult<HttpResponseData> result = exchange(item.request(),
-            () -> throttle == null ? transport.send(item.request(), options.requestTimeout()) :
-                throttle.send(item.request(), () -> {
-                    try { return transport.send(item.request(), options.requestTimeout()); }
+    private Outcome send(RequestTransport transport, PlannedRequest item, int attempt, String seed) {
+        eventSeed.set(seed);
+        String key = RunLedger.key(seed,item,live == null ? 0 : headerGeneration,attempt);
+        java.util.function.Supplier<Outcome> action = () -> {
+            ExchangeResult<HttpResponseData> result = exchange(item.request(), () -> {
+                java.util.function.Supplier<HttpResponseData> physical = () -> {
+                    try {
+                        return transport.sendManaged(item.request(),options.requestTimeout(),live,generation);
+                    } catch (LiveRun.Reconfigured | java.util.concurrent.CancellationException error) { throw error; }
                     catch (Exception error) { throw new java.util.concurrent.CompletionException(error); }
-                }, () -> !stopped), HttpResponseData::statusCode, attempt);
-        return new Outcome(result.response(), result.error());
+                };
+                return throttle == null ? physical.get() : throttle.send(item.request(),physical,() -> {
+                    if (live != null) live.checkpoint(generation);
+                    return !stopped;
+                });
+            },HttpResponseData::statusCode,attempt);
+            return new Outcome(live==null ? result.response() : archive.retain(result.response()),result.error());
+        };
+        return live == null ? action.get() : attempts.get(key,action).value();
     }
 
     /** Shared admission and pacing for adapters with a specialized scan workflow. */
@@ -205,8 +280,9 @@ public final class ScanEngine {
             ignored -> new Semaphore(options.perHostConcurrency()));
         boolean globalAcquired = false, hostAcquired = false;
         try {
-            globalPermits.acquire(); globalAcquired = true;
-            host.acquire(); hostAcquired = true;
+            if (live != null) live.checkpoint(generation);
+            else { globalPermits.acquire(); globalAcquired = true;
+                host.acquire(); hostAcquired = true; }
             synchronized (pauseGate) {
                 while (paused && !stopped) pauseGate.wait(250);
             }
@@ -215,6 +291,7 @@ public final class ScanEngine {
             requestsSent.incrementAndGet();
             T response = action.send();
             return new ExchangeResult<>(response, null);
+        } catch (LiveRun.Reconfigured | java.util.concurrent.CancellationException error) { throw error;
         } catch (Exception error) {
             return new ExchangeResult<>(null, error);
         } finally {
@@ -236,11 +313,14 @@ public final class ScanEngine {
         return status == 401 || status == 403 || status == 404 || status == 500;
     }
 
-    private String classify(String mode, PlannedRequest item, HttpResponseData authorized,
-                            HttpResponseData target, Outcome outcome) {
-        if (outcome.error != null || outcome.response == null) return "NO_RESPONSE";
-        HttpResponseData response = outcome.response;
-        if (options.throttleStatusCodes().contains(response.statusCode())) return "THROTTLED";
+    private String classify(String mode,PlannedRequest item,HttpResponseData authorized,HttpResponseData target,Outcome outcome) {
+        return classifyResponse(mode,item,authorized,target,outcome.response(),outcome.error(),options.throttleStatusCodes());
+    }
+    public static String classifyResponse(String mode,PlannedRequest item,HttpResponseData authorized,HttpResponseData target,
+                                         HttpResponseData received,Throwable error,Set<Integer> throttleCodes) {
+        if (error != null || received == null) return "NO_RESPONSE";
+        HttpResponseData response = received;
+        if (throttleCodes.contains(response.statusCode())) return "THROTTLED";
         if (item.intent() == ProbeIntent.MASS_ASSIGNMENT) {
             if (response.statusCode() < 200 || response.statusCode() >= 300) return "REJECTED_OR_UNSUPPORTED";
             String observed = ResponseGuidedIdorPlanner.valueAt(response, item.sourcePointer());
@@ -257,7 +337,7 @@ public final class ScanEngine {
         HttpResponseData baseline = "idor".equals(mode) ? target : authorized;
         if (baseline == null) return "UNCLASSIFIED";
         if (mode.equals("sweep")) return SweepClassifier.signal(new SweepClassifier.Baseline(
-            baseline.statusCode(), baseline.body().length, baseline.firstHeader("Content-Type").orElse("")), SweepClassifier.response(baseline), SweepClassifier.response(response));
+            baseline.statusCode(), baseline.bodyLength(), baseline.firstHeader("Content-Type").orElse("")), SweepClassifier.response(baseline), SweepClassifier.response(response));
         boolean blocked = baseline.statusCode() == 401 || baseline.statusCode() == 403;
         boolean success = response.statusCode() >= 200 && response.statusCode() < 400;
         if ("idor".equals(mode) && isIdorDeniedTargetStatus(baseline.statusCode()) && success)
@@ -266,12 +346,13 @@ public final class ScanEngine {
             && !Arrays.equals(response.body(), baseline.body())) return "RESPONSE_CHANGED";
         if (blocked && success) return "LIKELY_BYPASS";
         if (baseline.statusCode() != response.statusCode()
-            || Math.abs(baseline.body().length - response.body().length) >= 100) return "RESPONSE_CHANGED";
+            || Math.abs(baseline.bodyLength() - response.bodyLength()) >= 100) return "RESPONSE_CHANGED";
         return "NO_SIGNAL";
     }
 
     private void publish(Consumer<ScanEvent> events, ScanEvent event, AtomicInteger records,
                          AtomicInteger findings, AtomicInteger throttled, AtomicInteger errors) {
+        if (live != null && !published.add(RunLedger.key(eventSeed.get(),event.planned(),headerGeneration,event.retryAttempt()))) return;
         events.accept(event);
         records.incrementAndGet();
         if ("LIKELY_BYPASS".equals(event.signal()) || "IDOR_CANDIDATE".equals(event.signal())

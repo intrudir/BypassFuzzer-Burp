@@ -28,7 +28,7 @@ public final class UrlValidationPlanner {
         for (UrlValidationPayload payload : generator.generate(candidate, options)) {
             try {
                 output.add(new PlannedRequest(payload.family().displayName(), payload.describe(marker),
-                    payload.encoding().label(), RequestRewriter.replace(request, marker, payload.value()), false));
+                    payload.encoding().label(), RequestRewriter.replace(request,marker,payload.value()),false).withPlaybook("url.context."+payload.family().name()));
             } catch (IllegalArgumentException unsafeWireValue) {
                 // A raw payload containing CR/LF cannot be represented safely at this transport boundary.
                 // Its encoded variants remain available when the corresponding encoding is selected.

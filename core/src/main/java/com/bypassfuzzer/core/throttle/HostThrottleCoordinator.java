@@ -34,12 +34,12 @@ public class HostThrottleCoordinator<Q, S> {
     private static final int HALF_OPEN_SUCCESSES = 5;
     private static final long SMART_RESET_AFTER_MILLIS = 60_000L;
 
-    private final ThrottleSettings settings;
+    private volatile ThrottleSettings settings;
     private final Consumer<String> logger;
     private final LongSupplier nanoTime;
     private final LongSupplier currentTimeMillis;
     private final AdaptiveRateController.Tuning tuningOverride;
-    private final Semaphore globalPermits;
+    private final AdjustableSemaphore globalPermits;
     private final AtomicInteger inFlightRequests = new AtomicInteger();
     private final Map<String, HostState> hosts = new ConcurrentHashMap<>();
     private final Object manualPauseLock = new Object();
@@ -70,7 +70,21 @@ public class HostThrottleCoordinator<Q, S> {
         this.nanoTime = nanoTime;
         this.currentTimeMillis = currentTimeMillis;
         this.tuningOverride = tuningOverride;
-        this.globalPermits = new Semaphore(this.settings.globalConcurrency(), true);
+        this.globalPermits = new AdjustableSemaphore(this.settings.globalConcurrency());
+    }
+
+    private static final class AdjustableSemaphore extends Semaphore {
+        AdjustableSemaphore(int permits) { super(permits,true); }
+        void adjust(int delta) { if(delta>0) release(delta);else if(delta<0)reducePermits(-delta); }
+    }
+    /** Run edits change concurrency without discarding host cooldowns or adaptive feedback. */
+    public void reconfigureConcurrency(int total,int perHost) {
+        synchronized(hosts) {
+            var previous=settings;
+            settings=new ThrottleSettings(previous.throttleStatusCodes(),total,perHost,previous.maxRatePerHost(),previous.posture(),previous.pauseMode(),previous.fixedPauseMillis());
+            globalPermits.adjust(settings.globalConcurrency()-previous.globalConcurrency());
+            for(var host:hosts.values())host.permits.adjust(settings.perHostConcurrency()-previous.perHostConcurrency());
+        }
     }
 
     /**
@@ -89,7 +103,8 @@ public class HostThrottleCoordinator<Q, S> {
      */
     public S send(Q request, Supplier<S> sender,
                              BooleanSupplier finalAdmission) {
-        HostState host = hosts.computeIfAbsent(hostKey.apply(request), HostState::new);
+        HostState host;
+        synchronized(hosts) { host=hosts.computeIfAbsent(hostKey.apply(request),HostState::new); }
         boolean globalAcquired = false;
         boolean hostAcquired = false;
         GateAdmission hostAdmission = GateAdmission.OPEN;
@@ -450,7 +465,7 @@ public class HostThrottleCoordinator<Q, S> {
     private final class HostState {
         private final String key;
         private final AdaptiveRateController controller;
-        private final Semaphore permits = new Semaphore(settings.perHostConcurrency(), true);
+        private final AdjustableSemaphore permits = new AdjustableSemaphore(settings.perHostConcurrency());
         private final SmartCircuit smartCircuit;
 
         private HostState(String hostKey) {

@@ -31,6 +31,40 @@ public final class SweepWorkflow<Q, S> {
         void skippedPublic();
         void result(Result<Q, S> result);
     }
+    /** Per-seed work retained across configuration generations, without retaining mutation bodies. */
+    public static final class Memory<Q,S> {
+        private record Control<Q,S>(Probe<Q> probe, S response) { }
+        private final java.util.Map<String,Control<Q,S>> controls = new java.util.HashMap<>();
+        private final java.util.Set<String> completed = new java.util.HashSet<>();
+        private final java.util.Map<String,Result<Q,S>> latest = new java.util.HashMap<>();
+        private long context;
+        private boolean fresh;
+        public void context(long value) { context=value; }
+        private String key(Probe<Q> probe) { return probe.protocol()+"\n"+probe.controlRole()+"\n"+probe.playbookId()+"\n"+probe.family()+"\n"+probe.label(); }
+        private String controlKey(Probe<Q> probe) { return context+"\n"+probe.protocol()+"\n"+probe.controlRole()+"\n"+probe.family(); }
+        public boolean completed(Probe<Q> probe) { return probe.controlRole()==ControlRole.NONE && completed.contains(key(probe)); }
+        private boolean needed(Probe<Q> probe) { return probe.controlRole()==ControlRole.NONE ? !completed(probe) : !controls.containsKey(controlKey(probe)); }
+        private Probe<Q> stable(Probe<Q> probe) {
+            var cached=controls.get(controlKey(probe));
+            return probe.controlRole()!=ControlRole.NONE && cached!=null ? cached.probe() : probe;
+        }
+        private S send(Probe<Q> probe, Function<Probe<Q>,S> sender, Observer<Q,S> observer) {
+            var cached=probe.controlRole()==ControlRole.NONE ? null : controls.get(controlKey(probe));
+            fresh=cached==null;
+            if (!fresh) return cached.response();
+            S response=sender.apply(probe);
+            if (probe.controlRole()==ControlRole.NONE) completed.add(key(probe));
+            else controls.put(controlKey(probe),new Control<>(probe,response));
+            observer.completed(); return response;
+        }
+        private void emit(Result<Q,S> value, Observer<Q,S> observer) {
+            latest.put(key(value.probe()),new Result<>(value.attackType(),value.probe(),value.target(),value.signal(),null,
+                value.originalRequest(),value.originalResponse(),value.verificationRequest(),value.verificationResponse(),value.calibration(),value.fallbackRequest(),value.fallbackResponse(),value.context()));
+            if (fresh) observer.result(value);
+        }
+        public Result<Q,S> latest(Probe<Q> probe) { return latest.get(key(probe)); }
+        public Result<Q,S> refresh(Result<Q,S> previous) { return latest.getOrDefault(key(previous.probe()),previous); }
+    }
     private final RequestAccess<Q> access;
     private final Function<S, SweepClassifier.Response> responses;
     public SweepWorkflow(RequestAccess<Q> access, Function<S, SweepClassifier.Response> responses) {
@@ -55,32 +89,39 @@ public final class SweepWorkflow<Q, S> {
     public void execute(Candidate<Q, S> candidate, Options options, RequestHeaderPolicy<Q> policy,
         Supplier<java.util.List<Probe<Q>>> probes, Function<Probe<Q>, S> send,
         BooleanSupplier continuing, Observer<Q, S> observer) {
+        execute(candidate,options,policy,probes,send,continuing,observer,new Memory<>());
+    }
+
+    public void execute(Candidate<Q,S> candidate, Options options, RequestHeaderPolicy<Q> policy,
+        Supplier<java.util.List<Probe<Q>>> probes, Function<Probe<Q>,S> send,
+        BooleanSupplier continuing, Observer<Q,S> observer, Memory<Q,S> memory) {
         S control = null, anonymous = null;
         Q verification = null;
         if (options.authenticated() && options.verifyUnauthenticated()) {
             Q stripped = stripAuthentication(candidate.request(), options.authHeaders(), options.authCookies());
             verification = policy.withoutAuthentication(options.authHeaders(), options.authCookies())
                 .reconcileMutation(stripped, stripped);
-            var probe = new Probe<>("Original request without authentication", "Unauthenticated Control", verification, candidate.protocol());
-            observer.planned(1);
-            anonymous = send.apply(probe);
-            observer.completed();
+            var probe = memory.stable(new Probe<>("Original request without authentication", "Unauthenticated Control", verification, candidate.protocol()));
+            verification=probe.request();
+            if(memory.needed(probe)) observer.planned(1);
+            anonymous = memory.send(probe,send,observer);
             String signal = anonymous == null ? "No response" :
                 SweepClassifier.unauthenticatedControlSignal(candidate.baseline(), responses.apply(anonymous));
             boolean skip = options.skipPublic() && signal.startsWith(SweepClassifier.LIKELY_PUBLIC_PREFIX);
             if (skip) observer.skippedPublic();
-            observer.result(result(candidate, options, probe, anonymous, control, verification, anonymous, null, null));
+            memory.emit(result(candidate, options, probe, anonymous, control, verification, anonymous, null, null),observer);
             if (skip) return;
         }
         if (!continuing.getAsBoolean()) return;
         var planned = probes.get();
-        observer.planned(planned.size());
+        observer.planned((int)planned.stream().filter(memory::needed).count());
         // Establish the original baseline before sending calibration traffic.
         for (var probe : planned) {
             if (probe.controlRole() != ControlRole.ORIGINAL) continue;
             if (!continuing.getAsBoolean()) return;
-            S response = send.apply(probe); observer.completed(); control = response;
-            observer.result(result(candidate, options, probe, response, control, verification, anonymous, null, null));
+            var stable = memory.stable(probe);
+            S response = memory.send(stable,send,observer); control = response;
+            memory.emit(result(candidate, options, stable, response, control, verification, anonymous, null, null),observer);
         }
         var fallbackRequests = new java.util.EnumMap<HttpProtocol, Q>(HttpProtocol.class);
         var fallbackResponses = new java.util.EnumMap<HttpProtocol, S>(HttpProtocol.class);
@@ -92,23 +133,27 @@ public final class SweepWorkflow<Q, S> {
             for (var protocol : protocols) {
                 if (!continuing.getAsBoolean()) return;
                 Q request = access.withProtocol(calibrationPolicy.reconcileMutation(seed, WildcardCalibration.control(seed, access)), protocol);
-                var probe = new Probe<>(WildcardCalibration.controlLabel(protocol), "Calibration", request, protocol, "", ControlRole.WILDCARD);
-                observer.planned(1);
-                S response = send.apply(probe);
-                observer.completed();
+                var probe = memory.stable(new Probe<>(WildcardCalibration.controlLabel(protocol), "Calibration", request, protocol, "", ControlRole.WILDCARD));
+                request=probe.request();
+                if(memory.needed(probe)) observer.planned(1);
+                S response = memory.send(probe,send,observer);
                 fallbackRequests.put(protocol, request);
                 if (response != null) fallbackResponses.put(protocol, response);
-                observer.result(result(candidate, options, probe, response, control, verification, anonymous, null, null));
+                memory.emit(result(candidate, options, probe, response, control, verification, anonymous, null, null),observer);
             }
         }
         for (var probe : planned) {
             if (probe.controlRole() == ControlRole.ORIGINAL) continue;
             if (!continuing.getAsBoolean()) return;
-            S response = send.apply(probe);
-            observer.completed();
+            if(memory.completed(probe)) {
+                memory.latest.put(memory.key(probe),result(candidate,options,probe,null,control,verification,anonymous,
+                    fallbackRequests.get(probe.protocol()),fallbackResponses.get(probe.protocol())));
+                continue;
+            }
+            S response = memory.send(probe,send,observer);
             if (probe.family().equals("Control")) control = response;
-            observer.result(result(candidate, options, probe, response, control, verification, anonymous,
-                fallbackRequests.get(probe.protocol()), fallbackResponses.get(probe.protocol())));
+            memory.emit(result(candidate, options, probe, response, control, verification, anonymous,
+                fallbackRequests.get(probe.protocol()), fallbackResponses.get(probe.protocol())),observer);
         }
     }
 

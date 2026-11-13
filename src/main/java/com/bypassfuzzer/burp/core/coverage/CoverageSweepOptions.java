@@ -170,6 +170,16 @@ public record CoverageSweepOptions(
             pauseMode, fixedPauseMillis);
     }
 
+    public CoverageSweepOptions withRunConfiguration(com.bypassfuzzer.core.scan.RunConfiguration config) {
+        var selection=familySelection();
+        var high=selection.highSignalPlaybooks();var full=selection.bypassPlaybooks();
+        if(payloadSet==CoverageSweepPayloadSet.ALL_PAYLOADS)full=full.withSelection(config.playbooks());
+        else high=high.withSelection(config.playbooks());
+        var families=new CoverageSweepFamilySelection(null,null,high,full);
+        return new CoverageSweepOptions(statuses,inScopeOnly,maxCandidates,maxProbesPerCandidate,config.concurrency(),config.perHostConcurrency(),throttleStatusCodes,
+            mode,authSelection,excludeStaticAssets,verifyUnauthenticatedAccess,skipLikelyPublicEndpoints,hostPortProbePorts,config.headers(),payloadSet,posture,families,pauseMode,fixedPauseMillis,config.userAgentMode(),config.userAgentSeed());
+    }
+
     public static CoverageSweepOptions defaults() {
         return new CoverageSweepOptions(
             Set.of(401, 403),

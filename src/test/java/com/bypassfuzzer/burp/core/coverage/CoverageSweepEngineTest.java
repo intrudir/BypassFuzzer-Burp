@@ -51,6 +51,28 @@ class CoverageSweepEngineTest {
     }
 
 
+    @Test void excludingAPausedHostSkipsItsPendingWorkAndCompletedHostExport() throws Exception {
+        var holder=new java.util.concurrent.atomic.AtomicReference<CoverageSweepEngine>();var sends=new AtomicInteger();
+        RequestSender sender=new RequestSender() {
+            public HttpResponse send(HttpRequest request){if(sends.incrementAndGet()==1)holder.get().pause();return response(403,"text/plain","blocked");}
+            public HttpResponse send(HttpRequest request,long timeout,TimeUnit unit){return send(request);}
+        };
+        var generator=new CoverageSweepProbeGenerator() {
+            @Override public List<CoverageSweepProbe> buildProbes(HttpRequest request,CoverageSweepOptions options,boolean includeControl) {
+                return List.of(new CoverageSweepProbe("Original","Control",request,null),new CoverageSweepProbe("one","Path",request.withPath("/one"),null),new CoverageSweepProbe("two","Path",request.withPath("/two"),null));
+            }
+        };
+        var options=withoutCalibration(new CoverageSweepOptions(Set.of(403),true,10,10,1,1,Set.of(429)));
+        var engine=new CoverageSweepEngine(api(List.of()),sender,generator);holder.set(engine);
+        assertTrue(engine.start(List.of(candidate(request("/blocked","","GET",null,""),403)),options,result -> {},() -> {}));
+        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+        while((engine.liveRun()==null || engine.liveRun().snapshot().state()!=com.bypassfuzzer.core.scan.LiveRun.State.PAUSED) && System.nanoTime()<end)Thread.sleep(10);
+        var live=engine.liveRun();assertEquals(com.bypassfuzzer.core.scan.LiveRun.State.PAUSED,live.snapshot().state());var c=live.snapshot().configuration();
+        live.apply(new com.bypassfuzzer.core.scan.RunConfiguration(Set.of("example.com"),c.concurrency(),c.perHostConcurrency(),c.requestsPerSecond(),c.playbooks(),c.headers(),c.removeHeaders(),c.userAgentMode(),c.userAgentSeed()));engine.resume();
+        end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);while(engine.isRunning() && System.nanoTime()<end)Thread.sleep(10);
+        assertFalse(engine.isRunning());assertEquals(1,sends.get());assertEquals(0,engine.completedHostCount());assertTrue(engine.completedHostSnapshot().isEmpty());engine.cleanup();
+    }
+
     @Test
     void candidateFailuresRemainVisibleAndDoNotMarkTheHostCompleteOrPreventTheNextRun() throws Exception {
         CoverageSweepProbeGenerator generator = new CoverageSweepProbeGenerator() {
@@ -1700,6 +1722,10 @@ class CoverageSweepEngineTest {
                 http1Requests.add(request);
             }
             return response;
+        }
+
+        @Override public HttpResponse send(HttpRequest request,HttpMode mode,long timeout,TimeUnit unit) {
+            return send(request,mode);
         }
 
         @Override

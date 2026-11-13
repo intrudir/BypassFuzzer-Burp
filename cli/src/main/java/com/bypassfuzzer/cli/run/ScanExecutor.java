@@ -19,7 +19,7 @@ public final class ScanExecutor {
         var settings = new ScanOptions(options.protocol(), options.requestTimeout(), options.globalConcurrency(),
             options.perHostConcurrency(), options.throttleStatusCodes(), options.retryAttempts(), true,
             options.posture(), options.pauseMode(), options.fixedPauseMillis(), false, false);
-        var engine = new ScanEngine(settings);
+        var engine = new ScanEngine(settings,true,control.liveRun());
         var pending = new java.util.concurrent.ConcurrentSkipListMap<Integer, com.bypassfuzzer.core.input.RetryPackageEntry>();
         for (int index = 0; index < entries.size(); index++) pending.put(index, entries.get(index));
         try (var binding = control.bind(engine::pause, engine::resume, engine::stop)) {
@@ -29,12 +29,14 @@ public final class ScanExecutor {
             if (!control.continuing()) break;
             var item = entry.planned();
             var base = item.request();
-            engine.run("sweep", List.of(base), value -> List.of(item.withRequest(policy.reconcileMutation(base,
-                base.withSyncedContentLength().withProtocol(options.protocol() == com.bypassfuzzer.core.http.HttpProtocol.AUTO
+            engine.run("sweep", List.of(base), value -> List.of(item.withRequest((control.liveRun()==null ? policy : control.liveRun().snapshot().configuration().policy(com.bypassfuzzer.core.http.RequestAccess.CORE)).reconcileMutation(value,
+                value.withSyncedContentLength().withProtocol(options.protocol() == com.bypassfuzzer.core.http.HttpProtocol.AUTO
                     ? base.protocol() : value.protocol())))), transport, event -> {
                 try {
                     int attempt = entry.retryAttempt() + event.retryAttempt() + 1;
-                    evidence.write("sweep", entry.targetLabel(), event.planned(), event.response(), event.error(), event.signal(), attempt);
+                    evidence.configurationRevision(engine.configurationRevision(),engine.headerRevision());
+                    evidence.recordConfiguration(control.liveRun(),engine.configurationRevision());
+                    evidence.write("sweep",entry.targetLabel(), event.planned(), event.response(), event.error(), event.signal(), attempt);
                     if (event.response() == null || options.throttleStatusCodes().contains(event.response().statusCode()))
                         pending.put(number, evidence.retryEntry(event.planned(), attempt));
                     else pending.remove(number);
@@ -42,9 +44,12 @@ public final class ScanExecutor {
             });
         }
         }
+        if(control.liveRun()!=null)pending.values().removeIf(entry -> control.liveRun().snapshot().configuration().excludes(entry.planned().request().origin().host()) || !control.liveRun().selected(entry.planned()));
+        evidence.recordConfigurations(control.liveRun());
         evidence.retryPackage(List.copyOf(pending.values()));
         evidence.summary(java.util.Map.of("schemaVersion", 1, "mode", "sweep", "state", control.stopped() ? "stopped" : "completed",
-            "records", evidence.count(), "requestsSent", engine.requestsSent(), "deferredRetries", pending.size()));
+            "records",evidence.count(),"requestsSent",engine.requestsSent(),"deferredRetries",pending.size(),
+            "configurationRevision",control.liveRun()==null ? 0 : control.liveRun().snapshot().revision()));
     }
     public ScanEngine.Summary run(String mode, List<HttpRequestData> inputs,
                                   Function<HttpRequestData, List<PlannedRequest>> planner,
@@ -64,13 +69,15 @@ public final class ScanExecutor {
             options.globalConcurrency(), options.perHostConcurrency(), options.throttleStatusCodes(),
             options.retryAttempts(), !"idor".equals(mode), options.posture(), options.pauseMode(),
             options.fixedPauseMillis(), true, options.wildcardCalibration());
-        var engine = new ScanEngine(scanOptions);
+        var engine = new ScanEngine(scanOptions,true,control.liveRun());
         var pending = new java.util.concurrent.ConcurrentHashMap<String, com.bypassfuzzer.core.input.RetryPackageEntry>();
         ScanEngine.Summary summary;
         try (var binding = control.bind(engine::pause, engine::resume, engine::stop)) {
         summary = engine.run(mode, inputs, planner,
             postBaselinePlanner, transport, event -> {
             try {
+                evidence.configurationRevision(engine.configurationRevision(),engine.headerRevision());
+                evidence.recordConfiguration(control.liveRun(),engine.configurationRevision());
                 evidence.write(event);
                 if (!event.planned().baseline()) {
                     String key = event.planned().family() + "\n" + event.planned().payload() + "\n" + event.planned().request().toRaw();
@@ -83,9 +90,12 @@ public final class ScanExecutor {
             }
         });
         }
+        if(control.liveRun()!=null)pending.values().removeIf(entry -> control.liveRun().snapshot().configuration().excludes(entry.planned().request().origin().host()) || !control.liveRun().selected(entry.planned()));
+        evidence.recordConfigurations(control.liveRun());
         evidence.retryPackage(List.copyOf(pending.values()));
         var metadata = summary.asMap();
-        metadata.put("deferredRetries", pending.size());
+        metadata.put("deferredRetries",pending.size());
+        if(control.liveRun()!=null){metadata.put("configurationRevision",control.liveRun().snapshot().revision());metadata.put("skippedTargets",control.liveRun().snapshot().skipped());}
         metadata.put("requestsSent", summary.requestsSent());
         evidence.summary(metadata);
         System.err.printf("Completed %s: %d evidence records, %d findings, %d transport errors. Evidence: %s%n",

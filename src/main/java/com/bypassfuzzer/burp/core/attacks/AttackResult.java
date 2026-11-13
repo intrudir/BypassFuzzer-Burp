@@ -7,9 +7,23 @@ import burp.api.montoya.http.message.responses.HttpResponse;
  * Represents the result of a single attack attempt.
  */
 public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
+    public record Comparison(com.bypassfuzzer.core.scan.ProbeIntent intent,String sourcePointer,String targetIdentifier,java.util.Set<Integer> throttleCodes) {
+        public Comparison {throttleCodes=java.util.Set.copyOf(throttleCodes);}
+    }
     public record EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
         com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse,
-        com.bypassfuzzer.core.scan.SweepClassifier.Context sweepContext) {
+        com.bypassfuzzer.core.scan.SweepClassifier.Context sweepContext,Comparison comparison,long configurationRevision) {
+        public EvidenceMetadata(String playbookId,com.bypassfuzzer.core.scan.ControlRole role,com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration,
+            HttpRequest fallbackRequest,HttpResponse fallbackResponse,com.bypassfuzzer.core.scan.SweepClassifier.Context context) {
+            this(playbookId,role,calibration,fallbackRequest,fallbackResponse,context,null,0);
+        }
+        public EvidenceMetadata withRun(com.bypassfuzzer.core.scan.PlannedRequest planned,long revision) {
+            return withRun(planned,revision,java.util.Set.of(429,503));
+        }
+        public EvidenceMetadata withRun(com.bypassfuzzer.core.scan.PlannedRequest planned,long revision,java.util.Set<Integer> throttleCodes) {
+            return new EvidenceMetadata(playbookId,controlRole,calibration,fallbackRequest,fallbackResponse,sweepContext,
+                planned==null ? comparison : new Comparison(planned.intent(),planned.sourcePointer(),planned.targetIdentifier(),throttleCodes),revision);
+        }
         public EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
             com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse) {
             this(playbookId, controlRole, calibration, fallbackRequest, fallbackResponse, null);
@@ -127,7 +141,17 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
                 : com.bypassfuzzer.core.scan.WildcardCalibration.compare(original.request.method(),
                     com.bypassfuzzer.burp.core.coverage.CoverageSweepClassifier.toCore(metadata.fallbackResponse()), received, context.throttleCodes());
             metadata = new EvidenceMetadata(metadata.playbookId(), metadata.controlRole(), calibration,
-                metadata.fallbackRequest(), metadata.fallbackResponse(), context);
+                metadata.fallbackRequest(),metadata.fallbackResponse(),context,metadata.comparison(),metadata.configurationRevision());
+        }
+        if(context==null && metadata.comparison()!=null && metadata.controlRole()==com.bypassfuzzer.core.scan.ControlRole.NONE) {
+            var c=metadata.comparison();var adapter=new com.bypassfuzzer.burp.http.CoreRequestAdapter();
+            var request=adapter.fromMontoya(original.request);
+            var probe=new com.bypassfuzzer.core.scan.PlannedRequest(original.payloadFamily,original.payload,"",request,false,c.intent(),c.sourcePointer(),c.targetIdentifier());
+            String mode=original.attackType.equals("IDOR") ? "idor" : original.attackType.equals("URL Validation") ? "url-validation" : "bypass";
+            signal=com.bypassfuzzer.core.scan.ScanEngine.classifyResponse(mode,probe,toCore(original.originalResponse,request.protocol()),toCore(original.verificationResponse,request.protocol()),toCore(response,request.protocol()),null,c.throttleCodes());
+            var assessment=metadata.fallbackRequest()==null ? com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED : com.bypassfuzzer.core.scan.WildcardCalibration.compare(request.method(),
+                com.bypassfuzzer.burp.core.coverage.CoverageSweepClassifier.toCore(metadata.fallbackResponse()),com.bypassfuzzer.burp.core.coverage.CoverageSweepClassifier.toCore(response),c.throttleCodes());
+            metadata=new EvidenceMetadata(metadata.playbookId(),metadata.controlRole(),assessment,metadata.fallbackRequest(),metadata.fallbackResponse(),null,c,metadata.configurationRevision());
         }
         return new AttackResult(
             original.attackType,
@@ -143,6 +167,11 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
             original.verificationResponse,
             attempt
         ).withEvidenceMetadata(metadata);
+    }
+
+    private static com.bypassfuzzer.core.http.HttpResponseData toCore(HttpResponse response,com.bypassfuzzer.core.http.HttpProtocol protocol) {
+        if(response==null)return null;
+        return new com.bypassfuzzer.core.http.HttpResponseData(protocol,response.statusCode(),response.headers().stream().map(h -> new com.bypassfuzzer.core.http.HttpHeader(h.name(),h.value())).toList(),response.body().getBytes(),0);
     }
 
     /**

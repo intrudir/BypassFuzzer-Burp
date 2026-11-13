@@ -118,6 +118,32 @@ public class MontoyaRequestSender implements RequestSender {
         return null;
     }
 
+    @Override public HttpResponse sendManaged(HttpRequest request,HttpMode mode,long timeout,TimeUnit unit,BooleanSupplier continuing,
+        com.bypassfuzzer.core.scan.LiveRun run,long revision) {
+        if(run==null)return RequestSender.super.sendManaged(request,mode,timeout,unit,continuing,null,revision);
+        int attempts=mode==null && retrySafeRequestsOverHttp1 && isSafeMethod(request) ? SAFE_REQUEST_ATTEMPTS : 1;
+        for(int attempt=0;attempt<attempts;attempt++) {
+            HttpResponse response=sendManagedAttempt(request,mode,timeout,unit,continuing,run,revision);
+            if(response!=null)return response;
+            if(attempt+1<attempts && !pauseBeforeRetry())return null;
+        }
+        return mode==null && retrySafeRequestsOverHttp1 && isSafeMethod(request)
+            ? sendManagedAttempt(request,HttpMode.HTTP_1,timeout,unit,continuing,run,revision) : null;
+    }
+    private HttpResponse sendManagedAttempt(HttpRequest request,HttpMode mode,long timeout,TimeUnit unit,BooleanSupplier continuing,
+        com.bypassfuzzer.core.scan.LiveRun run,long revision) {
+        return globalGovernor.execute(request,() -> {
+            try {
+                    Future<HttpResponse> future=timeoutExecutor.submit(() -> responseFrom(mode==null ? api.http().sendRequest(request) : api.http().sendRequest(request,mode)));
+                    try{return future.get(timeout,unit);}
+                    catch(InterruptedException interrupted){future.cancel(true);Thread.currentThread().interrupt();return null;}
+                    catch(TimeoutException timedOut){future.cancel(true);safeLogError("Timed HTTP request exceeded "+timeout+" "+unit.toString().toLowerCase()+".");return null;}
+                    catch(ExecutionException failed){safeLogError("Timed HTTP request failed: "+failed.getCause().getClass().getSimpleName(),failed.getCause());return null;}
+            }catch(com.bypassfuzzer.core.scan.LiveRun.Reconfigured | java.util.concurrent.CancellationException error){throw error;}
+            catch(Exception error){throw new java.util.concurrent.CompletionException(error);}
+        },() -> {run.checkpoint(revision);return canContinue(continuing);},run.admission(revision,request.httpService().host()));
+    }
+
     private boolean pauseBeforeRetry() {
         try {
             Thread.sleep(SAFE_REQUEST_RETRY_DELAY_MS);

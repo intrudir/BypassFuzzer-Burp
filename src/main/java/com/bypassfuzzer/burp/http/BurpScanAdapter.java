@@ -45,11 +45,15 @@ public final class BurpScanAdapter {
 
     public BurpScanAdapter(HttpRequest original, RequestSender sender, ScanOptions options,
                            HostThrottleCoordinator coordinator, UnaryOperator<HttpRequest> requestPolicy) {
+        this(original,sender,options,coordinator,requestPolicy,null);
+    }
+    public BurpScanAdapter(HttpRequest original,RequestSender sender,ScanOptions options,
+        HostThrottleCoordinator coordinator,UnaryOperator<HttpRequest> requestPolicy,com.bypassfuzzer.core.scan.LiveRun live) {
         this.original = original;
         this.sender = sender;
         this.coordinator = coordinator;
         this.requestPolicy = requestPolicy;
-        this.engine = new ScanEngine(options, false);
+        this.engine = new ScanEngine(options,false,live);
     }
 
     public ScanEngine.Summary run(String mode, Function<HttpRequestData, List<PlannedRequest>> planner,
@@ -60,13 +64,14 @@ public final class BurpScanAdapter {
     public ScanEngine.Summary run(String mode, Function<HttpRequestData, List<PlannedRequest>> planner,
                                   ScanEngine.PostBaselinePlanner postBaselinePlanner,
                                   Consumer<AttackResult> results) throws Exception {
-        RequestTransport transport = (request, timeout) -> {
-            HttpRequest montoya = requestPolicy.apply(requests.toMontoya(original, request));
+        RequestTransport transport=new RequestTransport() {
+          public HttpResponseData send(HttpRequestData request,Duration timeout) throws Exception {return sendManaged(request,timeout,null,0);}
+          public HttpResponseData sendManaged(HttpRequestData request,Duration timeout,com.bypassfuzzer.core.scan.LiveRun live,long revision) throws Exception {
+            HttpRequest montoya = engine.liveRun()==null ? requestPolicy.apply(requests.toMontoya(original,request)) : requests.toMontoya(original,request);
             HttpMode httpMode = requests.httpMode(request.protocol());
-            java.util.function.Supplier<HttpResponse> send = () -> sender.sendWithOptionalMode(
-                montoya, httpMode, timeout.toMillis(), TimeUnit.MILLISECONDS, () -> true);
+            java.util.function.Supplier<HttpResponse> send = () -> sender.sendManaged(montoya,httpMode,timeout.toMillis(),TimeUnit.MILLISECONDS,() -> true,live,revision);
             HttpResponse response = coordinator == null ? send.get()
-                : coordinator.send(montoya, send);
+                : coordinator.send(montoya,send,() -> {if(live!=null)live.checkpoint(revision);return true;});
             if (response == null) {
                 lastExchange.set(new Exchange(montoya, null));
                 return null;
@@ -78,12 +83,19 @@ public final class BurpScanAdapter {
                 headers, body, 0);
             lastExchange.set(new Exchange(montoya, response));
             return converted;
+          }
         };
-        return engine.run(mode, List.of(requests.fromMontoya(original)), planner,
+        return engine.run(mode,List.of(requests.fromMontoya(original)),base -> {
+            if(engine.liveRun()!=null && coordinator!=null) {
+                var c=engine.liveRun().snapshot().configuration();coordinator.reconfigureConcurrency(c.concurrency(),c.perHostConcurrency());
+            }
+            return planner.apply(base);
+        },
             postBaselinePlanner, transport,
             event -> results.accept(toResult(event)));
     }
 
+    public com.bypassfuzzer.core.scan.LiveRun liveRun(){return engine.liveRun();}
     public void pause() { engine.pause(); }
     public void resume() { engine.resume(); }
     public void stop() { engine.stop(); }
@@ -118,7 +130,7 @@ public final class BurpScanAdapter {
             targetEvidence == null ? null : targetEvidence.response());
         Exchange fallback = event.fallbackControl() == null ? null : fallbackControls.get(event.fallbackControl().request().protocol() + "\n" + event.fallbackControl().request().toRaw());
         result = result.withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.planned().playbookId(), event.planned().controlRole(), event.calibration(),
-            fallback == null ? null : fallback.request(), fallback == null ? null : fallback.response()));
+            fallback == null ? null : fallback.request(),fallback == null ? null : fallback.response()).withRun(event.planned(),engine.configurationRevision(),engine.throttleStatusCodes()));
         return event.retryAttempt() > 0 ? AttackResult.throttleRetryOf(result, response, event.retryAttempt()) : result;
     }
 

@@ -32,6 +32,9 @@ public final class EvidenceWriter implements AutoCloseable {
     private final boolean redact;
     private final AtomicLong sequence = new AtomicLong();
     private final String runId;
+    private final java.util.Set<Long> recordedConfigurations=new java.util.HashSet<>();
+    private final ThreadLocal<Long> headerRevision=ThreadLocal.withInitial(() -> 0L);
+    private final ThreadLocal<Long> configurationRevision=ThreadLocal.withInitial(() -> 0L);
     private final Map<String, Map<String, Object>> controls = new java.util.HashMap<>();
 
     public EvidenceWriter(Path root, String runId, boolean redact, Map<String, Object> effectiveConfig) throws IOException {
@@ -60,6 +63,20 @@ public final class EvidenceWriter implements AutoCloseable {
         Path results = this.root.resolve("results.jsonl");
         this.jsonl = Files.newBufferedWriter(results, StandardCharsets.UTF_8);
         secureFile(results);
+    }
+
+    public void configurationRevision(long revision,long headers){configurationRevision.set(revision);headerRevision.set(headers);}
+    public synchronized void recordConfigurations(com.bypassfuzzer.core.scan.LiveRun run) throws IOException {
+        if(run!=null)for(long revision=0;revision<=run.snapshot().revision();revision++)recordConfiguration(run,revision);
+    }
+    public synchronized void recordConfiguration(com.bypassfuzzer.core.scan.LiveRun run,long revision) throws IOException {
+        if(run==null || recordedConfigurations.contains(revision))return;
+        var c=run.configuration(revision);if(c==null)return;
+        var row=new LinkedHashMap<String,Object>();row.put("revision",revision);row.put("headerRevision",run.headerRevision(revision));row.put("excludeHosts",c.excludedHosts());
+        row.put("concurrency",c.concurrency());row.put("perHostConcurrency",c.perHostConcurrency());row.put("requestsPerSecond",c.requestsPerSecond());
+        row.put("playbooks",c.playbooks());row.put("headerNames",c.headers().stream().map(com.bypassfuzzer.core.http.ConfiguredHeader::name).toList());
+        row.put("removeHeaders",c.removeHeaders());row.put("userAgentMode",c.userAgentMode().name());
+        writeJsonAtomic(root.resolve("configuration-"+revision+".json"),row);recordedConfigurations.add(revision);
     }
 
     public synchronized Map<String, Object> write(String mode, String targetKey, PlannedRequest planned,
@@ -115,11 +132,13 @@ public final class EvidenceWriter implements AutoCloseable {
             record.put("calibration", metadata);
         }
         record.put("signal", signal);
-        record.put("retryAttempt", retryAttempt);
+        record.put("retryAttempt",retryAttempt);
+        record.put("configurationRevision",configurationRevision.get());
+        record.put("headerRevision",headerRevision.get());
         record.put("requestRef", relative(requestFile));
         record.put("responseRef", responseRef);
         record.put("status", response == null ? null : response.statusCode());
-        record.put("length", response == null ? null : response.body().length);
+        record.put("length", response == null ? null : response.bodyLength());
         record.put("contentType", response == null ? null : firstHeader(response, "content-type"));
         record.put("durationMillis", response == null ? null : response.durationMillis());
         record.put("error", error == null ? null : error.getClass().getSimpleName() + ": " + safeMessage(error));

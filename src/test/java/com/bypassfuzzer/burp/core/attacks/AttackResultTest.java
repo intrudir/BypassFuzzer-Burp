@@ -17,6 +17,14 @@ import static org.mockito.Mockito.when;
 
 class AttackResultTest {
 
+    @Test void recoveredBypassComparisonRetainsCustomThrottleCodes() {
+        var request=com.bypassfuzzer.burp.testsupport.HttpRequestTestFactory.request("/private","","GET",null,"");
+        var planned=new com.bypassfuzzer.core.scan.PlannedRequest("Header","test","",new com.bypassfuzzer.burp.http.CoreRequestAdapter().fromMontoya(request),false);
+        var metadata=AttackResult.EvidenceMetadata.empty().withRun(planned,1,java.util.Set.of(200));
+        var original=new AttackResult("Bypass","test","target","Header","THROTTLED",request,response(200,0),request,response(403,0)).withEvidenceMetadata(metadata);
+        var retry=AttackResult.throttleRetryOf(original,response(200,0),1);assertEquals("THROTTLED",retry.getSignal());assertEquals(1,retry.getEvidenceMetadata().configurationRevision());
+    }
+
     @Test
     void movesPerProbeEvidenceToTempFilesAndKeepsSharedBaselinesByIdentity() {
         HttpRequest request = mock(HttpRequest.class);

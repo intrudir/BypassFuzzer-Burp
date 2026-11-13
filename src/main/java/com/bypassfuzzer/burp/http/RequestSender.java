@@ -53,4 +53,14 @@ public interface RequestSender {
         return httpMode == null ? send(request, timeout, timeUnit, shouldContinue)
             : send(request, httpMode, timeout, timeUnit, shouldContinue);
     }
+    /** Production adapters put the live gate after extension-wide admission. */
+    default HttpResponse sendManaged(HttpRequest request,HttpMode mode,long timeout,TimeUnit unit,BooleanSupplier continuing,
+        com.bypassfuzzer.core.scan.LiveRun run,long revision) {
+        try {
+            return run==null ? sendWithOptionalMode(request,mode,timeout,unit,continuing)
+                : run.send(revision,request.httpService().host(),() -> sendWithOptionalMode(request,mode,timeout,unit,continuing));
+        }catch(com.bypassfuzzer.core.scan.LiveRun.Reconfigured | java.util.concurrent.CancellationException error){throw error;}
+        catch(Exception error){throw new java.util.concurrent.CompletionException(error);}
+    }
+
 }

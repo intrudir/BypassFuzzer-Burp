@@ -152,6 +152,7 @@ public class IdorPanel extends JPanel {
     }
 
     public void resumeActivity() {
+        resultsWorkspace.applyRunScope();
         if (resultsWorkspace.isRetryRunning()) {
             resultsWorkspace.resumeThrottleRetry();
             pauseButton.setText("Pause");
@@ -200,6 +201,7 @@ public class IdorPanel extends JPanel {
         debugButton.setToolTipText("Open IDOR diagnostics and choose whether to copy or save them.");
         controlPanel.add(stopButton);
         controlPanel.add(pauseButton);
+        controlPanel.add(new RunEditButton(() -> resultsWorkspace.editableRun(),() -> engine.isRunning() || resultsWorkspace.isRetryRunning(),this::pauseActivity,this::resumeActivity));
         controlPanel.add(configureButton);
         controlPanel.add(clearButton);
         controlPanel.add(playbooksButton);
@@ -480,6 +482,7 @@ public class IdorPanel extends JPanel {
             false,
             globalGovernor
         );
+        resultsWorkspace.attachRunControl(engine::liveRun);
         resultsWorkspace.setResultsChangedListener(ignored -> updateResultStatus());
         return resultsWorkspace.component();
     }

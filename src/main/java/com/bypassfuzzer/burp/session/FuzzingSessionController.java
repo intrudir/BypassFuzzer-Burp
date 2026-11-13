@@ -106,6 +106,7 @@ public class FuzzingSessionController {
         engine.stopFuzzing();
     }
 
+    public com.bypassfuzzer.core.scan.LiveRun liveRun(){return engine.liveRun();}
     public void pause() { engine.pause(); }
     public void resume() { engine.resume(); }
     public boolean isPaused() { return engine.isPaused(); }

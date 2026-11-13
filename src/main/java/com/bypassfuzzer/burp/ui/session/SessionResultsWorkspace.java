@@ -11,6 +11,7 @@ import com.bypassfuzzer.burp.core.filter.ResultFilterController;
 import com.bypassfuzzer.burp.core.throttle.HostThrottleCoordinator;
 import com.bypassfuzzer.burp.core.throttle.GlobalTrafficGovernor;
 import com.bypassfuzzer.core.throttle.ThrottleSettings;
+import com.bypassfuzzer.core.scan.*;
 import com.bypassfuzzer.burp.http.MontoyaRequestSender;
 import com.bypassfuzzer.burp.http.RequestSender;
 
@@ -80,6 +81,20 @@ public class SessionResultsWorkspace {
     private SwingWorker<Void, RetryOutcome> retryWorker;
     private final ExecutionPauseController retryPauseController = new ExecutionPauseController();
     private volatile HostThrottleCoordinator retryCoordinator;
+    private java.util.function.Supplier<LiveRun> primaryRun=() -> null;
+    private LiveRun retryLive,lastPrimaryRun;
+    private Set<String> retryAuthHeaders=Set.of(),retryAuthCookies=Set.of();
+    public void attachRunControl(java.util.function.Supplier<LiveRun> supplier){primaryRun=supplier;}
+    public LiveRun editableRun(){return retryRunning ? retryLive : primaryRun.get();}
+    public void applyRunScope() {
+        LiveRun live=editableRun();if(live==null)return;
+        synchronized(throttledRetries){throttledRetries.values().removeIf(entry -> {
+            var result=entry.result();String id=result.getEvidenceMetadata().playbookId();if(id.isEmpty() && result.getPayloadFamily().startsWith("idor."))id=result.getPayloadFamily();
+            return !live.allowed(result.getRequest().httpService().host(),retryKey(result)) || !live.selected(id,result.getPayloadFamily(),result.getControlRole());
+        });}
+        updateRetryControls();
+    }
+    public void setRetryAuthentication(Set<String> headers,Set<String> cookies){retryAuthHeaders=Set.copyOf(headers);retryAuthCookies=Set.copyOf(cookies);}
     private volatile boolean retryPaused;
     private volatile boolean retryStopRequested;
     private boolean filtersCollapsed = true;
@@ -259,7 +274,7 @@ public class SessionResultsWorkspace {
     }
 
     public long retryRequestCount() {
-        return retryRequestsSent.get();
+        return retryLive==null ? retryRequestsSent.get() : retryLive.snapshot().requestsSent();
     }
 
     public int throttledRetryCount() {
@@ -303,7 +318,8 @@ public class SessionResultsWorkspace {
 
     public void pauseThrottleRetry() {
         if (!retryRunning || retryPaused) return;
-        retryPaused = true;
+        retryPaused=true;
+        if(retryLive!=null){retryLive.pause();retryStatusLabel.setText("Pausing retries; open Edit run… to change configuration.");updateRetryControls();return;}
         retryPauseController.pause();
         HostThrottleCoordinator current = retryCoordinator;
         if (current != null) current.manualPause();
@@ -313,6 +329,7 @@ public class SessionResultsWorkspace {
 
     public void resumeThrottleRetry() {
         if (!retryRunning || !retryPaused) return;
+        if(retryLive!=null)retryLive.resume();
         HostThrottleCoordinator current = retryCoordinator;
         if (current != null) current.manualResume();
         retryPaused = false;
@@ -323,7 +340,8 @@ public class SessionResultsWorkspace {
 
     public void stopThrottleRetry() {
         if (!retryRunning) return;
-        retryStopRequested = true;
+        retryStopRequested=true;
+        if(retryLive!=null)retryLive.stop();
         retryPaused = false;
         retryPauseController.resume();
         HostThrottleCoordinator current = retryCoordinator;
@@ -358,6 +376,17 @@ public class SessionResultsWorkspace {
             retryPauseController.reset();
         }
 
+        LiveRun source=primaryRun.get();
+        if(source!=null) {
+            var inherited=source==lastPrimaryRun && retryLive!=null ? retryLive.snapshot().configuration() : source.snapshot().configuration();
+            var saved=new java.util.LinkedHashMap<String,String>();
+            for(var entry:selected){var r=entry.getValue().result();if(r.getControlRole()==ControlRole.NONE){String id=RunPlans.savedId(r.getPayloadFamily(),r.getEvidenceMetadata().playbookId());saved.put(id,r.getPayloadFamily()+" — "+id);}}
+            var enabled=new java.util.LinkedHashSet<String>();
+            for(String id:saved.keySet())if(source.availablePlaybooks().isEmpty() || inherited.playbooks()==null || inherited.playbooks().contains(id) || id.startsWith("saved."))enabled.add(id);
+            var replayConfiguration=new RunConfiguration(inherited.excludedHosts(),inherited.concurrency(),inherited.perHostConcurrency(),inherited.requestsPerSecond(),enabled,inherited.headers(),inherited.removeHeaders(),inherited.userAgentMode(),inherited.userAgentSeed());
+            retryLive=new LiveRun(replayConfiguration,saved);lastPrimaryRun=source;
+            selected.forEach(entry -> retryLive.registerHost(entry.getValue().result().getRequest().httpService().host()));
+        }else retryLive=null;
         retryStatusLabel.setText("Classifying and retrying " + selected.size()
             + " queued request(s)...");
         updateRetryControls();
@@ -372,6 +401,7 @@ public class SessionResultsWorkspace {
         retryWorker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() {
+                if(retryLive!=null){runEditableRetries(selected,processedKeys,generation,coordinator,this,this::publish);return null;}
                 for (List<Map.Entry<String, DeferredRetry>> group : retryGroups.values()) {
                     if (!retryPauseController.awaitIfPaused(() -> !retryStopRequested && !isCancelled())
                         || retryStopRequested || isCancelled() || Thread.currentThread().isInterrupted()) {
@@ -489,6 +519,36 @@ public class SessionResultsWorkspace {
             }
         };
         retryWorker.execute();
+    }
+
+    private void runEditableRetries(List<Map.Entry<String,DeferredRetry>> selected,Set<String> processed,long queueVersion,
+        HostThrottleCoordinator coordinator,SwingWorker<?,?> worker,java.util.function.Consumer<RetryOutcome> publish) {
+        var contexts=new LiveRetryContext(retryLive,retryAuthHeaders,retryAuthCookies,throttleStatusCodes,this::enqueueResult);
+        while(!retryStopRequested && !worker.isCancelled()) {
+            long revision=retryLive.snapshot().revision();
+            try {
+                var config=retryLive.snapshot().configuration();coordinator.reconfigureConcurrency(config.concurrency(),config.perHostConcurrency());
+                for(var entry:selected) {
+                    retryLive.checkpoint(revision);if(processed.contains(entry.getKey()))continue;
+                    var original=entry.getValue().result();String id=original.getEvidenceMetadata().playbookId();if(id.isEmpty() && original.getPayloadFamily().startsWith("idor."))id=original.getPayloadFamily();
+                    if(!retryLive.allowed(original.getRequest().httpService().host(),entry.getKey()) || !retryLive.selected(id,original.getPayloadFamily(),original.getControlRole())){processed.add(entry.getKey());continue;}
+                    java.util.function.Function<HttpRequest,HttpResponse> sender=request -> coordinator.send(request,() -> {
+                        try{return retrySender.sendManaged(request,requestMode(request),30,TimeUnit.SECONDS,() -> !retryStopRequested && !worker.isCancelled(),retryLive,revision);}
+                        catch(LiveRun.Reconfigured | java.util.concurrent.CancellationException error){throw error;}
+                        catch(Exception error){throw new java.util.concurrent.CompletionException(error);}
+                    },() -> {retryLive.checkpoint(revision);return !retryStopRequested && !worker.isCancelled();});
+                    var refreshed=contexts.prepare(original,revision,sender);
+                    if(refreshed.getOriginalResponse()==null || isThrottleResponse(refreshed.getOriginalResponse()))return;
+                    var response=sender.apply(refreshed.getRequest());
+                    var retry=new DeferredRetry(refreshed,false);
+                    boolean blocked=isThrottleResponse(response);
+                    publish.accept(new RetryOutcome(entry.getKey(),retry,response,queueVersion,blocked ? List.of(Map.entry(entry.getKey(),retry)) : List.of()));
+                    processed.add(entry.getKey());
+                }
+                retryLive.checkpoint(revision);return;
+            }catch(LiveRun.Reconfigured changed){/* Rebuild pending retry contexts under the new configuration. */}
+            catch(java.util.concurrent.CancellationException stopped){return;}
+        }
     }
 
     public int shownResultsCount() {

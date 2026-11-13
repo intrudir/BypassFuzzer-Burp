@@ -1,5 +1,6 @@
 package com.bypassfuzzer.burp.core.idor;
 import com.bypassfuzzer.core.scan.ScanDefaults;
+import com.bypassfuzzer.core.scan.*;
 
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.requests.HttpRequest;
@@ -18,6 +19,7 @@ import com.bypassfuzzer.core.scan.ScanOptions;
 import com.bypassfuzzer.core.scan.ResponseGuidedIdorPlanner;
 
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import com.bypassfuzzer.core.scan.ScanEngine;
@@ -29,6 +31,7 @@ public final class IdorEngine {
     private volatile BurpScanAdapter adapter;
     private volatile Thread runner;
     private volatile boolean running;
+    private volatile LiveRun live;
     private volatile String lastDiagnostic;
 
     public IdorEngine(MontoyaApi api) { this(api, new GlobalTrafficGovernor()); }
@@ -55,13 +58,18 @@ public final class IdorEngine {
             options.runOptions().fixedPauseMillis());
         ConfiguredHeaderPolicy headers = new ConfiguredHeaderPolicy(options.runOptions().requestHeaders(),
             options.runOptions().userAgentMode(), options.runOptions().userAgentRandomizationSeed());
+        Set<String> checks=options.selectedFamilies().isEmpty() ? Set.copyOf(new IdorPlanner().defaultFamilies()) : options.selectedFamilies();
+        live=new LiveRun(new RunConfiguration(Set.of(),global,Math.min(global,options.runOptions().perHostConcurrency()),400,checks,
+            options.runOptions().requestHeaders(),Set.of(),options.runOptions().userAgentMode(),options.runOptions().userAgentRandomizationSeed()),RunPlans.idor());
+        live.registerHost(request.httpService().host());
         adapter = new BurpScanAdapter(request, sender, execution,
             api == null ? null : new HostThrottleCoordinator(options.runOptions().throttleSettings(), api),
-            mutated -> headers.reconcileMutation(request, mutated));
+            mutated -> headers.reconcileMutation(request,mutated),live);
         IdorPlanOptions plan = new IdorPlanOptions(options.normalizedAuthorizedIdentifier(),
             options.normalizedTargetIdentifier(), options.locationKey(), options.selectedFamilies(),
             options.maxMutations(), options.includeMethodChanges(), options.uniqueJsonPointer(),
             options.uniqueToken());
+        live.validateUsing(c -> RunPlans.validateIdor(c,new CoreRequestAdapter().fromMontoya(request),plan));
         lastDiagnostic = null;
         running = true;
         runner = new Thread(() -> {
@@ -75,10 +83,8 @@ public final class IdorEngine {
                 };
                 ResponseGuidedIdorPlanner guided = new ResponseGuidedIdorPlanner();
                 ScanEngine.Summary summary;
-                if (guided.enabled(plan)) summary = adapter.run("idor",
-                    base -> guided.initialPlan(base, plan),
-                    (base, authorized, target) -> guided.plan(base, plan, authorized, target), trackedResults);
-                else summary = adapter.run("idor", base -> new IdorPlanner().plan(base, plan), trackedResults);
+                summary=adapter.run("idor",base -> guided.initialPlan(base,RunPlans.idorOptions(live,plan)),
+                    (base,authorized,target) -> RunPlans.idorAfter(live,base,plan,authorized,target),trackedResults);
                 if (running && summary.records() == 2 && summary.requestsSent() == 2) {
                     lastDiagnostic = baselineStopDiagnostic(authorizedBaseline.get(), targetBaseline.get());
                     logDiagnostic(lastDiagnostic);
@@ -97,9 +103,10 @@ public final class IdorEngine {
         return true;
     }
 
-    public void stop() { if (adapter != null) adapter.stop(); if (runner != null) runner.interrupt(); running = false; }
+    public void stop() { if(live!=null)live.stop(); if (adapter != null) adapter.stop(); if (runner != null) runner.interrupt(); running = false; }
     public void cleanup() { stop(); if (runner != null && runner.isAlive()) try { runner.join(2_000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
     public boolean isRunning() { return running; }
+    public LiveRun liveRun(){return live;}
     public void pause() { if (adapter != null) adapter.pause(); }
     public void resume() { if (adapter != null) adapter.resume(); }
     public boolean isPaused() { return adapter != null && adapter.isPaused(); }

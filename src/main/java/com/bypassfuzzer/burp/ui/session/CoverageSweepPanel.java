@@ -248,6 +248,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
 
     @Override
     public void resumeActivity() {
+        resultsWorkspace.applyRunScope();
         if (activitySnapshot().paused()) togglePause();
     }
 
@@ -271,6 +272,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         actions.add(previewProbesButton);
         actions.add(startButton);
         actions.add(pauseButton);
+        actions.add(new RunEditButton(() -> resultsWorkspace.editableRun(),() -> engine.isRunning() || resultsWorkspace.isRetryRunning(),this::pauseActivity,this::resumeActivity));
         actions.add(stopButton);
         header.add(actions, BorderLayout.EAST);
         add(header, BorderLayout.NORTH);
@@ -843,6 +845,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             globalGovernor
         );
         resultsWorkspace.addToolbarActions(exportButton, clearButton);
+        resultsWorkspace.attachRunControl(engine::liveRun);
         resultsWorkspace.setResultsChangedListener(this::handleResultBatch);
         resultsWorkspace.setAuthVerificationTabsVisible(false);
         resultsWorkspace.setRetryQueueExportAction(() ->
@@ -1376,6 +1379,7 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         activeSkipLikelyPublicEndpoints = options.mode() == CoverageSweepMode.AUTHENTICATED_TRAFFIC
             && options.verifyUnauthenticatedAccess() && options.skipLikelyPublicEndpoints();
         resultsWorkspace.configureThrottleRetries(options.throttleSettings());
+        resultsWorkspace.setRetryAuthentication(options.authSelection().headerNames(),options.authSelection().cookieNames());
         resultsWorkspace.setPrimaryRunActive(true);
         sweepPreparationWorker = new SwingWorker<>() {
             @Override

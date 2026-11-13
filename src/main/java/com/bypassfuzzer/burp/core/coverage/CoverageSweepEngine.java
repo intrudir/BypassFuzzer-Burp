@@ -1,4 +1,5 @@
 package com.bypassfuzzer.burp.core.coverage;
+import com.bypassfuzzer.core.scan.*;
 import com.bypassfuzzer.core.input.PostmanCollectionParser;
 import com.bypassfuzzer.core.input.OpenApiSpecParser;
 import com.bypassfuzzer.core.input.OpenApiImportOptions;
@@ -58,6 +59,11 @@ public class CoverageSweepEngine {
     private final CoverageSweepProbeGenerator probeGenerator;
     private final FullBypassSweepProbeGenerator fullProbeGenerator;
     private final ExecutionPauseController pauseController = new ExecutionPauseController();
+    private volatile LiveRun live;
+    private volatile long generation;
+    private volatile long headerGeneration;
+    private final java.util.Map<String,com.bypassfuzzer.core.scan.SweepWorkflow.Memory<HttpRequest,HttpResponse>> liveMemories=new java.util.concurrent.ConcurrentHashMap<>();
+    private final com.bypassfuzzer.core.scan.RunLedger<java.util.Optional<HttpResponse>> refreshedCaptures=new com.bypassfuzzer.core.scan.RunLedger<>();
     private final UrlRequestFactory urlRequestFactory;
     private final TargetUrlResolver targetUrlResolver = new TargetUrlResolver();
 
@@ -293,7 +299,7 @@ public class CoverageSweepEngine {
                                                      CoverageSweepOptions options,
                                                      boolean includeControl) {
         if (options.payloadSet() == CoverageSweepPayloadSet.ALL_PAYLOADS) {
-            return fullProbeGenerator.buildProbes(request, includeControl, options.familySelection());
+            return fullProbeGenerator.buildProbes(request,includeControl,options.familySelection(),running ? live : null);
         }
         return probeGenerator.buildProbes(request, options, includeControl);
     }
@@ -308,6 +314,11 @@ public class CoverageSweepEngine {
         }
 
         CoverageSweepOptions effectiveOptions = options == null ? CoverageSweepOptions.defaults() : options;
+        var inventory=effectiveOptions.payloadSet()==CoverageSweepPayloadSet.ALL_PAYLOADS ? BypassPlaybooks.Inventory.BYPASS : BypassPlaybooks.Inventory.HIGH_SIGNAL;
+        Set<String> families=inventory==BypassPlaybooks.Inventory.BYPASS ? effectiveOptions.familySelection().bypassFamilies().stream().map(com.bypassfuzzer.burp.core.attacks.AttackType::id).collect(java.util.stream.Collectors.toSet()) : effectiveOptions.familySelection().highSignalFamilies();
+        live=new LiveRun(new RunConfiguration(Set.of(),effectiveOptions.concurrency(),Math.min(effectiveOptions.concurrency(),effectiveOptions.perHostConcurrency()),400,
+            BypassPlaybooks.resolve(inventory,families,effectiveOptions.playbookOptions()),effectiveOptions.requestHeaders(),Set.of(),effectiveOptions.userAgentMode(),effectiveOptions.userAgentRandomizationSeed()),RunPlans.bypass(inventory));
+        candidates.forEach(c -> live.registerHost(c.host()));liveMemories.clear();
         pauseController.reset();
         failedCandidates.set(0);
         failures.clear();
@@ -343,6 +354,7 @@ public class CoverageSweepEngine {
     }
 
     public void stop() {
+        if(live!=null)live.stop();
         running = false;
         phase = SweepPhase.STOPPED;
         ScanEngine currentScan = coreScan;
@@ -374,8 +386,10 @@ public class CoverageSweepEngine {
         return running;
     }
 
+    public LiveRun liveRun(){return live;}
     public void pause() {
         if (!running) return;
+        if(live!=null){live.pause();return;}
         ScanEngine currentScan = coreScan;
         if (currentScan != null) currentScan.pause();
         pauseController.pause();
@@ -384,13 +398,14 @@ public class CoverageSweepEngine {
     }
 
     public void resume() {
+        if(live!=null){live.resume();return;}
         ScanEngine currentScan = coreScan;
         if (currentScan != null) currentScan.resume();
         HostThrottleCoordinator currentCoordinator = coordinator;
         if (currentCoordinator != null) currentCoordinator.manualResume();
         pauseController.resume();
     }
-    public boolean isPaused() { return pauseController.isPaused(); }
+    public boolean isPaused() { return live!=null ? live.snapshot().state()==LiveRun.State.PAUSED || live.snapshot().state()==LiveRun.State.PAUSING : pauseController.isPaused(); }
 
     public int inFlightRequestCount() {
         HostThrottleCoordinator currentCoordinator = coordinator;
@@ -434,7 +449,7 @@ public class CoverageSweepEngine {
     }
 
     public int sentRequestCount() {
-        return sentRequests.get();
+        return live==null ? sentRequests.get() : (int)Math.min(Integer.MAX_VALUE,live.snapshot().requestsSent());
     }
 
     public int automaticRetryRequestCount() {
@@ -464,14 +479,19 @@ public class CoverageSweepEngine {
     }
 
     private void execute(List<CoverageSweepCandidate> candidates,
-                         CoverageSweepOptions options,
+                         CoverageSweepOptions initialOptions,
                          Consumer<AttackResult> resultCallback) {
+      while(canContinue()) {
+        var generationSnapshot=live.snapshot();generation=generationSnapshot.revision();headerGeneration=generationSnapshot.headerRevision();
+        plannedMainRequests.set(completedMainRequests.get());pendingHostCandidates.clear();
+        completedSweepHosts.removeIf(host -> live.snapshot().configuration().excludes(host));
+        CoverageSweepOptions options=initialOptions.withRunConfiguration(live.snapshot().configuration());
         ThrottleSettings throttleSettings = options.throttleSettings();
         coordinator = new HostThrottleCoordinator(throttleSettings, api);
         coreScan = new ScanEngine(new ScanOptions(HttpProtocol.AUTO, Duration.ofSeconds(15),
             throttleSettings.globalConcurrency(), throttleSettings.perHostConcurrency(),
             options.throttleStatusCodes(), 0, false, options.posture().name().toLowerCase(),
-            options.pauseMode().name().toLowerCase(), options.fixedPauseMillis(), false), false);
+            options.pauseMode().name().toLowerCase(), options.fixedPauseMillis(), false),false,live);
         phase = SweepPhase.MAIN_SWEEP;
         int concurrency = throttleSettings.globalConcurrency();
         safeLog("Coverage sweep starting: " + candidates.size() + " candidate(s); adaptive rate control, "
@@ -508,6 +528,10 @@ public class CoverageSweepEngine {
                     CoverageSweepCandidate candidate = interleaved.get(candidateIndex);
                     try {
                         executeCandidate(candidate, options, resultCallback, retryQueue);
+                    } catch (LiveRun.Reconfigured changed) {
+                        // The run resumes with a fresh plan and its completed-work memory.
+                    } catch (java.util.concurrent.CancellationException stopped) {
+                        // Stop releases paused workers without manufacturing transport errors.
                     } catch (Exception | LinkageError error) {
                         if (running && !Thread.currentThread().isInterrupted()) {
                             failedCandidates.incrementAndGet();
@@ -517,7 +541,7 @@ public class CoverageSweepEngine {
                     } finally {
                         String candidateHost = host(candidate.request(), candidate.displayUrl());
                         AtomicInteger remaining = pendingHostCandidates.get(candidateHost);
-                        if (remaining != null && remaining.decrementAndGet() == 0 && !failedSweepHosts.contains(candidateHost)) {
+                        if (remaining != null && remaining.decrementAndGet()==0 && !failedSweepHosts.contains(candidateHost) && !live.snapshot().configuration().excludes(candidateHost)) {
                             completedSweepHosts.add(candidateHost);
                         }
                     }
@@ -537,16 +561,41 @@ public class CoverageSweepEngine {
                 executor.shutdownNow();
             }
         }
+        if(canContinue() && live.snapshot().revision()!=generation)continue;
+        retryQueue.removeIf(r -> !live.allowed(r.probe().request().httpService().host(),r.result().getTargetLabel()) || !live.selected(r.probe().playbookId()));
         if (canContinue() && !retryQueue.isEmpty()) {
             phase = SweepPhase.AUTOMATIC_RETRIES;
         }
-        runDeferredRetries(retryQueue, options, resultCallback, concurrency);
+        try {
+            runDeferredRetries(retryQueue,options,resultCallback,concurrency);
+            if(canContinue())live.checkpoint(generation);
+        }catch(LiveRun.Reconfigured changed){continue;}
+        catch(java.util.concurrent.CancellationException stopped){break;}
         safeLog("Coverage sweep worker pool finished: " + candidates.size() + " candidate(s) submitted; payload set: "
             + options.payloadSet() + "; deferred retries remaining: " + retryQueue.size());
+        break;
+      }
     }
 
-    private void executeCandidate(CoverageSweepCandidate candidate, CoverageSweepOptions options,
-        Consumer<AttackResult> resultCallback, ConcurrentLinkedQueue<RetryTask> retryQueue) {
+    private void executeCandidate(CoverageSweepCandidate originalCandidate,CoverageSweepOptions options,
+        Consumer<AttackResult> resultCallback,ConcurrentLinkedQueue<RetryTask> retryQueue) {
+        live.checkpoint(generation);
+        String seed=originalCandidate.method()+" "+originalCandidate.displayUrl();
+        if(!live.allowed(originalCandidate.host(),seed))return;
+        live.planningSeed(originalCandidate.dedupeKey()+"\n"+originalCandidate.request().toString());
+        var config=live.snapshot().configuration();
+        HttpRequest prepared=config.prepare(originalCandidate.request(),com.bypassfuzzer.burp.http.MontoyaRequestAccess.INSTANCE);
+        HttpResponse captured=originalCandidate.originalResponse();
+        if(options.mode()==CoverageSweepMode.AUTHENTICATED_TRAFFIC && headerGeneration>0) {
+            final HttpRequest captureRequest=prepared;
+            var capture=refreshedCaptures.get(seed+"\n"+headerGeneration,() -> java.util.Optional.ofNullable(sendScheduled(captureRequest,() -> requestSender.sendManaged(captureRequest,null,15,TimeUnit.SECONDS,this::canContinue,live,generation))));
+            captured=capture.value().orElse(null);
+            if(capture.fresh() && resultCallback!=null)resultCallback.accept(new AttackResult("Authenticated Coverage Sweep","Authenticated control after configuration edit",seed,"Control","Control",prepared,captured));
+        }
+        final CoverageSweepCandidate candidate=new CoverageSweepCandidate(prepared,captured,originalCandidate.dedupeKey(),originalCandidate.displayUrl(),originalCandidate.method(),originalCandidate.host(),originalCandidate.path(),
+            captured==null ? originalCandidate.statusCode() : captured.statusCode(),captured==null ? originalCandidate.contentLength() : bodyLength(captured),captured==null ? originalCandidate.contentType() : contentType(captured),originalCandidate.time());
+        var memory=liveMemories.computeIfAbsent(seed,ignored -> new com.bypassfuzzer.core.scan.SweepWorkflow.Memory<>());
+        memory.context(headerGeneration);
         var workflow = new com.bypassfuzzer.core.scan.SweepWorkflow<HttpRequest, HttpResponse>(
             com.bypassfuzzer.burp.http.MontoyaRequestAccess.INSTANCE, CoverageSweepClassifier::toCore);
         var policy = new ConfiguredHeaderPolicy(options.requestHeaders(), options.userAgentMode(),
@@ -563,8 +612,7 @@ public class CoverageSweepEngine {
             .map(probe -> new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(), probe.family(),
                 probe.request(), probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_2 ? HttpProtocol.HTTP_2
                     : probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_1 ? HttpProtocol.HTTP_1 : HttpProtocol.AUTO, probe.playbookId(), probe.controlRole())).toList(),
-            probe -> sendScheduled(probe.request(), () -> requestSender.sendWithOptionalMode(probe.request(),
-                coreRequests.httpMode(probe.protocol()), this::awaitSendAdmission)), this::canContinue,
+            probe -> sendScheduled(probe.request(), () -> requestSender.sendManaged(probe.request(),coreRequests.httpMode(probe.protocol()),15,TimeUnit.SECONDS,this::canContinue,live,generation)), this::canContinue,
             new com.bypassfuzzer.core.scan.SweepWorkflow.Observer<HttpRequest, HttpResponse>() {
                 public void planned(int count) { plannedMainRequests.addAndGet(count); }
                 public void completed() { completedMainRequests.incrementAndGet(); }
@@ -574,14 +622,14 @@ public class CoverageSweepEngine {
                         event.probe().family(), event.signal(), event.probe().request(), event.response(),
                         event.originalRequest(), event.originalResponse(), event.verificationRequest(), event.verificationResponse())
                         .withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.probe().playbookId(), event.probe().controlRole(),
-                            event.calibration(), event.fallbackRequest(), event.fallbackResponse(), event.context())).copyEvidenceToTempFile();
+                            event.calibration(),event.fallbackRequest(),event.fallbackResponse(),event.context()).withRun(null,generation)).copyEvidenceToTempFile();
                     if (resultCallback != null) resultCallback.accept(result);
                     // The master's anonymous verification control is evidence, not deferred mutation work.
                     if (!event.probe().family().equals("Unauthenticated Control") && isRetryableResponse(event.response(), options))
                         retryQueue.add(new RetryTask(result, new CoverageSweepProbe(event.probe().label(), event.probe().family(),
                             event.probe().request(), coreRequests.httpMode(event.probe().protocol()), event.probe().playbookId(), event.probe().controlRole())));
                 }
-            });
+            },memory);
     }
 
     private void runDeferredRetries(ConcurrentLinkedQueue<RetryTask> retryQueue, CoverageSweepOptions options,
@@ -589,12 +637,25 @@ public class CoverageSweepEngine {
         new com.bypassfuzzer.core.scan.DeferredRetryRunner<RetryTask>().run(retryQueue,
             com.bypassfuzzer.core.scan.ScanDefaults.SWEEP_RETRIES, concurrency, this::canContinue,
             item -> retryGroupKey(item).authority(), item -> retryGroupKey(item).family(), item -> {
-                HttpRequest control = item.result().getOriginalRequest() == null
-                    ? item.probe().request() : item.result().getOriginalRequest();
-                HttpResponse response = sendScheduled(control, () -> requestSender.send(control, this::awaitSendAdmission));
+                var current=currentRetry(item);
+                HttpRequest control=current.result().getOriginalRequest()==null ? current.probe().request() : current.result().getOriginalRequest();
+                HttpResponse response = sendScheduled(control, () -> requestSender.sendManaged(control,null,15,TimeUnit.SECONDS,this::canContinue,live,generation));
                 return canContinue() && response != null && !isThrottleResponse(response, options);
             }, (item, attempt) -> executeDeferredRetry(item, attempt, options, resultCallback, retryQueue),
             quarantinedRetryRequests::addAndGet, this::safeLog);
+    }
+
+    private RetryTask currentRetry(RetryTask retry) {
+        CoverageSweepProbe probe=retry.probe();
+        AttackResult previous=retry.result();
+        var memory=liveMemories.get(previous.getTargetLabel());
+        var template=memory==null ? null : memory.latest(new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(),probe.family(),probe.request(),coreRequests.fromMontoya(probe.request()).protocol(),probe.playbookId(),probe.controlRole()));
+        if(template!=null) {
+            probe=new CoverageSweepProbe(template.probe().label(),template.probe().family(),template.probe().request(),coreRequests.httpMode(template.probe().protocol()),template.probe().playbookId(),template.probe().controlRole());
+            previous=new AttackResult(template.attackType(),template.probe().label(),template.target(),template.probe().family(),template.signal(),template.probe().request(),null,template.originalRequest(),template.originalResponse(),template.verificationRequest(),template.verificationResponse())
+                .withEvidenceMetadata(new AttackResult.EvidenceMetadata(template.probe().playbookId(),template.probe().controlRole(),template.calibration(),template.fallbackRequest(),template.fallbackResponse(),template.context()));
+        }
+        return new RetryTask(previous,probe);
     }
 
     private boolean executeDeferredRetry(RetryTask retry,
@@ -602,10 +663,12 @@ public class CoverageSweepEngine {
                                          CoverageSweepOptions options,
                                          Consumer<AttackResult> resultCallback,
                                          ConcurrentLinkedQueue<RetryTask> retryQueue) {
-        CoverageSweepProbe probe = retry.probe();
-        HttpResponse response = sendScheduled(probe.request(), () -> requestSender.sendWithOptionalMode(
-            probe.request(), probe.httpMode(), this::awaitSendAdmission));
-        AttackResult retryResult = AttackResult.throttleRetryOf(retry.result(), response, attempt)
+        retry=currentRetry(retry);
+        CoverageSweepProbe probe=retry.probe();
+        AttackResult previous=retry.result();
+        final CoverageSweepProbe currentProbe=probe;
+        HttpResponse response = sendScheduled(probe.request(), () -> requestSender.sendManaged(currentProbe.request(),currentProbe.httpMode(),15,TimeUnit.SECONDS,this::canContinue,live,generation));
+        AttackResult retryResult=AttackResult.throttleRetryOf(previous,response,attempt)
             .copyEvidenceToTempFile();
         if (resultCallback != null) {
             resultCallback.accept(retryResult);
@@ -1036,27 +1099,29 @@ public class CoverageSweepEngine {
     }
 
     private boolean awaitSendAdmission() {
+        if(live!=null){live.checkpoint(generation);return canContinue();}
         return pauseController.awaitIfPaused(this::canContinue);
     }
 
     private HttpResponse sendScheduled(HttpRequest request, java.util.function.Supplier<HttpResponse> sender) {
-        if (!pauseController.awaitIfPaused(this::canContinue)) {
+        if (!awaitSendAdmission()) {
             return null;
         }
-        java.util.function.Supplier<HttpResponse> countedSender = () -> {
-            sentRequests.incrementAndGet();
-            if (phase == SweepPhase.AUTOMATIC_RETRIES) {
-                automaticRetryRequests.incrementAndGet();
-            }
-            return sender.get();
+        java.util.function.Supplier<HttpResponse> countedSender=() -> {
+            java.util.concurrent.Callable<HttpResponse> physical=() -> {
+                sentRequests.incrementAndGet();if(phase==SweepPhase.AUTOMATIC_RETRIES)automaticRetryRequests.incrementAndGet();return sender.get();
+            };
+            try{return physical.call();}
+            catch(LiveRun.Reconfigured | java.util.concurrent.CancellationException error){throw error;}
+            catch(Exception error){throw new java.util.concurrent.CompletionException(error);}
         };
         HostThrottleCoordinator currentCoordinator = coordinator;
         ScanEngine currentScan = coreScan;
         if (currentScan == null) return null;
         return currentScan.exchange(coreRequests.fromMontoya(request), () -> currentCoordinator == null
-            ? (pauseController.awaitIfPaused(this::canContinue) ? countedSender.get() : null)
+            ? (awaitSendAdmission() ? countedSender.get() : null)
             : currentCoordinator.send(request, countedSender,
-                () -> pauseController.awaitIfPaused(this::canContinue)), response -> response.statusCode()).response();
+                this::awaitSendAdmission),response -> response.statusCode()).response();
     }
 
     private void safeLog(String message) {

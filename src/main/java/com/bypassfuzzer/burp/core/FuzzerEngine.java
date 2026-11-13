@@ -1,5 +1,6 @@
 package com.bypassfuzzer.burp.core;
 import com.bypassfuzzer.core.scan.ScanDefaults;
+import com.bypassfuzzer.core.scan.*;
 import com.bypassfuzzer.core.throttle.ThrottleSettings;
 
 import burp.api.montoya.MontoyaApi;
@@ -32,6 +33,7 @@ public class FuzzerEngine {
     private final MontoyaApi api;
     private final FuzzerConfig config;
     private volatile boolean running = false;
+    private volatile LiveRun live;
     private Thread fuzzerThread;
     private volatile HostThrottleCoordinator coordinator;
     private RetryQueue<ThrottledRequest> retryQueue;
@@ -93,6 +95,10 @@ public class FuzzerEngine {
         httpRequestsSent.set(0);
         resultsRecorded.set(0);
         retryQueue = new RetryQueue<>();
+        Set<String> families=config.getEnabledAttackTypes().stream().map(AttackType::id).collect(java.util.stream.Collectors.toSet());
+        live=new LiveRun(new RunConfiguration(Set.of(),config.getConcurrency(),Math.min(config.getConcurrency(),config.getPerHostConcurrency()),400,
+            BypassPlaybooks.resolve(BypassPlaybooks.Inventory.BYPASS,families,config.getPlaybookOptions()),config.getRequestHeaders(),Set.of(),config.getUserAgentMode(),config.getUserAgentRandomizationSeed()),RunPlans.bypass(BypassPlaybooks.Inventory.BYPASS));
+        live.registerHost(request.httpService().host());
         running = true;
 
         fuzzerThread = new Thread(() -> {
@@ -116,7 +122,7 @@ public class FuzzerEngine {
     /**
      * Stop the fuzzer.
      */
-    public void stopFuzzing() {
+    public void stopFuzzing() { if(live!=null)live.stop();
         if (running && fuzzerThread != null) {
             running = false;
             if (scanAdapter != null) scanAdapter.stop();
@@ -136,19 +142,22 @@ public class FuzzerEngine {
 
     public void pause() {
         if (!running) return;
+        if(live!=null){live.pause();return;}
         if (scanAdapter != null) scanAdapter.pause();
         HostThrottleCoordinator currentCoordinator = coordinator;
         if (currentCoordinator != null) currentCoordinator.manualPause();
     }
 
+    public LiveRun liveRun(){return live;}
     public void resume() {
+        if(live!=null){live.resume();return;}
         if (scanAdapter != null) scanAdapter.resume();
         HostThrottleCoordinator currentCoordinator = coordinator;
         if (currentCoordinator != null) currentCoordinator.manualResume();
     }
 
     public boolean isPaused() {
-        return scanAdapter != null && scanAdapter.isPaused();
+        return live!=null ? live.snapshot().state()==LiveRun.State.PAUSED || live.snapshot().state()==LiveRun.State.PAUSING : scanAdapter != null && scanAdapter.isPaused();
     }
 
     public FuzzerProgress progress() {
@@ -186,11 +195,11 @@ public class FuzzerEngine {
             config.getRequestHeaders(), config.getUserAgentMode(), config.getUserAgentRandomizationSeed());
         Set<AttackFamily> enabled = new LinkedHashSet<>();
         for (AttackType type : config.getEnabledAttackTypes()) enabled.add(AttackFamily.parse(type.id()));
-        BypassPlanner planner = new BypassPlanner(() -> {
+        java.util.function.Supplier<String> domain=() -> {
             if (!config.isEnableCollaboratorPayloads() || !CollaboratorSupport.isAvailable(api)) return "";
             String payload = CollaboratorSupport.generatePayload(api);
             return payload == null ? "" : payload.replaceFirst("^https?://", "").replaceFirst("/.*$", "");
-        });
+        };
         com.bypassfuzzer.core.scan.ScanOptions options = new com.bypassfuzzer.core.scan.ScanOptions(
             com.bypassfuzzer.core.http.HttpProtocol.AUTO, java.time.Duration.ofSeconds(15),
             config.getConcurrency(), config.getPerHostConcurrency(), config.getThrottleStatusCodes(),
@@ -199,12 +208,12 @@ public class FuzzerEngine {
                 ? "conservative" : "ride-hard", config.throttleSettings().pauseMode().name().toLowerCase(),
             config.throttleSettings().fixedPauseMillis(), true, config.getPlaybookOptions().wildcardCalibration());
         com.bypassfuzzer.burp.http.BurpScanAdapter current = new com.bypassfuzzer.burp.http.BurpScanAdapter(
-            request, requestSender, options, coordinator, mutation -> headers.reconcileMutation(request, mutation));
+            request, requestSender, options, coordinator, mutation -> headers.reconcileMutation(request,mutation),live);
         scanAdapter = current;
         try {
             current.run("bypass", base -> {
-                List<PlannedRequest> planned = planner.plan(base, enabled,
-                    config.isEnableFuzzExistingCookies(), Integer.MAX_VALUE, config.getPlaybookOptions());
+                List<PlannedRequest> planned=new BypassPlanner(live.domains(base.targetLabel(),domain)).plan(base,null,
+                    config.isEnableFuzzExistingCookies(),Integer.MAX_VALUE,RunPlans.bypassOptions(live,config.getPlaybookOptions()));
                 plannedPayloads.set(planned.size());
                 return planned;
             }, result -> {

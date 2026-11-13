@@ -24,6 +24,9 @@ final class FullBypassSweepProbeGenerator {
 
     List<CoverageSweepProbe> buildProbes(HttpRequest request, boolean includeControl,
                                          CoverageSweepFamilySelection familySelection) {
+        return buildProbes(request,includeControl,familySelection,null);
+    }
+    List<CoverageSweepProbe> buildProbes(HttpRequest request,boolean includeControl,CoverageSweepFamilySelection familySelection,com.bypassfuzzer.core.scan.LiveRun live) {
         if (request == null) return List.of();
         Set<AttackFamily> enabled = new LinkedHashSet<>();
         for (AttackType type : familySelection.bypassFamilies()) enabled.add(AttackFamily.parse(type.id()));
@@ -33,7 +36,7 @@ final class FullBypassSweepProbeGenerator {
             return payload == null ? "" : payload.replaceFirst("^https?://", "").replaceFirst("/.*$", "");
         };
         return new com.bypassfuzzer.core.scan.SweepPlanner().all(adapter.fromMontoya(request), enabled,
-            domain, includeControl, familySelection.bypassPlaybooks()).stream().map(planned -> toProbe(request, planned)).toList();
+            live==null ? domain : live.domains(adapter.fromMontoya(request).targetLabel(),domain),includeControl,familySelection.bypassPlaybooks()).stream().map(planned -> toProbe(request, planned)).toList();
     }
 
     private CoverageSweepProbe toProbe(HttpRequest original, PlannedRequest planned) {

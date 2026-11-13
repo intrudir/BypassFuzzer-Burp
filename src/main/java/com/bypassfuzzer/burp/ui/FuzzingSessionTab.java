@@ -167,6 +167,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
 
     @Override
     public void resumeActivity() {
+        resultsWorkspace.applyRunScope();
         if (mode == TargetedMode.IDOR) idorPanel.resumeActivity();
         else if (mode == TargetedMode.URL_VALIDATION) urlValidationPanel.resumeActivity();
         else if (resultsWorkspace != null && resultsWorkspace.isRetryRunning()) {
@@ -267,6 +268,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
         controlPanel.add(startButton);
         controlPanel.add(stopButton);
         controlPanel.add(pauseButton);
+        controlPanel.add(new com.bypassfuzzer.burp.ui.session.RunEditButton(() -> resultsWorkspace.editableRun(),() -> sessionController.isRunning() || resultsWorkspace.isRetryRunning(),this::pauseActivity,this::resumeActivity));
         controlPanel.add(clearButton);
         controlPanel.add(optionsButton);
         controlPanel.add(previewButton);
@@ -354,6 +356,7 @@ public class FuzzingSessionTab extends JPanel implements ManagedActivity {
             false,
             sessionController.globalGovernor()
         );
+        resultsWorkspace.attachRunControl(sessionController::liveRun);
         resultsWorkspace.setResultsChangedListener(ignored -> updateResultStatus());
         return resultsWorkspace.component();
     }

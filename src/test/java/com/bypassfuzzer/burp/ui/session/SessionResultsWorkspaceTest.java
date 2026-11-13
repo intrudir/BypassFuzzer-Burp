@@ -31,6 +31,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class SessionResultsWorkspaceTest {
+    @Test void editableManualRetryDrainsThenExcludesAllRemainingRequests() throws Exception {
+        var sender=new BlockingFirstSender(response(200));var workspace=workspace(sender);
+        var config=new com.bypassfuzzer.core.scan.RunConfiguration(Set.of(),1,1,400,Set.of(),List.of(),Set.of(),com.bypassfuzzer.core.http.UserAgentMode.DISABLED,0);
+        var primary=new com.bypassfuzzer.core.scan.LiveRun(config,java.util.Map.of());workspace.attachRunControl(() -> primary);
+        workspace.addResult(new AttackResult("Bypass","first",request("/one","","GET",null,""),response(429)));
+        workspace.addResult(new AttackResult("Bypass","second",request("/two","","GET",null,""),response(429)));
+        workspace.retryThrottled(false);assertTrue(sender.firstStarted.await(3,TimeUnit.SECONDS));workspace.pauseThrottleRetry();
+        var run=workspace.editableRun();assertEquals(com.bypassfuzzer.core.scan.LiveRun.State.PAUSING,run.snapshot().state());sender.releaseFirst.countDown();
+        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(run.snapshot().state()!=com.bypassfuzzer.core.scan.LiveRun.State.PAUSED && System.nanoTime()<end)Thread.sleep(10);
+        assertEquals(com.bypassfuzzer.core.scan.LiveRun.State.PAUSED,run.snapshot().state());
+        run.apply(new com.bypassfuzzer.core.scan.RunConfiguration(Set.of("example.com"),1,1,20,Set.of(),List.of(new com.bypassfuzzer.core.http.ConfiguredHeader("User-Agent","edited")),Set.of(),com.bypassfuzzer.core.http.UserAgentMode.DISABLED,0));
+        workspace.resumeThrottleRetry();waitForRetry(workspace);assertEquals(1,sender.sendCount.get());assertEquals(0,workspace.throttledRetryCount());workspace.cleanup();
+    }
+
     @Test void manualSweepRetryRefreshesSignalAndFallbackAnnotation() throws Exception {
         var sender = new SequenceSender(response(403), response(200));
         var workspace = workspace(sender);

@@ -119,6 +119,7 @@ public class UrlValidationPanel extends JPanel {
     }
 
     public void resumeActivity() {
+        resultsWorkspace.applyRunScope();
         if (resultsWorkspace.isRetryRunning()) {
             resultsWorkspace.resumeThrottleRetry();
             pauseButton.setText("Pause");
@@ -163,6 +164,7 @@ public class UrlValidationPanel extends JPanel {
 
         buttonRow.add(stopButton);
         buttonRow.add(pauseButton);
+        buttonRow.add(new RunEditButton(() -> resultsWorkspace.editableRun(),() -> engine.isRunning() || resultsWorkspace.isRetryRunning(),this::pauseActivity,this::resumeActivity));
         buttonRow.add(configButton);
         buttonRow.add(clearButton);
 
@@ -191,6 +193,7 @@ public class UrlValidationPanel extends JPanel {
             true,
             globalGovernor
         );
+        resultsWorkspace.attachRunControl(engine::liveRun);
         resultsWorkspace.setResultsChangedListener(ignored -> updateResultStatus());
         return resultsWorkspace.component();
     }

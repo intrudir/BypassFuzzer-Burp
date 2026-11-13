@@ -232,28 +232,29 @@ public class SessionResultsPanel extends JPanel {
         int splitOrientation = viewerLayout == ViewerLayout.RIGHT_OF_TABLE
             ? JSplitPane.HORIZONTAL_SPLIT
             : JSplitPane.VERTICAL_SPLIT;
+        tableScrollPane.setMinimumSize(new java.awt.Dimension(120, 90));
         JSplitPane splitPane = new JSplitPane(splitOrientation, tableScrollPane, viewerTabs);
         splitPane.setResizeWeight(viewerLayout == ViewerLayout.RIGHT_OF_TABLE ? 0.52 : 0.4);
-        // Native Burp editors include tab/search toolbars. Initialize on first show
-        // after layout so short workspaces retain readable message bodies.
-        class InitialDivider extends ComponentAdapter implements HierarchyListener {
+        // Native Burp editors include tab/search toolbars. Initialize after layout,
+        // then keep both the results and viewers usable after resize or tab changes.
+        class WorkspaceDivider extends ComponentAdapter implements HierarchyListener {
             private boolean initialized;
 
             private void positionAfterLayout() {
                 SwingUtilities.invokeLater(() -> {
-                    if (initialized || !splitPane.isShowing()
-                        || splitPane.getWidth() <= 0 || splitPane.getHeight() <= 0) return;
-                    initialized = true;
-                    splitPane.removeComponentListener(this);
-                    splitPane.removeHierarchyListener(this);
+                    if (!splitPane.isShowing() || splitPane.getWidth() <= 0 || splitPane.getHeight() <= 0) return;
                     if (viewerLayout == ViewerLayout.RIGHT_OF_TABLE) {
-                        splitPane.setDividerLocation(0.52);
+                        if (!initialized) splitPane.setDividerLocation(0.52);
                     } else {
-                        int available = splitPane.getHeight() - splitPane.getDividerSize();
-                        int tableMinimum = Math.min(80, available / 4);
-                        int tableHeight = Math.min((int) (available * 0.4), available - 320);
-                        splitPane.setDividerLocation(Math.max(tableMinimum, tableHeight));
+                        int available = Math.max(0, splitPane.getHeight() - splitPane.getDividerSize());
+                        int minimumTable = Math.min(90, available / 3);
+                        int minimumViewer = Math.min(240, available - minimumTable);
+                        int desired = initialized ? splitPane.getDividerLocation()
+                            : Math.max(minimumTable, Math.min((int) (available * 0.4), available - 320));
+                        int bounded = Math.max(minimumTable, Math.min(desired, available - minimumViewer));
+                        if (bounded != splitPane.getDividerLocation()) splitPane.setDividerLocation(bounded);
                     }
+                    initialized = true;
                 });
             }
 
@@ -262,9 +263,9 @@ public class SessionResultsPanel extends JPanel {
                 if ((event.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0) positionAfterLayout();
             }
         }
-        InitialDivider initialDivider = new InitialDivider();
-        splitPane.addComponentListener(initialDivider);
-        splitPane.addHierarchyListener(initialDivider);
+        WorkspaceDivider divider = new WorkspaceDivider();
+        splitPane.addComponentListener(divider);
+        splitPane.addHierarchyListener(divider);
         add(splitPane, BorderLayout.CENTER);
     }
 
@@ -295,8 +296,8 @@ public class SessionResultsPanel extends JPanel {
         responsePanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 8));
         responsePanel.add(WorkbenchTheme.muted("Response"), BorderLayout.NORTH);
         responsePanel.add(WorkbenchTheme.nativeEditor(response), BorderLayout.CENTER);
-        requestPanel.setMinimumSize(new java.awt.Dimension(120, 240));
-        responsePanel.setMinimumSize(new java.awt.Dimension(120, 240));
+        requestPanel.setMinimumSize(new java.awt.Dimension(120, 160));
+        responsePanel.setMinimumSize(new java.awt.Dimension(120, 160));
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, requestPanel, responsePanel);
         split.setResizeWeight(0.5);
         SwingUtilities.invokeLater(() -> split.setDividerLocation(0.5));

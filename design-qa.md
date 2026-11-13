@@ -167,3 +167,57 @@ The shared header policy now respects request-format header support. It preserve
 Proof is retained in `artifacts/verification/sweep-all-payloads-ua-20261112/`. Before-fix native evidence reproduces the user's sequence with zero sends. The fixed full preview contains 8,534 probes and sends no traffic. Real Burp then completes 8,536/8,536 requests, including runtime calibration controls, with no failed candidates and a response for every request. The packaged CLI full run completes 8,422/8,422 requests with zero transport errors or deferred retries. The inputs use different paths and captured headers, so their inventory sizes are not compared as equal. The separate protocol check completes 9/9 exchanges. Wire evidence proves both clients send HTTP/0.9 without headers and retain the UA on header-supporting protocol probes; the audit reads every retained CLI raw request and response. The complete suite passes 477 tests (335 Burp, 112 core, 30 CLI).
 
 This follow-up changes request handling, with the existing layout retained. The final committed artifact is rebuilt and reloaded in disposable Burp; readiness, hashes, focused protocol smoke proof and private-settings cleanup are retained with the evidence.
+
+
+## Bypass all-family verification and optional calibration rows (2026-11-12)
+
+The native Bypass run enabled all 12 attack families and all 18 playbooks, a custom
+`User-Agent: Bypass-All-UA`, and global/per-host concurrency limits of 20/20.
+It completed 12,200/12,200 exchanges, including the original and five calibration
+controls. The packaged CLI completed its uncapped equivalent with 12,161/12,161
+exchanges, no transport errors and no deferred retries. Inventory totals differ
+because the clients' captured request representations differ. Both inventories
+contained every selected family and playbook. Wire evidence retains headerless
+HTTP/0.9 probes and the configured UA on header-supporting probes. Every referenced
+CLI raw request and response was read back.
+
+Calibration controls are hidden by default in both native results workspaces and
+CLI retained-results views. The native Show calibration requests checkbox and CLI
+`results --show-calibration` expose them. Live checks toggled visibility during
+and after the native run, proved smart-filter candidate slots were unchanged,
+selected the candidate's Fallback control viewer and checked that every exchange
+remained retained. Original, authorized and target baseline roles stay visible.
+
+The user's screenshots showed a calibration row with No response and an HTTP/1.1
+replay returning an empty 404. Owned HTTPS fixtures reproduced empty 404s with no
+Content-Type; the production Montoya sender and native table preserved status 404
+for AUTO, HTTP/1.1 and HTTP/2 when the server supported them. An HTTP/1-only fixture
+returned 404 to AUTO/HTTP/1.1 and no response to forced HTTP/2. This demonstrates a
+possible explanation, not a diagnosis of the user's remote host. Calibration
+labels now identify the requested protocol so these separate exchanges can be
+distinguished. No remote customer request was sent.
+
+Native resizing exposed a separate results-layout defect: a short window could
+collapse the table viewport to zero height. A minimum-size-only attempt still
+left just five pixels. The final correction retains divider bounds across resize
+and tab changes while preserving usable user divider choices. Focused native
+captures show a 111-pixel table viewport at 1700×1100 and 56 pixels at 1280×900,
+with visible rows and working request/response and Fallback control viewers. An
+obsolete preflight warning incorrectly claimed Content-Type checks would be
+skipped for a GET without parameters; the executed header probes proved otherwise,
+and that warning was removed.
+
+Evidence is retained in `artifacts/verification/bypass-calibration-20261112/`:
+`before/` holds response/protocol diagnostics, `after/` the full native run,
+`cli/` the full packaged CLI run, and `layout-fixed/` the corrected native layout.
+Failed layout attempts remain identified as failures. `verification-summary.json`
+links the successful runs and shared execution/filter source hashes. The final
+committed JAR is rebuilt and reloaded under `committed/`; final artifact hashes,
+readiness, smoke proof and deletion of temporary licensed profiles are recorded
+there. Driver source contains no license settings or private keys.
+
+Validation passed 482 Java tests (337 Burp, 114 core, 31 CLI), packaging smoke
+checks and 25 CLI operating-skill Python tests. Verification maps and the CLI
+skill describe the new controls and evidence semantics. Browser checks do not
+apply to this Swing extension. Collaborator behavior was covered in the earlier
+five-tab native pass; this follow-up does not claim a new callback verification.

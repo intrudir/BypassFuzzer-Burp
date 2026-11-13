@@ -35,10 +35,6 @@ public class SessionPreflightAnalyzer {
             }
         }
 
-        if (enabledAttackTypes.contains(AttackType.CONTENT_TYPE) && contentTypeWillBeSkipped(request)) {
-            warnings.add("Content-Type attack will be skipped (" + request.method() + " method with no parameters)");
-        }
-
         return warnings;
     }
 
@@ -47,17 +43,4 @@ public class SessionPreflightAnalyzer {
         return path == null || path.isEmpty() || "/".equals(path);
     }
 
-    private boolean contentTypeWillBeSkipped(HttpRequest request) {
-        String method = request.method();
-        if ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method)) {
-            return false;
-        }
-
-        String url = request.url();
-        if (url != null && url.contains("?")) {
-            return false;
-        }
-
-        return request.body() == null || request.body().length() == 0;
-    }
 }

@@ -36,7 +36,7 @@ class SessionPreflightAnalyzerTest {
     }
 
     @Test
-    void warnsWhenContentTypeAttackHasNoParameters() {
+    void contentTypeHeaderProbesRemainAvailableWithoutParameters() {
         HttpRequest request = mock(HttpRequest.class);
         when(request.pathWithoutQuery()).thenReturn("/admin");
         when(request.method()).thenReturn("GET");
@@ -48,10 +48,7 @@ class SessionPreflightAnalyzerTest {
             false, false, false, 1, Set.of()
         );
 
-        assertEquals(
-            List.of("Content-Type attack will be skipped (GET method with no parameters)"),
-            analyzer.analyze(request, options)
-        );
+        assertEquals(List.of(), analyzer.analyze(request, options));
     }
 
     private ByteArray emptyBody() {

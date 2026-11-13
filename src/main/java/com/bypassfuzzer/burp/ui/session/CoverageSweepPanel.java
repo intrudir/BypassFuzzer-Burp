@@ -2223,22 +2223,8 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
             return;
         }
 
-        HttpRequestEditor requestViewer = api.userInterface().createHttpRequestEditor();
-        HttpResponseEditor responseViewer = api.userInterface().createHttpResponseEditor();
-        requestViewer.setRequest(candidate.request());
         HttpResponse originalResponse = originalResponseFor(candidate);
-        responseViewer.setResponse(originalResponse);
-
-        JPanel requestPanel = new JPanel(new BorderLayout());
-        requestPanel.setBorder(BorderFactory.createTitledBorder("Request"));
-        requestPanel.add(requestViewer.uiComponent(), BorderLayout.CENTER);
-
-        JPanel responsePanel = new JPanel(new BorderLayout());
-        responsePanel.setBorder(BorderFactory.createTitledBorder("Response"));
-        responsePanel.add(responseViewer.uiComponent(), BorderLayout.CENTER);
-
-        JSplitPane exchangeSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, requestPanel, responsePanel);
-        exchangeSplit.setResizeWeight(0.5);
+        JSplitPane exchangeSplit = candidateExchange(candidate);
 
         JDialog dialog = new JDialog(
             api.userInterface().swingUtils().suiteFrame(),
@@ -2258,6 +2244,27 @@ public class CoverageSweepPanel extends JPanel implements ManagedActivity {
         SwingUtilities.invokeLater(() -> exchangeSplit.setDividerLocation(0.5));
         WorkbenchTheme.apply(dialog.getContentPane());
         dialog.setVisible(true);
+    }
+
+    private JSplitPane candidateExchange(CoverageSweepCandidate candidate) {
+        HttpRequestEditor requestViewer = api.userInterface().createHttpRequestEditor();
+        HttpResponseEditor responseViewer = api.userInterface().createHttpResponseEditor();
+        requestViewer.setRequest(candidate.request());
+        HttpResponse originalResponse = originalResponseFor(candidate);
+        responseViewer.setResponse(originalResponse);
+
+        JPanel requestPanel = new JPanel(new BorderLayout());
+        requestPanel.setBorder(BorderFactory.createTitledBorder("Request"));
+        requestPanel.add(WorkbenchTheme.nativeEditor(requestViewer.uiComponent()), BorderLayout.CENTER);
+
+        JPanel responsePanel = new JPanel(new BorderLayout());
+        responsePanel.setBorder(BorderFactory.createTitledBorder("Response"));
+        responsePanel.add(WorkbenchTheme.nativeEditor(responseViewer.uiComponent()), BorderLayout.CENTER);
+
+        JSplitPane exchangeSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, requestPanel, responsePanel);
+        exchangeSplit.setResizeWeight(0.5);
+        return exchangeSplit;
+
     }
 
     private HttpResponse originalResponseFor(CoverageSweepCandidate candidate) {

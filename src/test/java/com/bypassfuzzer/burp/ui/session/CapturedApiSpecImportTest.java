@@ -77,4 +77,15 @@ class CapturedApiSpecImportTest {
             assertTrue(((JLabel)field(panel,"statusLabel")).getText().contains("Unable to import"));
         }finally{panel.cleanup();}
     }
+    @Test void candidateViewerLeavesHeaderlessNativeEditorTablesUntouched() throws Exception {
+        var panel=panel(null);
+        try {
+            var api=(MontoyaApi)field(panel,"api");var nativeTable=new JTable();nativeTable.setTableHeader(null);var background=java.awt.Color.MAGENTA;nativeTable.setBackground(background);
+            var editor=mock(burp.api.montoya.ui.editor.HttpRequestEditor.class);when(editor.uiComponent()).thenReturn(nativeTable);when(api.userInterface().createHttpRequestEditor()).thenReturn(editor);
+            var candidate=new CoverageSweepCandidate(requestWithHeaders("/api/healthCheck","","GET",Map.of(),""),null,"one","https://example.com/api/healthCheck","GET","example.com","/api/healthCheck",0,0,"",null);
+            var method=CoverageSweepPanel.class.getDeclaredMethod("candidateExchange",CoverageSweepCandidate.class);method.setAccessible(true);
+            var view=(JSplitPane)method.invoke(panel,candidate);
+            assertDoesNotThrow(() -> com.bypassfuzzer.burp.ui.WorkbenchTheme.apply(view));assertEquals(background,nativeTable.getBackground());assertNull(nativeTable.getTableHeader());
+        }finally{panel.cleanup();}
+    }
 }

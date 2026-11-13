@@ -64,6 +64,7 @@ public class CoverageSweepEngine {
     private volatile long generation;
     private volatile long headerGeneration;
     private final java.util.Map<String,com.bypassfuzzer.core.scan.SweepWorkflow.Memory<HttpRequest,HttpResponse>> liveMemories=new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<CoverageSweepCandidate,String> seedIds=new java.util.IdentityHashMap<>();
     private final com.bypassfuzzer.core.scan.RunLedger<java.util.Optional<HttpResponse>> refreshedCaptures=new com.bypassfuzzer.core.scan.RunLedger<>();
     private final UrlRequestFactory urlRequestFactory;
     private final TargetUrlResolver targetUrlResolver = new TargetUrlResolver();
@@ -319,7 +320,7 @@ public class CoverageSweepEngine {
         Set<String> families=inventory==BypassPlaybooks.Inventory.BYPASS ? effectiveOptions.familySelection().bypassFamilies().stream().map(com.bypassfuzzer.burp.core.attacks.AttackType::id).collect(java.util.stream.Collectors.toSet()) : effectiveOptions.familySelection().highSignalFamilies();
         live=new LiveRun(new RunConfiguration(Set.of(),effectiveOptions.concurrency(),Math.min(effectiveOptions.concurrency(),effectiveOptions.perHostConcurrency()),400,
             BypassPlaybooks.resolve(inventory,families,effectiveOptions.playbookOptions()),effectiveOptions.requestHeaders(),Set.of(),effectiveOptions.userAgentMode(),effectiveOptions.userAgentRandomizationSeed()),RunPlans.bypass(inventory));
-        candidates.forEach(c -> live.registerHost(c.host()));liveMemories.clear();refreshedCaptures.clear();coordinator=null;
+        seedIds.clear();for(int index=0;index<candidates.size();index++){var candidate=candidates.get(index);live.registerHost(candidate.host());seedIds.put(candidate,Integer.toString(index));}liveMemories.clear();refreshedCaptures.clear();coordinator=null;
         pauseController.reset();
         failedCandidates.set(0);
         failures.clear();
@@ -582,7 +583,7 @@ public class CoverageSweepEngine {
     private void executeCandidate(CoverageSweepCandidate originalCandidate,CoverageSweepOptions options,
         Consumer<AttackResult> resultCallback,ConcurrentLinkedQueue<RetryTask> retryQueue) {
         live.checkpoint(generation);
-        String seed=originalCandidate.method()+" "+originalCandidate.displayUrl()+"\n"+originalCandidate.request().httpVersion()+"\n"+originalCandidate.request().toString();
+        String seed=seedIds.get(originalCandidate);
         if(!live.allowed(originalCandidate.host(),seed))return;
         live.planningSeed(originalCandidate.dedupeKey()+"\n"+originalCandidate.request().toString());
         var config=live.snapshot().configuration();

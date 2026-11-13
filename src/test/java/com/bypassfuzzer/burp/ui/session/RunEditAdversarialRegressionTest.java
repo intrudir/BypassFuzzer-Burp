@@ -81,13 +81,13 @@ class RunEditAdversarialRegressionTest {
   var baseline=new CoverageSweepOptions(Set.of(403),true,10,10,1,1,Set.of(429));
   var helper=Class.forName("com.bypassfuzzer.burp.core.coverage.CoverageSweepEngineTest").getDeclaredMethod("withoutCalibration",CoverageSweepOptions.class);helper.setAccessible(true);
   var options=(CoverageSweepOptions)helper.invoke(null,baseline);var candidates=new ArrayList<CoverageSweepCandidate>();
-  for(String credential:List.of("tenant-A","tenant-B")) {
+  for(String credential:List.of("tenant-A","tenant-B","tenant-A")) {
    var r=requestWithHeaders("/private","","GET",Map.of("Authorization",credential),"");
    candidates.add(new CoverageSweepCandidate(r,nativeResponse(403),credential,r.url(),"GET","example.com","/private",403,0,"",ZonedDateTime.now()));
   }
   var constructor=CoverageSweepEngine.class.getDeclaredConstructor(MontoyaApi.class,RequestSender.class,CoverageSweepProbeGenerator.class);constructor.setAccessible(true);var engine=constructor.newInstance(api,sender,generator);
   try {assertTrue(engine.start(candidates,options,results::add,done::countDown));assertTrue(done.await(8,TimeUnit.SECONDS));
-   assertEquals(2,wire.stream().filter(r -> r.path().equals("/mutation")).count(),"second captured credential context is silently skipped");
+   assertEquals(3,wire.stream().filter(r -> r.path().equals("/mutation")).count(),"second captured credential context is silently skipped");
   }finally{engine.cleanup();}
  }
  @Test void timedOutNativeSendMustRemainInFlightUntilPhysicalCallEnds() throws Exception {

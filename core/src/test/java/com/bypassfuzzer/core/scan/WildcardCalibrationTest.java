@@ -18,7 +18,7 @@ class WildcardCalibrationTest {
         var workflow = new SweepWorkflow<HttpRequestData, HttpResponseData>(RequestAccess.CORE, SweepClassifier::response);
         var events = new ArrayList<SweepWorkflow.Result<HttpRequestData, HttpResponseData>>();
         var candidate = new SweepWorkflow.Candidate<HttpRequestData, HttpResponseData>(request, null,
-            request.targetLabel(), new SweepClassifier.Baseline(404, 0, ""));
+            request.targetLabel(), new SweepClassifier.Baseline(404, 0, ""), HttpProtocol.HTTP_1);
         workflow.execute(candidate, new SweepWorkflow.Options(false, false, false, Set.of(), Set.of(), true, Set.of(429)),
             new RequestHeaderPolicy<>(RequestAccess.CORE, List.of(), UserAgentMode.DISABLED, 0),
             () -> List.of(new SweepWorkflow.Probe<>("Original", "Control", request, HttpProtocol.HTTP_1),
@@ -91,7 +91,7 @@ class WildcardCalibrationTest {
         var captured=response(200,300); var results=new ArrayList<SweepWorkflow.Result<HttpRequestData,HttpResponseData>>();
         var sent=new ArrayList<HttpRequestData>(); var counts=new AtomicInteger(); var policy=new RequestHeaderPolicy<>(RequestAccess.CORE,List.of(),UserAgentMode.DISABLED,0);
         var options=new SweepWorkflow.Options(true,true,false,Set.of("Authorization"),Set.of("session"),true,Set.of(429));
-        workflow.execute(new SweepWorkflow.Candidate<>(seed(),captured,"owned",new SweepClassifier.Baseline(200,300,"text/html")),options,policy,
+        workflow.execute(new SweepWorkflow.Candidate<>(seed(),captured,"owned",new SweepClassifier.Baseline(200,300,"text/html"),HttpProtocol.HTTP_1),options,policy,
             () -> List.of(new SweepWorkflow.Probe<>("candidate","Header",workflow.stripAuthentication(seed(),options.authHeaders(),options.authCookies()).upsertHeader("X-Probe","yes"),HttpProtocol.HTTP_1,"bypass.header.forwarded",ControlRole.NONE)),
             p -> { sent.add(p.request()); return response(p.controlRole()==ControlRole.TARGET?403:200,100); },()->true,new SweepWorkflow.Observer<>() {
                 public void planned(int n){counts.addAndGet(n);} public void completed(){counts.decrementAndGet();} public void skippedPublic(){fail();}

@@ -16,6 +16,28 @@ public final class SweepClassifier {
     public static final String LIKELY_UNAUTHENTICATED_BYPASS_PREFIX = "LIKELY UNAUTHENTICATED BYPASS";
     public static final String BYPASS_PREFIX = "BYPASS?";
 
+    /** Immutable comparisons retained for initial, automatic and manual retry responses. */
+    public record Context(boolean authenticated, Baseline baseline, Response control, Response anonymous,
+                          java.util.Set<Integer> throttleCodes) {
+        public Context { throttleCodes = java.util.Set.copyOf(throttleCodes); }
+        public String signal(ControlRole role, Response response) {
+            if (role == ControlRole.WILDCARD) return response == null || throttleCodes.contains(response.statusCode())
+                ? "Calibration unavailable" : "Calibration control";
+            if (response == null) return "No response";
+            if (role == ControlRole.TARGET) return unauthenticatedControlSignal(baseline, response);
+            if (role != ControlRole.NONE) return "";
+            if (!authenticated) return SweepClassifier.signal(baseline, control, response);
+            String signal = authenticatedBypassSignal(baseline, anonymous, response);
+            return signal.isBlank() ? unauthenticatedMutationSignal(anonymous, response) : signal;
+        }
+        public boolean isFinding(ControlRole role, Response response) {
+            if (role != ControlRole.NONE || response == null) return false;
+            if (!authenticated) return SweepClassifier.isInteresting(baseline, control, response);
+            String signal = signal(role, response);
+            return signal.startsWith(BYPASS_PREFIX) || signal.startsWith(LIKELY_UNAUTHENTICATED_BYPASS_PREFIX);
+        }
+    }
+
     private SweepClassifier() {
     }
 

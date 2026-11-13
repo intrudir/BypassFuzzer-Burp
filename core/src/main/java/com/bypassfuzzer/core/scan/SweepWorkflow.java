@@ -13,7 +13,8 @@ public final class SweepWorkflow<Q, S> {
             this(authenticated, verifyUnauthenticated, skipPublic, authHeaders, authCookies, true, Set.of(429, 503));
         }
     }
-    public record Candidate<Q, S>(Q request, S originalResponse, String target, SweepClassifier.Baseline baseline) { }
+    public record Candidate<Q, S>(Q request, S originalResponse, String target, SweepClassifier.Baseline baseline,
+                                  HttpProtocol protocol) { }
     public record Probe<Q>(String label, String family, Q request, HttpProtocol protocol, String playbookId, ControlRole controlRole) {
         public Probe(String label, String family, Q request, HttpProtocol protocol) {
             this(label, family, request, protocol, "", family.equals("Control") ? ControlRole.ORIGINAL :
@@ -22,13 +23,8 @@ public final class SweepWorkflow<Q, S> {
     }
     public record Result<Q, S>(String attackType, Probe<Q> probe, String target, String signal, S response,
                                Q originalRequest, S originalResponse, Q verificationRequest, S verificationResponse,
-                               WildcardCalibration.Assessment calibration, Q fallbackRequest, S fallbackResponse) {
-        public Result(String attackType, Probe<Q> probe, String target, String signal, S response,
-                      Q originalRequest, S originalResponse, Q verificationRequest, S verificationResponse) {
-            this(attackType, probe, target, signal, response, originalRequest, originalResponse, verificationRequest, verificationResponse,
-                 WildcardCalibration.Assessment.DISABLED, null, null);
-        }
-    }
+                               WildcardCalibration.Assessment calibration, Q fallbackRequest, S fallbackResponse,
+                               SweepClassifier.Context context) { }
     public interface Observer<Q, S> {
         void planned(int count);
         void completed();
@@ -65,7 +61,7 @@ public final class SweepWorkflow<Q, S> {
             Q stripped = stripAuthentication(candidate.request(), options.authHeaders(), options.authCookies());
             verification = policy.withoutAuthentication(options.authHeaders(), options.authCookies())
                 .reconcileMutation(stripped, stripped);
-            var probe = new Probe<>("Original request without authentication", "Unauthenticated Control", verification, HttpProtocol.AUTO);
+            var probe = new Probe<>("Original request without authentication", "Unauthenticated Control", verification, candidate.protocol());
             observer.planned(1);
             anonymous = send.apply(probe);
             observer.completed();
@@ -73,8 +69,7 @@ public final class SweepWorkflow<Q, S> {
                 SweepClassifier.unauthenticatedControlSignal(candidate.baseline(), responses.apply(anonymous));
             boolean skip = options.skipPublic() && signal.startsWith(SweepClassifier.LIKELY_PUBLIC_PREFIX);
             if (skip) observer.skippedPublic();
-            observer.result(new Result<>("Authenticated Coverage Sweep", probe, candidate.target(), signal, anonymous,
-                candidate.request(), candidate.originalResponse(), verification, anonymous));
+            observer.result(result(candidate, options, probe, anonymous, control, verification, anonymous, null, null));
             if (skip) return;
         }
         if (!continuing.getAsBoolean()) return;
@@ -85,9 +80,7 @@ public final class SweepWorkflow<Q, S> {
             if (probe.controlRole() != ControlRole.ORIGINAL) continue;
             if (!continuing.getAsBoolean()) return;
             S response = send.apply(probe); observer.completed(); control = response;
-            observer.result(new Result<>(options.authenticated() ? "Authenticated Coverage Sweep" : "Coverage Sweep",
-                probe,candidate.target(),response == null ? "No response" : "",response,candidate.request(),
-                candidate.originalResponse() == null ? response : candidate.originalResponse(),verification,anonymous));
+            observer.result(result(candidate, options, probe, response, control, verification, anonymous, null, null));
         }
         var fallbackRequests = new java.util.EnumMap<HttpProtocol, Q>(HttpProtocol.class);
         var fallbackResponses = new java.util.EnumMap<HttpProtocol, S>(HttpProtocol.class);
@@ -105,10 +98,7 @@ public final class SweepWorkflow<Q, S> {
                 observer.completed();
                 fallbackRequests.put(protocol, request);
                 if (response != null) fallbackResponses.put(protocol, response);
-                String signal = response == null || options.throttleCodes().contains(responses.apply(response).statusCode())
-                    ? "Calibration unavailable" : "Calibration control";
-                observer.result(new Result<>(options.authenticated() ? "Authenticated Coverage Sweep" : "Coverage Sweep",
-                    probe, candidate.target(), signal, response, candidate.request(), candidate.originalResponse(), verification, anonymous));
+                observer.result(result(candidate, options, probe, response, control, verification, anonymous, null, null));
             }
         }
         for (var probe : planned) {
@@ -117,23 +107,34 @@ public final class SweepWorkflow<Q, S> {
             S response = send.apply(probe);
             observer.completed();
             if (probe.family().equals("Control")) control = response;
-            String signal = "";
-            if (response == null) signal = "No response";
-            else if (options.authenticated()) {
-                if (options.verifyUnauthenticated()) {
-                    signal = SweepClassifier.authenticatedBypassSignal(candidate.baseline(), converted(anonymous), converted(response));
-                    if (signal.isBlank()) signal = SweepClassifier.unauthenticatedMutationSignal(converted(anonymous), converted(response));
-                }
-            } else if (!probe.family().equals("Control")) {
-                signal = SweepClassifier.signal(candidate.baseline(), converted(control), converted(response));
-            }
-            observer.result(new Result<>(options.authenticated() ? "Authenticated Coverage Sweep" : "Coverage Sweep",
-                probe, candidate.target(), signal, response, candidate.request(),
-                candidate.originalResponse() == null ? control : candidate.originalResponse(), verification, anonymous,
-                probe.controlRole() != ControlRole.NONE || !fallbackRequests.containsKey(probe.protocol()) ? WildcardCalibration.Assessment.DISABLED :
-                    WildcardCalibration.compare(access.method(probe.request()), converted(fallbackResponses.get(probe.protocol())), converted(response), options.throttleCodes()),
+            observer.result(result(candidate, options, probe, response, control, verification, anonymous,
                 fallbackRequests.get(probe.protocol()), fallbackResponses.get(probe.protocol())));
         }
+    }
+
+    private Result<Q, S> result(Candidate<Q, S> candidate, Options options, Probe<Q> probe, S response,
+                                 S control, Q verification, S anonymous, Q fallback, S fallbackResponse) {
+        var context = new SweepClassifier.Context(options.authenticated(), candidate.baseline(),
+            converted(control), converted(anonymous), options.throttleCodes());
+        return new Result<>(options.authenticated() ? "Authenticated Coverage Sweep" : "Coverage Sweep",
+            probe, candidate.target(), context.signal(probe.controlRole(), converted(response)), response,
+            candidate.request(), candidate.originalResponse() == null ? control : candidate.originalResponse(),
+            verification, anonymous, assessment(probe, response, fallback, fallbackResponse, context), fallback, fallbackResponse, context);
+    }
+
+    public Result<Q, S> retry(Result<Q, S> original, S response) {
+        var context = original.context();
+        return new Result<>(original.attackType(), original.probe(), original.target(),
+            context.signal(original.probe().controlRole(), converted(response)), response, original.originalRequest(),
+            original.originalResponse(), original.verificationRequest(), original.verificationResponse(),
+            assessment(original.probe(), response, original.fallbackRequest(), original.fallbackResponse(), context),
+            original.fallbackRequest(), original.fallbackResponse(), context);
+    }
+
+    private WildcardCalibration.Assessment assessment(Probe<Q> probe, S response, Q fallback, S fallbackResponse,
+                                                     SweepClassifier.Context context) {
+        return probe.controlRole() != ControlRole.NONE || fallback == null ? WildcardCalibration.Assessment.DISABLED
+            : WildcardCalibration.compare(access.method(probe.request()), converted(fallbackResponse), converted(response), context.throttleCodes());
     }
 
     private SweepClassifier.Response converted(S value) { return value == null ? null : responses.apply(value); }

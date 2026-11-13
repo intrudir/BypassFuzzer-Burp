@@ -31,6 +31,31 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class SessionResultsWorkspaceTest {
+    @Test void manualSweepRetryRefreshesSignalAndFallbackAnnotation() throws Exception {
+        var sender = new SequenceSender(response(403), response(200));
+        var workspace = workspace(sender);
+        var original = request("/original", "", "GET", null, "");
+        var probe = request("/mutation", "", "GET", null, "");
+        var fallback = request("/__bf_control_fixture", "", "GET", null, "");
+        var fallbackResponse = response(200);
+        var context = new com.bypassfuzzer.core.scan.SweepClassifier.Context(false,
+            new com.bypassfuzzer.core.scan.SweepClassifier.Baseline(403, 0, "text/plain"),
+            new com.bypassfuzzer.core.scan.SweepClassifier.Response(403, 0, "text/plain"), null, Set.of(429));
+        var failed = new AttackResult("Coverage Sweep", "probe", "target", "Path", "", probe, response(429), original, response(403))
+            .withEvidenceMetadata(new AttackResult.EvidenceMetadata("bypass.path.base", com.bypassfuzzer.core.scan.ControlRole.NONE,
+                com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.UNAVAILABLE, fallback, fallbackResponse, context));
+        workspace.addResult(failed);
+        workspace.retryThrottled(false); waitForRetry(workspace);
+        var retried = workspace.allResults().get(1);
+        assertEquals(200, retried.getStatusCode());
+        assertEquals("403 -> 200", retried.getSignal());
+        assertEquals("Possible fallback", retried.getEvidenceMetadata().annotation());
+        assertEquals(0, workspace.throttledRetryCount());
+        assertEquals(failed.getOriginalResponse(), retried.getOriginalResponse());
+        assertEquals(fallbackResponse, retried.getEvidenceMetadata().fallbackResponse());
+        workspace.cleanup();
+    }
+
 
     @Test
     void calibrationVisibilityPreservesBaselinesFallbackEvidenceAndFailedControls() throws Exception {

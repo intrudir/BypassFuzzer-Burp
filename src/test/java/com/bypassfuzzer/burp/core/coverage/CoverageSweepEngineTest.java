@@ -1270,7 +1270,7 @@ class CoverageSweepEngineTest {
     }
 
     @Test
-    void automaticallyRetriesNoResponsePayloadAfterHealthyControlCanary() throws Exception {
+    void automaticallyRetriesUnavailableControlWithoutFlaggingABaselineAsAMutation() throws Exception {
         CoverageSweepEngine engine = new CoverageSweepEngine(
             api(List.of()),
             new SequenceSender(java.util.Arrays.asList(
@@ -1294,6 +1294,41 @@ class CoverageSweepEngineTest {
         assertEquals("No response", results.get(0).getSignal());
         assertEquals(1, results.get(1).getThrottleRetryAttempt());
         assertEquals(200, results.get(1).getStatusCode());
+        assertEquals("", results.get(1).getSignal());
+        assertEquals(0, engine.deferredRetryCount());
+        assertEquals(2, engine.automaticRetryRequestCount());
+    }
+
+    @Test
+    void automaticallyRetriesNoResponsePayloadAfterHealthyControlCanary() throws Exception {
+        CoverageSweepEngine engine = new CoverageSweepEngine(
+            api(List.of()),
+            new SequenceSender(java.util.Arrays.asList(
+                null,                                      // main mutation has no response
+                response(403, "text/plain", "blocked"),  // retry control canary is healthy
+                response(200, "text/plain", "retried")   // mutation retry succeeds
+            )),
+            new CoverageSweepProbeGenerator() {
+                @Override public List<CoverageSweepProbe> buildProbes(HttpRequest request, CoverageSweepOptions options, boolean includeControl) {
+                    return List.of(new CoverageSweepProbe("fixture mutation", "Path", request, null));
+                }
+            }
+        );
+        List<AttackResult> results = Collections.synchronizedList(new ArrayList<>());
+        CoverageSweepOptions options = new CoverageSweepOptions(
+            withoutCalibration(CoverageSweepOptions.defaults()).statuses(), true, 100, 1, 1, 0,
+            withoutCalibration(CoverageSweepOptions.defaults()).throttleStatusCodes()
+        );
+
+        assertTrue(engine.start(List.of(candidate(request("/unstable", "", "POST", null, ""), 403)),
+            options, results::add, () -> { }));
+        for (int i = 0; i < 100 && engine.isRunning(); i++) Thread.sleep(20);
+
+        assertEquals(2, results.size());
+        assertEquals("No response", results.get(0).getSignal());
+        assertEquals(1, results.get(1).getThrottleRetryAttempt());
+        assertEquals(200, results.get(1).getStatusCode());
+        assertEquals("403 -> 200", results.get(1).getSignal());
         assertEquals(0, engine.deferredRetryCount());
         assertEquals(2, engine.automaticRetryRequestCount());
     }

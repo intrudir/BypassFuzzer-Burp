@@ -48,8 +48,7 @@ public final class SweepExecutor {
                 boolean baseline = result.probe().controlRole() != ControlRole.NONE;
                 evidence.write("sweep", result.target(), new PlannedRequest(result.probe().family(), result.probe().label(), "",
                     result.probe().request(), baseline, ProbeIntent.STANDARD, "", "", result.probe().playbookId(), result.probe().controlRole()), result.response(), null, result.signal(), 0, result.calibration(), result.fallbackRequest());
-                if (result.signal().startsWith(SweepClassifier.BYPASS_PREFIX)
-                    || result.signal().startsWith(SweepClassifier.LIKELY_UNAUTHENTICATED_BYPASS_PREFIX)) findings.incrementAndGet();
+                if (result.context().isFinding(result.probe().controlRole(), SweepClassifier.response(result.response()))) findings.incrementAndGet();
                 if (!result.probe().family().equals("Unauthenticated Control") && retryable(result.response(), execution)) queue.add(new Retry(result, 0));
             } catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
         };
@@ -75,7 +74,7 @@ public final class SweepExecutor {
                     var baseline = new SweepClassifier.Baseline(captured == null ? 0 : captured.statusCode(),
                         captured == null ? 0 : captured.body().length,
                         captured == null ? "" : captured.firstHeader("Content-Type").orElse(""));
-                    var candidate = new SweepWorkflow.Candidate<>(base, captured, base.targetLabel(), baseline);
+                    var candidate = new SweepWorkflow.Candidate<>(base, captured, base.targetLabel(), baseline, protocol);
                     workflow.execute(candidate, options, policy, () -> {
                         var input = options.authenticated() ? workflow.stripAuthentication(base, options.authHeaders(), options.authCookies()) : base;
                         return planner.apply(input).stream().map(p -> new SweepWorkflow.Probe<>(p.payload(), p.family(), p.request(),
@@ -106,10 +105,12 @@ public final class SweepExecutor {
             }, (retry, attempt) -> {
                 var r = retry.result();
                 var response = send.apply(r.probe());
-                try { evidence.write("sweep", r.target(), new PlannedRequest(r.probe().family(), r.probe().label(), "",
-                    r.probe().request(), r.probe().controlRole()!=ControlRole.NONE, ProbeIntent.STANDARD,"","",r.probe().playbookId(),r.probe().controlRole()), response, null, r.signal(), attempt,
-                    r.fallbackRequest()==null ? WildcardCalibration.Assessment.DISABLED : WildcardCalibration.compare(r.probe().request().method(), SweepClassifier.response(r.fallbackResponse()), SweepClassifier.response(response),execution.throttleStatusCodes()),r.fallbackRequest()); }
+                var updated = workflow.retry(r, response);
+                try { evidence.write("sweep", updated.target(), new PlannedRequest(updated.probe().family(), updated.probe().label(), "",
+                    updated.probe().request(), updated.probe().controlRole()!=ControlRole.NONE, ProbeIntent.STANDARD,"","",updated.probe().playbookId(),updated.probe().controlRole()),
+                    response, null, updated.signal(), attempt, updated.calibration(), updated.fallbackRequest()); }
                 catch (java.io.IOException error) { throw new java.io.UncheckedIOException(error); }
+                if (updated.context().isFinding(updated.probe().controlRole(), SweepClassifier.response(response))) findings.incrementAndGet();
                 boolean again = retryable(response, execution);
                 if (again) queue.add(new Retry(r, attempt));
                 return again;

@@ -8,7 +8,12 @@ import burp.api.montoya.http.message.responses.HttpResponse;
  */
 public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
     public record EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
-        com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse) {
+        com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse,
+        com.bypassfuzzer.core.scan.SweepClassifier.Context sweepContext) {
+        public EvidenceMetadata(String playbookId, com.bypassfuzzer.core.scan.ControlRole controlRole,
+            com.bypassfuzzer.core.scan.WildcardCalibration.Assessment calibration, HttpRequest fallbackRequest, HttpResponse fallbackResponse) {
+            this(playbookId, controlRole, calibration, fallbackRequest, fallbackResponse, null);
+        }
         public static EvidenceMetadata empty() { return new EvidenceMetadata("", com.bypassfuzzer.core.scan.ControlRole.NONE,
             com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED, null, null); }
         public String annotation() { return calibration == com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.MATCH ? "Possible fallback" :
@@ -111,12 +116,25 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
     }
 
     public static AttackResult throttleRetryOf(AttackResult original, HttpResponse response, int attempt) {
+        var metadata = original.evidenceMetadata;
+        var context = metadata.sweepContext();
+        String signal = original.payloadEncoding;
+        if (context != null) {
+            var received = com.bypassfuzzer.burp.core.coverage.CoverageSweepClassifier.toCore(response);
+            signal = context.signal(metadata.controlRole(), received);
+            var calibration = metadata.fallbackRequest() == null || metadata.controlRole() != com.bypassfuzzer.core.scan.ControlRole.NONE
+                ? com.bypassfuzzer.core.scan.WildcardCalibration.Assessment.DISABLED
+                : com.bypassfuzzer.core.scan.WildcardCalibration.compare(original.request.method(),
+                    com.bypassfuzzer.burp.core.coverage.CoverageSweepClassifier.toCore(metadata.fallbackResponse()), received, context.throttleCodes());
+            metadata = new EvidenceMetadata(metadata.playbookId(), metadata.controlRole(), calibration,
+                metadata.fallbackRequest(), metadata.fallbackResponse(), context);
+        }
         return new AttackResult(
             original.attackType,
             original.payload,
             original.targetLabel,
             original.payloadFamily,
-            original.payloadEncoding,
+            signal,
             original.request,
             response,
             original.originalRequest,
@@ -124,7 +142,7 @@ public class AttackResult implements com.bypassfuzzer.core.scan.ResultView {
             original.verificationRequest,
             original.verificationResponse,
             attempt
-        ).withEvidenceMetadata(original.evidenceMetadata);
+        ).withEvidenceMetadata(metadata);
     }
 
     /**

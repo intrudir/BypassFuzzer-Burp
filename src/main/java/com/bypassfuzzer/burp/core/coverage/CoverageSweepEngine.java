@@ -557,7 +557,8 @@ public class CoverageSweepEngine {
             options.authSelection().headerNames(), options.authSelection().cookieNames(), options.playbookOptions().wildcardCalibration(), options.throttleStatusCodes());
         var input = new com.bypassfuzzer.core.scan.SweepWorkflow.Candidate<>(candidate.request(),
             candidate.originalResponse(), candidate.method() + " " + candidate.displayUrl(),
-            new com.bypassfuzzer.core.scan.SweepClassifier.Baseline(candidate.statusCode(), candidate.contentLength(), candidate.contentType()));
+            new com.bypassfuzzer.core.scan.SweepClassifier.Baseline(candidate.statusCode(), candidate.contentLength(), candidate.contentType()),
+            coreRequests.fromMontoya(candidate.request()).protocol());
         workflow.execute(input, execution, policy.shared(), () -> buildProbes(candidate, options).stream()
             .map(probe -> new com.bypassfuzzer.core.scan.SweepWorkflow.Probe<>(probe.label(), probe.family(),
                 probe.request(), probe.httpMode() == burp.api.montoya.http.HttpMode.HTTP_2 ? HttpProtocol.HTTP_2
@@ -573,12 +574,12 @@ public class CoverageSweepEngine {
                         event.probe().family(), event.signal(), event.probe().request(), event.response(),
                         event.originalRequest(), event.originalResponse(), event.verificationRequest(), event.verificationResponse())
                         .withEvidenceMetadata(new AttackResult.EvidenceMetadata(event.probe().playbookId(), event.probe().controlRole(),
-                            event.calibration(), event.fallbackRequest(), event.fallbackResponse())).copyEvidenceToTempFile();
+                            event.calibration(), event.fallbackRequest(), event.fallbackResponse(), event.context())).copyEvidenceToTempFile();
                     if (resultCallback != null) resultCallback.accept(result);
                     // The master's anonymous verification control is evidence, not deferred mutation work.
                     if (!event.probe().family().equals("Unauthenticated Control") && isRetryableResponse(event.response(), options))
                         retryQueue.add(new RetryTask(result, new CoverageSweepProbe(event.probe().label(), event.probe().family(),
-                            event.probe().request(), coreRequests.httpMode(event.probe().protocol()))));
+                            event.probe().request(), coreRequests.httpMode(event.probe().protocol()), event.probe().playbookId(), event.probe().controlRole())));
                 }
             });
     }
